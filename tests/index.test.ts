@@ -14,6 +14,7 @@ interface $$ {
     $index: Index<Item, string>;
     $index_unique: Index<Item, string>;
     $index_explode: Index<Item, string>;
+    $index_derived: Index<Item, number>;
   };
 }
 
@@ -61,6 +62,12 @@ describe('index', () => {
             to: 'items',
             trait: 'attr_explode',
             explode: true,
+          }),
+
+          addIndex<Item, number>({
+            name: 'index_derived',
+            to: 'items',
+            trait: item => item.attr.length,
           }),
         ],
       },
@@ -136,6 +143,32 @@ describe('index', () => {
       expect(await jine.$items.$index_explode.get('c')).toEqual(item);
 
     });
+
+  });
+
+  describe('derived index', () => {
+
+    it("allows for get()'ing items", async () => {
+
+      const item = {
+        attr: "12345",
+        attr_unique: '',
+        attr_explode: [],
+      }
+
+      await jine.$items.add(item);
+      const got = await jine.$items.$index_derived.get(5);
+      expect(got).toEqual(item);
+
+    });
+
+    it("returns undefined on a failed get()", async () => {
+
+      const got = await jine.$items.$index_derived.get(10);
+      expect(got).toBeUndefined();
+
+    });
+
 
   });
 

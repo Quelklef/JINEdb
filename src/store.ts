@@ -53,6 +53,9 @@ export class Store<Item extends Storable> {
   }
 
   static autonomous<Item extends Storable>(schema: StoreSchema<Item>, idb_db: IDBDatabase): Store<Item> {
+    // TODO: this and Index.autonomous both use transactions that autocommit on
+    //       the first unused tick. This is mostly fine, but it's inconsistent with
+    //       the rest of the user-facing API where transactions commit ASAP
 
     const indexes: Dict<string, Index<Item, IndexableTrait>> = {};
     for (const index_name of Object.keys(schema.index_schemas)) {
