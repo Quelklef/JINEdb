@@ -9,13 +9,11 @@ type Post = {
 }
 
 interface $$ {
-  $posts: Store<Post> & {
-    $title: Index<Post, string>;
-  };
+  $posts: Store<Post>;
 }
 
 
-describe('End-to-end posts', () => {
+describe('End-to-end simple', () => {
 
   let jine!: Jine<$$>;
 
@@ -40,13 +38,6 @@ describe('End-to-end posts', () => {
             //       but perhaps clearer to leave them required...
             encode: x => x,
             decode: x => x as Post,
-          }),
-
-          addIndex<Post, string>({
-            to: 'posts',
-            name: 'title',
-            trait: post => post.title,
-            unique: true,
           }),
         ],
       },
