@@ -51,23 +51,41 @@ export class IndexSchema<Item extends Storable, Trait extends IndexableTrait> {
   public unique: boolean;
   public explode: boolean;
   public item_codec: ItemCodec<Item>;
-  public trait_getter: (item: Item) => Trait;
   public parent_store_name: string;
+  public trait_path_or_getter: string | ((item: Item) => Trait);
 
   constructor(args: {
     name: string;
     unique: boolean;
     explode: boolean;
     item_codec: ItemCodec<Item>;
-    trait_getter: (item: Item) => Trait;
     parent_store_name: string;
+    trait_path_or_getter: string | ((item: Item) => Trait);
   }) {
     this.name = args.name;
     this.unique = args.unique;
     this.explode = args.explode;
     this.item_codec = args.item_codec;
-    this.trait_getter = args.trait_getter;
     this.parent_store_name = args.parent_store_name;
+    this.trait_path_or_getter = args.trait_path_or_getter;
+  }
+
+  get kind(): 'path' | 'derived' {
+    if (typeof this.trait_path_or_getter === 'string')
+      return 'path';
+    return 'derived';
+  }
+
+  get trait_path(): string {
+    if (this.kind !== 'path')
+      throw Error('Cannot get .path on a non-path index.');
+    return this.trait_path_or_getter as string;
+  }
+
+  get trait_getter(): (item: Item) => Trait {
+    if (this.kind !== 'derived')
+      throw Error('Cannot get .trait_getter on a non-derived index.');
+    return this.trait_path_or_getter as (item: Item) => Trait;
   }
 
 }

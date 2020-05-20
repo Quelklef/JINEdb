@@ -5,7 +5,7 @@ export { Index } from './index';
 export { Database } from './database';
 
 // Migration re-exports
-export { addStore, removeStore, addTraitIndex, removeTraitIndex } from './migration';
+export { addStore, removeStore, addIndex, removeIndex } from './migration';
 
 // --
 

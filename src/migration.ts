@@ -6,17 +6,20 @@ import { DatabaseSchema, StoreSchema, IndexSchema } from './schema';
 import { Transaction, newTransaction } from './transaction';
 import { IndexableTrait } from './traits';
 
-export interface AddTraitAlterationSpec<Item, Trait extends IndexableTrait> {
-  kind: 'add_trait_index';
+export interface AddIndexAlterationSpec<Item, Trait extends IndexableTrait> {
+  kind: 'add_index';
   name: string;
   to: string;
-  get: (item: Item) => Trait;
   unique?: boolean;
   explode?: boolean;
+  // Traits fall into one of two categories:
+  // 'path traits', where the trait is an attribute of the item
+  // 'derived traits', where the trait is given by a function
+  trait: string | ((item: Item) => Trait);
 }
 
-export interface RemoveTraitAlterationSpec {
-  kind: 'remove_trait_index';
+export interface RemoveIndexAlterationSpec {
+  kind: 'remove_index';
   from: string;
   name: string;
 }
@@ -34,7 +37,7 @@ export interface RemoveStoreAlterationSpec {
 }
 
 export type StoreAlterationSpec = AddStoreAlterationSpec<any> | RemoveStoreAlterationSpec;
-export type TraitAlterationSpec = AddTraitAlterationSpec<any, any> | RemoveTraitAlterationSpec;
+export type TraitAlterationSpec = AddIndexAlterationSpec<any, any> | RemoveIndexAlterationSpec;
 export type AlterationSpec = StoreAlterationSpec | TraitAlterationSpec;
 
 export function addStore<Item>(spec: Omit<AddStoreAlterationSpec<Item>, 'kind'>): AddStoreAlterationSpec<Item> {
@@ -45,12 +48,12 @@ export function removeStore(spec: Omit<RemoveStoreAlterationSpec, 'kind'>): Remo
   return { ...spec, kind: 'remove_store' };
 }
 
-export function addTraitIndex<Item, Trait extends IndexableTrait>(spec: Omit<AddTraitAlterationSpec<Item, Trait>, 'kind'>): AddTraitAlterationSpec<Item, Trait> {
-  return { ...spec, kind: 'add_trait_index' };
+export function addIndex<Item, Trait extends IndexableTrait>(spec: Omit<AddIndexAlterationSpec<Item, Trait>, 'kind'>): AddIndexAlterationSpec<Item, Trait> {
+  return { ...spec, kind: 'add_index' };
 }
 
-export function removeTraitIndex(spec: Omit<RemoveTraitAlterationSpec, 'kind'>): RemoveTraitAlterationSpec {
-  return { ...spec, kind: 'remove_trait_index' };
+export function removeIndex(spec: Omit<RemoveIndexAlterationSpec, 'kind'>): RemoveIndexAlterationSpec {
+  return { ...spec, kind: 'remove_index' };
 }
 
 export interface MigrationSpec {
@@ -168,7 +171,7 @@ export class Migration {
         return undefined;
       }
 
-      case 'add_trait_index': {
+      case 'add_index': {
         const store_name = spec.to;
         const index_name = spec.name;
         const store = some(tx.stores[store_name]);
@@ -177,12 +180,12 @@ export class Migration {
           unique: spec.unique ?? false,
           explode: spec.explode ?? false,
           item_codec: store.schema.item_codec,
-          trait_getter: spec.get,
+          trait_path_or_getter: spec.trait,
           parent_store_name: store_name,
         }));
       }
 
-      case 'remove_trait_index': {
+      case 'remove_index': {
         const store_name = spec.from;
         const index_name = spec.name;
         const store = some(tx.stores[store_name]);
@@ -252,7 +255,7 @@ export class Migrations {
             break;
           }
 
-          case 'add_trait_index': {
+          case 'add_index': {
             const store_schema = some(db_schema.store_schemas[spec.to]);
             store_schema.index_names.add(spec.name);
             store_schema.index_schemas[spec.name] = new IndexSchema({
@@ -260,13 +263,13 @@ export class Migrations {
               unique: spec.unique ?? false,
               explode: spec.explode ?? false,
               item_codec: store_schema.item_codec,
-              trait_getter: spec.get,
+              trait_path_or_getter: spec.trait,
               parent_store_name: store_schema.name,
             });
             break;
           }
 
-          case 'remove_trait_index': {
+          case 'remove_index': {
             const store_schema = some(db_schema.store_schemas[spec.from]);
             store_schema.index_names.delete(spec.name);
             delete store_schema.index_schemas[spec.name];

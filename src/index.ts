@@ -139,6 +139,14 @@ export class Index<Item extends Storable, Trait extends IndexableTrait> {
     return new Index(schema, get_idb_index);
   }
 
+  _get_trait(item: Item): Trait {
+    if (this.schema.kind === 'path') {
+      return (item as any)[this.schema.trait_path];
+    } else {
+      return this.schema.trait_getter(item);
+    }
+  }
+
   async query(query_spec: QuerySpec): Promise<Cursor<Item, Trait>> {
     // TODO: unclear what kind of transaction will be needed
     const req = this._get_idb_index('readwrite').openCursor(

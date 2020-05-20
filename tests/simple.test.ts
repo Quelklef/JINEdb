@@ -1,7 +1,7 @@
 
 import 'fake-indexeddb/auto';
 
-import { newJine, Jine, addStore, addTraitIndex, Store, Index } from '../src/jine';
+import { newJine, Jine, addStore, addIndex, Store, Index } from '../src/jine';
 
 type Post = {
   title: string;
@@ -42,13 +42,12 @@ describe('End-to-end posts', () => {
             decode: x => x as Post,
           }),
 
-          addTraitIndex<Post, string>({
+          addIndex<Post, string>({
             to: 'posts',
             name: 'title',
-            get: post => post.title,
+            trait: post => post.title,
             unique: true,
           }),
-
         ],
       },
 

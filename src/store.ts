@@ -70,7 +70,7 @@ export class Store<Item extends Storable> {
 
   }
 
-  _addIndex<$$>(index_schema: IndexSchema<Item, IndexableTrait>): (tx: Transaction<$$>) => Promise<void> {
+  _addIndex<$$>(index_schema: IndexSchema<Item, IndexableTrait>): ((tx: Transaction<$$>) => Promise<void>) | undefined {
     this._get_idb_store('versionchange').createIndex(
       index_schema.name,
       `indexes.${index_schema.name}`,
@@ -82,30 +82,40 @@ export class Store<Item extends Storable> {
 
     this.schema.index_schemas[index_schema.name] = index_schema;
 
-    return async tx => {
-      const store = some(tx.stores[this.schema.name]);
-      await store._mapExistingRows(row => {
-        const item = fullDecode(row.payload, store.schema.item_codec) as Item;
-        const trait = index_schema.trait_getter(item);
-        row.traits[index_schema.name] = trait;
-        row.payload = fullEncode(item, store.schema.item_codec);
-        return row;
-      });
-    };
+    if (index_schema.kind === 'path') {
+      return undefined;
+    } else {
+      return async tx => {
+        const store = some(tx.stores[this.schema.name]);
+        await store._mapExistingRows(row => {
+          const item = fullDecode(row.payload, store.schema.item_codec) as Item;
+          const index = some(tx.stores[this.schema.name]?.indexes[index_schema.name]);
+          const trait = index._get_trait(item);
+          row.traits[index_schema.name] = trait;
+          row.payload = fullEncode(item, store.schema.item_codec);
+          return row;
+        });
+      };
+    }
   }
 
-  _removeIndex<$$>(index_name: string): (tx: Transaction<$$>) => Promise<void> {
+  _removeIndex<$$>(index_name: string): ((tx: Transaction<$$>) => Promise<void>) | undefined {
     // TODO: This one should also be refactored into two methods, I think
     this._get_idb_store('versionchange').deleteIndex(index_name);
     delete this.schema.index_schemas[index_name];
 
-    return async tx => {
-      const store = some(tx.stores[this.schema.name]);
-      await store._mapExistingRows(row => {
-        delete row.traits[index_name];
-        return row;
-      });
-    };
+    const index_schema = some(this.schema.index_schemas[index_name]);
+    if (index_schema.kind === 'path') {
+      return undefined;
+    } else {
+      return async tx => {
+        const store = some(tx.stores[this.schema.name]);
+        await store._mapExistingRows(row => {
+          delete row.traits[index_name];
+          return row;
+        });
+      };
+    }
   }
 
   async _mapExistingRows(f: (r: Row) => Row): Promise<void> {
@@ -137,8 +147,7 @@ export class Store<Item extends Storable> {
     for (const index_name of Object.keys(this.indexes)) {
       const index = some(this.indexes[index_name]);
       const trait_name = index_name;
-      const get_trait = index.schema.trait_getter;
-      const trait = get_trait(item);
+      const trait = index._get_trait(item);
       result[trait_name] = trait;
     }
     return result;
