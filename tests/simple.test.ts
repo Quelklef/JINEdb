@@ -85,4 +85,12 @@ describe('End-to-end posts', () => {
     expect(count).toEqual(2);
   });
 
+  it('add/clear', async () => {
+    await jine.$posts.add(some_post);
+    await jine.$posts.add(some_post);
+    await jine.$posts.clear();
+    const count = await jine.$posts.count();
+    expect(count).toEqual(0);
+  });
+
 });
