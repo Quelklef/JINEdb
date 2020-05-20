@@ -4,6 +4,24 @@ import { some, Dict } from './util';
 import { Store } from './store';
 import { DatabaseSchema, StoreSchema } from './schema';
 
+export type TransactionMode = 'r' | 'rw' | 'vc';
+
+export function prettifyTransactionMode(idb_tx_mode: IDBTransactionMode): TransactionMode {
+  return {
+    readonly: 'r',
+    readwrite: 'rw',
+    versionchange: 'vc',
+  }[idb_tx_mode] as TransactionMode;
+}
+
+export function uglifyTransactionMode(tx_mode: TransactionMode): IDBTransactionMode {
+  return {
+    r: 'readonly',
+    rw: 'readwrite',
+    vc: 'versionchange',
+  }[tx_mode] as IDBTransactionMode;
+}
+
 export type Transaction<$$> = TransactionImpl & $$;
 
 export function newTransaction<$$>(idb_tx: IDBTransaction, db_schema: DatabaseSchema): Transaction<$$> {

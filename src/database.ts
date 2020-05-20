@@ -1,6 +1,6 @@
 
 import { DatabaseSchema } from './schema';
-import { Transaction, newTransaction } from './transaction';
+import { Transaction, newTransaction, TransactionMode, uglifyTransactionMode } from './transaction';
 import { MigrationSpec, Migrations } from './migration';
 
 export class Database<$$> {
@@ -77,8 +77,8 @@ export class Database<$$> {
     });
   }
 
-  async transact(store_names: Array<string>, mode: IDBTransactionMode, callback: (tx: Transaction<$$>) => Promise<void>): Promise<void> {
-    const idb_tx = this._idb_db.transaction(store_names, mode);
+  async transact(store_names: Array<string>, mode: TransactionMode, callback: (tx: Transaction<$$>) => Promise<void>): Promise<void> {
+    const idb_tx = this._idb_db.transaction(store_names, uglifyTransactionMode(mode));
     const tx = newTransaction<$$>(idb_tx, this.schema);
     await callback(tx);
     // TODO: if the callback also commits the transaction, will double-committing it throw?

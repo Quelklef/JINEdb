@@ -113,7 +113,7 @@ export class Migration {
     // Do async work
     // Unfortunately, I think this has to be done in a different transaction.
     // It involves get/put work, which I don't believe is supported on versionchange transactions...
-    await db.transact(this.needed_stores, 'readwrite', async tx => {
+    await db.transact(this.needed_stores, 'rw', async tx => {
       for (const work of async_work) {
         await work(tx);
       }
