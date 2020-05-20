@@ -1,7 +1,6 @@
 
 import { DatabaseSchema } from './schema';
 import { Transaction, newTransaction } from './transaction';
-import { setUpShorthand } from './shorthand';
 import { MigrationSpec, Migrations } from './migration';
 
 export class Database<$$> {
