@@ -7,6 +7,7 @@ import { fullDecode } from './codec';
 import { encodeTrait, IndexableTrait } from './traits';
 
 interface QueryMeta {
+  mode: IDBTransactionMode;
   reversed?: boolean;
   unique?: boolean;
 }
@@ -149,7 +150,7 @@ export class Index<Item extends Storable, Trait extends IndexableTrait> {
 
   async query(query_spec: QuerySpec): Promise<Cursor<Item, Trait>> {
     // TODO: unclear what kind of transaction will be needed
-    const req = this._get_idb_index('readwrite').openCursor(
+    const req = this._get_idb_index(query_spec.mode).openCursor(
       compileTraitRange(query_spec),
       compileCursorDirection(query_spec)
     );
@@ -168,7 +169,7 @@ export class Index<Item extends Storable, Trait extends IndexableTrait> {
 
   async tryGet(trait: Trait): Promise<Item | undefined> {
     const encoded = encodeTrait(trait);
-    const cur = await this.query({ equals: encoded });
+    const cur = await this.query({ equals: encoded, mode: 'readonly' });
     if (!cur.isInBounds) return undefined;
     const item = cur.item;
     await cur.step();
