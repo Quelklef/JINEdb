@@ -5,13 +5,19 @@
   "main": "dist/jine.js",
   "types": "dist/jine.d.ts",
   "scripts": {
-    "test": "tsc -p tests_tsconfig.json && jest"
+    "test": "jest"
   },
   "prepublish": "tsc",
   "keywords": [],
   "author": "Quelklef",
   "license": "ISC",
   "devDependencies": {
+    "@types/jest": "^25.2.3",
+    "core-js-bundle": "^3.6.5",
+    "fake-indexeddb": "^3.0.0",
+    "jest": "^26.0.1",
+    "regenerator-runtime": "^0.13.5",
+    "ts-jest": "^26.0.0",
     "typescript": "^3.9.2"
   },
   "dependencies": {
