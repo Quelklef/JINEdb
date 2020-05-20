@@ -7,13 +7,12 @@ import { Database } from './database';
 
 export function setUpShorthand<$$>(db: Database<$$>, idb_db: IDBDatabase): Jine<$$> {
 
-  // TODO: a schema.store_names would be nice...
-  for (const store_name of Object.keys(db.schema.store_schemas)) {
+  for (const store_name of db.schema.store_names) {
     const store_schema = some(db.schema.store_schemas[store_name]);
     const store = Store.autonomous(store_schema, idb_db);
     (db as any)['$' + store_name] = store;
 
-    for (const index_name of Object.keys(store_schema.index_schemas)) {
+    for (const index_name of store_schema.index_names) {
       const index_schema = some(store_schema.index_schemas[index_name]);
       const index = Index.autonomous(index_schema, idb_db);
       (store as any)['$' + index_name] = index;
