@@ -1,0 +1,21 @@
+{
+  "name": "jinedb",
+  "version": "0.1.0",
+  "description": "For when Json Is Not Enough",
+  "main": "dist/jine.js",
+  "types": "dist/jine.d.ts",
+  "scripts": {
+    "test": "tsc -p tests_tsconfig.json && jest"
+  },
+  "prepublish": "tsc",
+  "keywords": [],
+  "author": "Quelklef",
+  "license": "ISC",
+  "devDependencies": {
+    "typescript": "^3.9.2"
+  },
+  "dependencies": {
+    "node": "^14.2.0",
+    "npm": "^6.14.5"
+  }
+}
