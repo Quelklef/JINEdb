@@ -4,7 +4,7 @@ import { Storable } from './storable';
 import { ItemCodec } from './codec';
 import { IndexableTrait } from './traits';
 
-export class JineSchema {
+export class DatabaseSchema {
 
   public name: string;
   public store_schemas: Dict<string, StoreSchema<Storable>>;

@@ -2,11 +2,11 @@
 import { Storable } from './storable';
 import { some, Dict } from './util';
 import { Store } from './store';
-import { JineSchema, StoreSchema } from './schema';
+import { DatabaseSchema, StoreSchema } from './schema';
 
 export class Transaction {
 
-  readonly jine_schema: JineSchema;
+  readonly db_schema: DatabaseSchema;
 
   readonly stores: Dict<string, Store<Storable>>;
 
@@ -16,27 +16,27 @@ export class Transaction {
   _addStore(store_name: string, schema: StoreSchema<Storable>): void {
     const idb_store = this._idb_db.createObjectStore(store_name, { keyPath: 'id', autoIncrement: true });
     const store = Store.bound(schema, idb_store);
-    this.jine_schema.store_schemas[store_name] = schema;
+    this.db_schema.store_schemas[store_name] = schema;
     this.stores[store_name] = store;
     (this as any)['$' + store_name] = store;
   }
 
   _removeStore(store_name: string): void {
     this._idb_db.deleteObjectStore(store_name);
-    delete this.jine_schema.store_schemas[store_name];
+    delete this.db_schema.store_schemas[store_name];
     delete this.stores[store_name];
     delete (this as any)['$' + store_name];
   }
 
-  constructor(idb_tx: IDBTransaction, jine_schema: JineSchema) {
+  constructor(idb_tx: IDBTransaction, db_schema: DatabaseSchema) {
     this._idb_tx = idb_tx;
     this._idb_db = this._idb_tx.db;
-    this.jine_schema = jine_schema;
+    this.db_schema = db_schema;
 
     this.stores = {};
-    for (const store_name of jine_schema.store_names) {
+    for (const store_name of db_schema.store_names) {
       const idb_store = this._idb_tx.objectStore(store_name);
-      const store_schema = some(jine_schema.store_schemas[store_name]);
+      const store_schema = some(db_schema.store_schemas[store_name]);
       const store = Store.bound(store_schema, idb_store);
       this.stores[store_name] = store;
       (this as any)['$' + store_name] = store;

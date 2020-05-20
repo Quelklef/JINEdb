@@ -1,8 +1,8 @@
 
-import { Jine } from './jine';
+import { Database } from './database';
 import { Storable } from './storable';
 import { some } from './util';
-import { JineSchema, StoreSchema, IndexSchema } from './schema';
+import { DatabaseSchema, StoreSchema, IndexSchema } from './schema';
 import { Transaction } from './transaction';
 import { IndexableTrait } from './traits';
 
@@ -82,7 +82,7 @@ export class Migration {
       .map(spec => spec.name);
   }
 
-  async run<$$>(jine: Jine<$$>): Promise<void> {
+  async run<$$>(db: Database<$$>): Promise<void> {
     /* Run a migration. This method MUST NOT be called within an
     existing upgradeneeded event. It will create and hanlde its own
     event. */
@@ -94,10 +94,10 @@ export class Migration {
     const async_work: Array<(tx: Transaction & $$) => Promise<void>> = [];
 
     // TODO: using an underscore method of another class is a code smell
-    await jine._openIdbDb(this.version, upgrade_event => {
+    await db._openIdbDb(this.version, upgrade_event => {
       const idb_tx = (upgrade_event.target as any).transaction as IDBTransaction;
 
-      const db_schema_so_far = jine.migrations.calcSchema(jine.schema.name, this.version);
+      const db_schema_so_far = db.migrations.calcSchema(db.schema.name, this.version);
       const upgrade_tx = new Transaction(idb_tx, db_schema_so_far);
 
       for (const alteration_spec of this.alteration_specs) {
@@ -109,7 +109,7 @@ export class Migration {
     // Do async work
     // Unfortunately, I think this has to be done in a different transaction.
     // It involves get/put work, which I don't believe is supported on versionchange transactions...
-    await jine.transact(this.needed_stores, 'readwrite', async tx => {
+    await db.transact(this.needed_stores, 'readwrite', async tx => {
       for (const work of async_work) {
         await work(tx);
       }
@@ -207,21 +207,21 @@ export class Migrations {
     return this.migrations[Symbol.iterator]();
   }
 
-  async upgrade<$$>(jine: Jine<$$>, old_version: number): Promise<void> {
+  async upgrade<$$>(db: Database<$$>, old_version: number): Promise<void> {
     /* Run all migrations with a version number greater than the current version. */
     const new_migrations = this.migrations
           .sort((m1, m2) => +m1.version - +m2.version)
           .filter(m => +m.version > old_version);
 
     for (const migration of new_migrations) {
-      await migration.run(jine);
+      await migration.run(db);
     }
   }
 
-  calcSchema(jine_name: string, before_version?: number): JineSchema {
+  calcSchema(db_name: string, before_version?: number): DatabaseSchema {
 
-    const jine_schema: JineSchema = {
-      name: jine_name,
+    const db_schema: DatabaseSchema = {
+      name: db_name,
       store_names: new Set(),
       store_schemas: {},
     };
@@ -235,9 +235,9 @@ export class Migrations {
         switch (spec.kind) {
 
           case 'add_store': {
-            jine_schema.store_names.add(spec.name);
+            db_schema.store_names.add(spec.name);
             const item_codec = { encode: spec.encode, decode: spec.decode };
-            jine_schema.store_schemas[spec.name] = new StoreSchema({
+            db_schema.store_schemas[spec.name] = new StoreSchema({
               name: spec.name,
               item_codec: item_codec,
               index_schemas: {},
@@ -246,13 +246,13 @@ export class Migrations {
           }
 
           case 'remove_store': {
-            jine_schema.store_names.delete(spec.name);
-            delete jine_schema.store_schemas[spec.name];
+            db_schema.store_names.delete(spec.name);
+            delete db_schema.store_schemas[spec.name];
             break;
           }
 
           case 'add_trait_index': {
-            const store_schema = some(jine_schema.store_schemas[spec.to]);
+            const store_schema = some(db_schema.store_schemas[spec.to]);
             store_schema.index_names.add(spec.name);
             store_schema.index_schemas[spec.name] = new IndexSchema({
               name: spec.name,
@@ -266,7 +266,7 @@ export class Migrations {
           }
 
           case 'remove_trait_index': {
-            const store_schema = some(jine_schema.store_schemas[spec.from]);
+            const store_schema = some(db_schema.store_schemas[spec.from]);
             store_schema.index_names.delete(spec.name);
             delete store_schema.index_schemas[spec.name];
             break;
@@ -276,7 +276,7 @@ export class Migrations {
       }
     }
 
-    return jine_schema;
+    return db_schema;
 
   }
 

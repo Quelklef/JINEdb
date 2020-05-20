@@ -1,7 +1,7 @@
 
 import 'fake-indexeddb/auto';
 
-import { Jine } from '../src/jine';
+import { newJine, Jine } from '../src/jine';
 import { Store } from '../src/store';
 import { Index } from '../src/index';
 import { addStore, addTraitIndex } from '../src/migration';
@@ -20,7 +20,7 @@ interface $$ {
 
 describe('End-to-end posts', () => {
 
-  let jine!: Jine<$$> & $$;
+  let jine!: Jine<$$>;
 
   beforeEach(async () => {
 
@@ -57,7 +57,7 @@ describe('End-to-end posts', () => {
 
     ];
 
-    jine = await Jine.new<$$>('jine', migrations);
+    jine = await newJine<$$>('jine', migrations);
 
   });
 
