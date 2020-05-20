@@ -72,13 +72,13 @@ describe('End-to-end posts', () => {
     text: 'body text',
   }
 
-  it('put/get', async () => {
+  it('add/all', async () => {
     await jine.$posts.add(some_post);
     const posts = await jine.$posts.all();
-    expect(posts[0]).toEqual(some_post);
+    expect(posts).toEqual([some_post]);
   });
 
-  it('put/count', async () => {
+  it('add/count', async () => {
     await jine.$posts.add(some_post);
     await jine.$posts.add(some_post);
     const count = await jine.$posts.count();
