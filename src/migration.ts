@@ -78,7 +78,7 @@ export class Migration {
     this.after = spec.after;
   }
 
-  get needed_stores(): Array<string> {
+  get needed_store_names(): Array<string> {
     /* Given a migration, return which stores are to be modified by the db alterations in the migration. */
     return this.alteration_specs
       .filter(spec => ['add_store', 'remove_store'].includes(spec.kind))
@@ -113,11 +113,12 @@ export class Migration {
     // Do async work
     // Unfortunately, I think this has to be done in a different transaction.
     // It involves get/put work, which I don't believe is supported on versionchange transactions...
-    await db.transact(this.needed_stores, 'rw', async tx => {
-      for (const work of async_work) {
-        await work(tx);
-      }
-    });
+    const idb_tx = db._idb_db.transaction(this.needed_store_names, 'readwrite');
+    const tx = newTransaction<$$>(idb_tx, db.schema);
+    for (const work of async_work) {
+      await work(tx);
+    }
+    tx.commit();
 
     if (this.after !== undefined) {
       await this.after();

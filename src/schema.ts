@@ -23,7 +23,7 @@ export class DatabaseSchema {
 
 }
 
-export class StoreSchema<Item extends Storable = Storable> {
+export class StoreSchema<Item extends Storable> {
 
   public name: string;
   public item_codec: ItemCodec<Item>;

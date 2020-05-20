@@ -34,6 +34,7 @@ class TransactionImpl {
   readonly db_schema: DatabaseSchema;
   readonly stores: Dict<string, Store<Storable>>;
   readonly id: number;
+  state: 'active' | 'committed' | 'aborted';
 
   readonly _idb_tx: IDBTransaction;
   readonly _idb_db: IDBDatabase;
@@ -68,6 +69,12 @@ class TransactionImpl {
       (this as any)['$' + store_name] = store;
     }
 
+    this.state = 'active';
+    this._idb_tx.addEventListener('error', () => {
+      this.state = 'aborted';
+      this._cease();
+    });
+
     if (this._idb_tx.mode !== 'versionchange') this._prolong();
   }
 
@@ -75,7 +82,8 @@ class TransactionImpl {
     /* Prolong the transaction through the current tick. */
     const store_names = this._idb_tx.objectStoreNames;
     const some_store_name = store_names[0];
-    const _req = this._idb_tx.objectStore(some_store_name);
+    const some_store = this._idb_tx.objectStore(some_store_name);
+    const _req = some_store.openCursor();
   }
 
   private _prolong_id: number | undefined;
@@ -84,25 +92,37 @@ class TransactionImpl {
   private _lifetime_length = 0;
 
   _prolong(): void {
-    /* Prolong a transaction until .commit() is called, but throw a warning in the console
+    /* Prolong a transaction until ._cease() is called, but throw a warning in the console
     for each tick that it remains uncommitted. */
     // For some reason, global 'setTimeout' has a weird type but 'window.setTimeout' doesn't.
     // However, want to avoid using the window object for testing.
     // Solution is as follows:
     const mySetTimeout = setTimeout as typeof window.setTimeout;
+    this._poke();
     this._prolong_id = mySetTimeout(() => {
       this._lifetime_length++;
-      console.warn(`Transaction id '${this.id}' has been alive for ${this._lifetime_length} ticks.`);
+      //console.warn(`Transaction id '${this.id}' has been alive for ${this._lifetime_length} ticks.`);
       this._prolong();
     }, 0);
+  }
+
+  _cease(): void {
+    clearTimeout(this._prolong_id);
   }
 
   commit(): void {
     /* Commit and end the transaction */
     // [2020-05-16] For some reason the types don't have IDBTransaction.commit(),
     // but it's in the online docs: https://developer.mozilla.org/en-US/docs/Web/API/IDBTransaction/commit
-    clearTimeout(this._prolong_id);
+    this._cease();
     (this._idb_tx as any).commit();
+    this.state = 'committed';
+  }
+
+  abort(): void {
+    this._cease();
+    this._idb_tx.abort();
+    this.state = 'aborted';
   }
 
 }

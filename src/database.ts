@@ -1,7 +1,8 @@
 
+import { Store } from './store';
 import { DatabaseSchema } from './schema';
-import { Transaction, newTransaction, TransactionMode, uglifyTransactionMode } from './transaction';
 import { MigrationSpec, Migrations } from './migration';
+import { Transaction, newTransaction, TransactionMode, uglifyTransactionMode } from './transaction';
 
 export class Database<$$> {
 
@@ -77,12 +78,22 @@ export class Database<$$> {
     });
   }
 
-  async transact(store_names: Array<string>, mode: TransactionMode, callback: (tx: Transaction<$$>) => Promise<void>): Promise<void> {
+  // Stores really has type Array<Store<? extends Storable>>, but TypeScript
+  // doesn't support existential types at the moment :(
+  // Apparently they can be emulated. This would be nice, as a massive amount
+  // of this codebase has existential types hidden around it.
+  // TODO: try emulating existential types.
+  async transact(stores: Array<Store<any>>, mode: TransactionMode, callback: (tx: Transaction<$$>) => Promise<void>): Promise<void> {
+    const store_names = stores.map(store => store.schema.name);
     const idb_tx = this._idb_db.transaction(store_names, uglifyTransactionMode(mode));
     const tx = newTransaction<$$>(idb_tx, this.schema);
-    await callback(tx);
-    // TODO: if the callback also commits the transaction, will double-committing it throw?
-    tx.commit();
+    try {
+      await callback(tx);
+    } catch (ex) {
+      if (tx.state === 'active') tx.abort();
+      throw ex;
+    }
+    if (tx.state === 'active') tx.commit();
   }
 
   async destroy(): Promise<void> {
