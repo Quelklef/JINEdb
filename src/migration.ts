@@ -104,6 +104,7 @@ export class Migration {
         const work = this._applyAlteration(upgrade_tx, alteration_spec)
         if (work !== undefined) async_work.push(work);
       }
+      upgrade_tx.commit();
     });
 
     // Do async work

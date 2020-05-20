@@ -38,6 +38,7 @@ export class Database<$$> {
 
     This method does NOT prolong the curernt transaction. */
 
+
     const database_names: Array<string> =
       // [2020-05-17] types don't include .databases() but docs do:
       // https://developer.mozilla.org/en-US/docs/Web/API/IDBFactory/databases
