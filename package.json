@@ -5,7 +5,9 @@
   "main": "dist/jine.js",
   "types": "dist/jine.d.ts",
   "scripts": {
-    "lint": "eslint src/ --ext .ts || true",
+    "dev": "nodemon -x \"npm run dev-one\"",
+    "dev-one": "tsc --incremental && npm run lint",
+    "lint": "eslint --cache src/ --ext .ts",
     "test": "jest"
   },
   "prepublish": "tsc",
@@ -26,6 +28,7 @@
   },
   "dependencies": {
     "node": "^14.2.0",
+    "nodemon": "^2.0.4",
     "npm": "^6.14.5"
   }
 }
