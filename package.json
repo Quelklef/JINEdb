@@ -5,6 +5,7 @@
   "main": "dist/jine.js",
   "types": "dist/jine.d.ts",
   "scripts": {
+    "lint": "eslint src/ --ext .ts || true",
     "test": "jest"
   },
   "prepublish": "tsc",
@@ -13,7 +14,10 @@
   "license": "ISC",
   "devDependencies": {
     "@types/jest": "^25.2.3",
+    "@typescript-eslint/eslint-plugin": "^2.34.0",
+    "@typescript-eslint/parser": "^2.34.0",
     "core-js-bundle": "^3.6.5",
+    "eslint": "^7.0.0",
     "fake-indexeddb": "^3.0.0",
     "jest": "^26.0.1",
     "regenerator-runtime": "^0.13.5",
