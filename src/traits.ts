@@ -1,6 +1,6 @@
 
 import { some, Dict, Constructor } from './util';
-import { TypeId, getTypeId } from './type_id';
+import { TypeId, hasTypeId, getTypeId } from './type_id';
 
 type NativelyIndexableTrait = IDBValidKey;
 
@@ -13,14 +13,15 @@ export function registerTraitEncoder(constructor: Constructor, encoder: TraitEnc
 
 type EncodableTrait = { __DONT__: never }
 
-export function traitIsEncodable(trait: any): trait is EncodableTrait {
+export function traitNeedsEncoding(trait: any): trait is EncodableTrait {
+  if (!hasTypeId(trait.constructor)) return false;
   return getTypeId(trait.constructor) in trait_encoders;
 }
 
 export type IndexableTrait = NativelyIndexableTrait | EncodableTrait;
 
 export function encodeTrait(trait: IndexableTrait): NativelyIndexableTrait {
-  if (traitIsEncodable(trait)) {
+  if (traitNeedsEncoding(trait)) {
     const encoder = some(trait_encoders[getTypeId(trait.constructor)]);
     return encoder(trait);
   } else {

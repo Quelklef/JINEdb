@@ -73,7 +73,7 @@ export class Store<Item extends Storable> {
   _addIndex<$$>(index_schema: IndexSchema<Item, IndexableTrait>): ((tx: Transaction<$$>) => Promise<void>) | undefined {
     this._get_idb_store('versionchange').createIndex(
       index_schema.name,
-      `indexes.${index_schema.name}`,
+      `traits.${index_schema.name}`,
       {
         unique: index_schema.unique,
         multiEntry: index_schema.explode,
@@ -143,14 +143,14 @@ export class Store<Item extends Storable> {
 
   _calcTraits(item: Item): Dict<string, IndexableTrait> {
     /* Calculate all indexed traits for an item */
-    const result: Dict<string, IndexableTrait> = {};
-    for (const index_name of Object.keys(this.indexes)) {
+    const traits: Dict<string, IndexableTrait> = {};
+    for (const index_name of this.schema.index_names) {
       const index = some(this.indexes[index_name]);
       const trait_name = index_name;
       const trait = index._get_trait(item);
-      result[trait_name] = trait;
+      traits[trait_name] = trait;
     }
-    return result;
+    return traits;
   }
 
   async clear(): Promise<void> {

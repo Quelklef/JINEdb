@@ -13,8 +13,16 @@ export function register(constructor: Constructor, id: string): void {
   ids.set(constructor, id);
 }
 
+export function tryGetTypeId(constructor: Constructor): TypeId | undefined {
+  return ids.get(constructor);
+}
+
+export function hasTypeId(constructor: Constructor): boolean {
+  return tryGetTypeId(constructor) !== undefined;
+}
+
 export function getTypeId(constructor: Constructor): TypeId {
-  const got = ids.get(constructor);
+  const got = tryGetTypeId(constructor);
   if (got === undefined) {
     throw Error(`Type '${constructor.name}' does not have a registered ID.`);
   }

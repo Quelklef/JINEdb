@@ -166,9 +166,9 @@ export class Index<Item extends Storable, Trait extends IndexableTrait> {
     });
   }
 
+  // TODO: perhaps rename to .tryGet with a .get that throws on nonexistent?
+  // TODO: how does this handle multiple matching entries?
   async get(trait: Trait): Promise<Item | undefined> {
-    // TODO: not actually sure how indexedDB handles not matching a row--
-    //       perhaps it respons with undefined, but maybe not
     return new Promise(resolve => {
       const encoded = encodeTrait(trait);
       const req = this._get_idb_index('readonly').get(encoded);

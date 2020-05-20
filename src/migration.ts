@@ -177,8 +177,8 @@ export class Migration {
         const store = some(tx.stores[store_name]);
         return store._addIndex(new IndexSchema({
           name: index_name,
-          unique: spec.unique ?? false,
-          explode: spec.explode ?? false,
+          unique: spec.unique,
+          explode: spec.explode,
           item_codec: store.schema.item_codec,
           trait_path_or_getter: spec.trait,
           parent_store_name: store_name,
@@ -260,8 +260,8 @@ export class Migrations {
             store_schema.index_names.add(spec.name);
             store_schema.index_schemas[spec.name] = new IndexSchema({
               name: spec.name,
-              unique: spec.unique ?? false,
-              explode: spec.explode ?? false,
+              unique: spec.unique,
+              explode: spec.explode,
               item_codec: store_schema.item_codec,
               trait_path_or_getter: spec.trait,
               parent_store_name: store_schema.name,

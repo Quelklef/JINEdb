@@ -1,6 +1,6 @@
 
 import { some, Dict, Constructor } from './util';
-import { TypeId, getTypeId } from './type_id';
+import { TypeId, hasTypeId, getTypeId } from './type_id';
 
 // What types are storable in IndexedDB?
 // List is according to https://stackoverflow.com/a/22550288/4608364
@@ -63,13 +63,15 @@ storable by IndexedDB or one for which we've defined an encoder.
 
 type Encodable = { __DONT__: never };
 
-export function isEncodable(val: any): val is Encodable {
+export function itemNeedsEncoding(val: any): val is Encodable {
   return (
     // Must be an object
     val.constructor
     // Cannot be a plain object, since those are natively storable
     && val.constructor !== Object
-    // Must be reigstered
+    // Must be reigstered with a type id
+    && hasTypeId(val.constructor)
+    // Must be reigstered with an encoder
     && getTypeId(val.constructor) in codecs);
 }
 
@@ -104,7 +106,7 @@ non-plain-object natively storable types, which is great!
 */
 
 export function encode(item: Storable): NativelyStorable {
-  if (isEncodable(item)) {
+  if (itemNeedsEncoding(item)) {
     const type_id = getTypeId(item.constructor)
     const encoded = some(codecs[type_id]).encode(item);
     return {
