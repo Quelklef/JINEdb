@@ -1,8 +1,7 @@
 {
 
-  "exclude": [
-    "./tests/**",
-    "./dist/**",
+  "include": [
+    "./src/*",
   ],
 
   "compilerOptions": {

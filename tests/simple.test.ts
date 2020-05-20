@@ -1,10 +1,10 @@
 
 import 'fake-indexeddb/auto';
 
-import { Jine } from '../jine';
-import { Store } from '../store';
-import { Index } from '../index';
-import { addStore, addTraitIndex } from '../migration';
+import { Jine } from '../src/jine';
+import { Store } from '../src/store';
+import { Index } from '../src/index';
+import { addStore, addTraitIndex } from '../src/migration';
 
 type Post = {
   title: string;
