@@ -3,7 +3,7 @@ import { Database } from './database';
 import { Storable } from './storable';
 import { some } from './util';
 import { DatabaseSchema, StoreSchema, IndexSchema } from './schema';
-import { Transaction } from './transaction';
+import { Transaction, newTransaction } from './transaction';
 import { IndexableTrait } from './traits';
 
 export interface AddTraitAlterationSpec<Item, Trait extends IndexableTrait> {
@@ -91,14 +91,14 @@ export class Migration {
       await this.before();
     }
 
-    const async_work: Array<(tx: Transaction & $$) => Promise<void>> = [];
+    const async_work: Array<(tx: Transaction<$$>) => Promise<void>> = [];
 
     // TODO: using an underscore method of another class is a code smell
     await db._openIdbDb(this.version, upgrade_event => {
       const idb_tx = (upgrade_event.target as any).transaction as IDBTransaction;
 
       const db_schema_so_far = db.migrations.calcSchema(db.schema.name, this.version);
-      const upgrade_tx = new Transaction(idb_tx, db_schema_so_far);
+      const upgrade_tx = newTransaction(idb_tx, db_schema_so_far);
 
       for (const alteration_spec of this.alteration_specs) {
         const work = this._applyAlteration(upgrade_tx, alteration_spec)
@@ -121,7 +121,7 @@ export class Migration {
 
   }
 
-  _applyAlteration<$$>(tx: Transaction & $$, spec: AlterationSpec): ((tx: Transaction & $$) => Promise<void>) | undefined {
+  _applyAlteration<$$>(tx: Transaction<$$>, spec: AlterationSpec): ((tx: Transaction<$$>) => Promise<void>) | undefined {
     /*
 
     Apply part of a database alteration to the underlying idb database,

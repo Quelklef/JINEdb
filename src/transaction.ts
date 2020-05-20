@@ -4,7 +4,14 @@ import { some, Dict } from './util';
 import { Store } from './store';
 import { DatabaseSchema, StoreSchema } from './schema';
 
-export class Transaction {
+export type Transaction<$$> = TransactionImpl & $$;
+
+export function newTransaction<$$>(idb_tx: IDBTransaction, db_schema: DatabaseSchema): Transaction<$$> {
+  const tx = new TransactionImpl(idb_tx, db_schema);
+  return tx as TransactionImpl & $$;
+}
+
+class TransactionImpl {
 
   readonly db_schema: DatabaseSchema;
 

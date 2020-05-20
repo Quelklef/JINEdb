@@ -1,10 +1,9 @@
 
 import { DatabaseSchema } from './schema';
-import { Transaction } from './transaction';
+import { Transaction, newTransaction } from './transaction';
 import { setUpShorthand } from './shorthand';
 import { MigrationSpec, Migrations } from './migration';
 
-// TODO: move <$$> param from class to .transaction
 export class Database<$$> {
 
   schema: DatabaseSchema;
@@ -78,10 +77,10 @@ export class Database<$$> {
     });
   }
 
-  async transact(store_names: Array<string>, mode: IDBTransactionMode, callback: (tx: Transaction & $$) => Promise<void>): Promise<void> {
+  async transact(store_names: Array<string>, mode: IDBTransactionMode, callback: (tx: Transaction<$$>) => Promise<void>): Promise<void> {
     const idb_tx = this._idb_db.transaction(store_names, mode);
-    const tx = new Transaction(idb_tx, this.schema);
-    await callback(tx as Transaction & $$);
+    const tx = newTransaction<$$>(idb_tx, this.schema);
+    await callback(tx);
     // TODO: if the callback also commits the transaction, will double-committing it throw?
     tx.commit();
   }

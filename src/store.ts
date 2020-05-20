@@ -70,7 +70,7 @@ export class Store<Item extends Storable> {
 
   }
 
-  _addIndex<$$>(index_schema: IndexSchema<Item, IndexableTrait>): (tx: Transaction & $$) => Promise<void> {
+  _addIndex<$$>(index_schema: IndexSchema<Item, IndexableTrait>): (tx: Transaction<$$>) => Promise<void> {
     this._get_idb_store('versionchange').createIndex(
       index_schema.name,
       `indexes.${index_schema.name}`,
@@ -94,7 +94,7 @@ export class Store<Item extends Storable> {
     };
   }
 
-  _removeIndex<$$>(index_name: string): (tx: Transaction & $$) => Promise<void> {
+  _removeIndex<$$>(index_name: string): (tx: Transaction<$$>) => Promise<void> {
     // TODO: This one should also be refactored into two methods, I think
     this._get_idb_store('versionchange').deleteIndex(index_name);
     delete this.schema.index_schemas[index_name];
