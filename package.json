@@ -5,10 +5,11 @@
   "main": "dist/jine.js",
   "types": "dist/jine.d.ts",
   "scripts": {
-    "dev": "nodemon -x \"npm run dev-one\"",
+    "dev": "nodemon --watch src -x \"npm run dev-one\"",
     "dev-one": "tsc --incremental && npm run lint",
     "lint": "eslint --cache src/ --ext .ts",
-    "test": "jest"
+    "test": "nodemon --watch tests -x \"npm run test-one\"",
+    "test-one": "jest"
   },
   "prepublish": "tsc",
   "keywords": [],
