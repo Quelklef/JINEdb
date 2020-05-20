@@ -100,10 +100,32 @@ describe('index', () => {
 
     });
 
-    it("returns undefined on a failed get()", async () => {
+    it("throws on a failed get()", async () => {
 
-      const got = await jine.$items.$index.get('xxx');
-      expect(got).toBeUndefined();
+      expect(async () => await jine.$items.$index.get('xxx'))
+        .rejects.toThrow();
+
+    });
+
+    it("throws on multiple matches for a get()", async () => {
+
+      const item_a = {
+        attr: 'same',
+        attr_unique: 'A',
+        attr_explode: [],
+      };
+
+      const item_b = {
+        attr: 'same',
+        attr_unique: 'B',
+        attr_explode: [],
+      };
+
+      await jine.$items.add(item_a);
+      await jine.$items.add(item_b);
+
+      expect(async () => await jine.$items.$index.get('same'))
+        .rejects.toThrow();
 
     });
 
@@ -162,10 +184,10 @@ describe('index', () => {
 
     });
 
-    it("returns undefined on a failed get()", async () => {
+    it("throws on a failed get()", async () => {
 
-      const got = await jine.$items.$index_derived.get(10);
-      expect(got).toBeUndefined();
+      expect(async () => await jine.$items.$index_derived.get(10))
+        .rejects.toThrow();
 
     });
 

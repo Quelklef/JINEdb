@@ -166,22 +166,22 @@ export class Index<Item extends Storable, Trait extends IndexableTrait> {
     });
   }
 
-  // TODO: perhaps rename to .tryGet with a .get that throws on nonexistent?
-  // TODO: how does this handle multiple matching entries?
-  async get(trait: Trait): Promise<Item | undefined> {
-    return new Promise(resolve => {
-      const encoded = encodeTrait(trait);
-      const req = this._get_idb_index('readonly').get(encoded);
-      req.onsuccess = event => {
-        const row = (event.target as any).result as Row | undefined;
-        if (row === undefined) {
-          resolve(undefined);
-        } else {
-          const item = fullDecode(row.payload, this.schema.item_codec);
-          resolve(item);
-        }
-      };
-    });
+  async tryGet(trait: Trait): Promise<Item | undefined> {
+    const encoded = encodeTrait(trait);
+    const cur = await this.query({ equals: encoded });
+    if (!cur.isInBounds) return undefined;
+    const item = cur.item;
+    await cur.step();
+    if (cur.isInBounds)
+      throw Error(`Multiple matches for index '${this.schema.name}' with value '${trait}'.`);
+    return item;
+  }
+
+  async get(trait: Trait): Promise<Item> {
+    const got = await this.tryGet(trait);
+    if (got === undefined)
+      throw Error(`No match for index '${this.schema.name}' with value '${trait}'.`);
+    return got;
   }
 
   async all(): Promise<Array<Item>> {
