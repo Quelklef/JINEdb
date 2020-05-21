@@ -1,7 +1,7 @@
 
 import { Storable } from './storable';
 import { some, Dict } from './util';
-import { Store } from './store';
+import { BoundStore } from './store';
 import { TransactionSchema, StoreSchema } from './schema';
 
 export type TransactionMode = 'r' | 'rw' | 'vc';
@@ -24,34 +24,38 @@ export function uglifyTransactionMode(tx_mode: TransactionMode): IDBTransactionM
 
 export type Transaction<$$> = TransactionImpl & $$;
 
-export async function withTransaction<$$>(
+export async function withTransaction<T, $$>(
   idb_tx: IDBTransaction,
   tx_schema: TransactionSchema,
-  callback: (tx: Transaction<$$>) => Promise<void>,
-): Promise<void> {
+  callback: (tx: Transaction<$$>) => Promise<T>,
+): Promise<T> {
   const tx = newTransaction<$$>(idb_tx, tx_schema);
+  let result!: T;
   try {
-    await callback(tx);
+    result = await callback(tx);
   } catch (ex) {
     if (tx.state === 'active') tx.abort();
     throw ex;
   }
   if (tx.state === 'active') tx.commit();
+  return result;
 }
 
-export function withTransactionSynchronous<$$>(
+export function withTransactionSynchronous<T, $$>(
   idb_tx: IDBTransaction,
   tx_schema: TransactionSchema,
-  callback: (tx: Transaction<$$>) => void,
-): void {
+  callback: (tx: Transaction<$$>) => T,
+): T {
   const tx = newTransaction<$$>(idb_tx, tx_schema);
+  let result!: T;
   try {
-    callback(tx);
+    result = callback(tx);
   } catch (ex) {
     if (tx.state === 'active') tx.abort();
     throw ex;
   }
   if (tx.state === 'active') tx.commit();
+  return result;
 }
 
 function newTransaction<$$>(idb_tx: IDBTransaction, tx_schema: TransactionSchema): Transaction<$$> {
@@ -62,7 +66,7 @@ function newTransaction<$$>(idb_tx: IDBTransaction, tx_schema: TransactionSchema
 class TransactionImpl {
 
   readonly tx_schema: TransactionSchema;
-  readonly stores: Dict<string, Store<Storable>>;
+  readonly stores: Dict<string, BoundStore<Storable>>;
   readonly id: number;
   state: 'active' | 'committed' | 'aborted';
 
@@ -71,7 +75,7 @@ class TransactionImpl {
 
   _addStore(store_name: string, schema: StoreSchema<Storable>): void {
     const idb_store = this._idb_db.createObjectStore(store_name, { keyPath: 'id', autoIncrement: true });
-    const store = Store.bound(schema, idb_store);
+    const store = new BoundStore(schema, idb_store);
     this.tx_schema.store_schemas[store_name] = schema;
     this.stores[store_name] = store;
     (this as any)['$' + store_name] = store;
@@ -94,7 +98,7 @@ class TransactionImpl {
     for (const store_name of tx_schema.store_names) {
       const idb_store = this._idb_tx.objectStore(store_name);
       const store_schema = some(tx_schema.store_schemas[store_name]);
-      const store = Store.bound(store_schema, idb_store);
+      const store = new BoundStore(store_schema, idb_store);
       this.stores[store_name] = store;
       (this as any)['$' + store_name] = store;
     }

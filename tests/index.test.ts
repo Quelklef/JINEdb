@@ -1,6 +1,6 @@
 
 import 'fake-indexeddb/auto';
-import { newJine, Jine, addStore, addIndex, Store, Index } from '../src/jine';
+import { newJine, Jine, addStore, addIndex, Store, Index, BoundConnection } from '../src/jine';
 import { reset } from './shared';
 
 type Item = {
@@ -21,60 +21,59 @@ interface $$ {
 
 describe('index', () => {
 
+  const migrations = [
+
+    {
+      version: 1,
+
+      alterations: [
+        addStore<Item>({
+          name: 'items',
+          encode: x => x,
+          decode: x => x as Item,
+        }),
+
+        addIndex<Item, string>({
+          name: 'index',
+          to: 'items',
+          trait: 'attr',
+        }),
+
+        addIndex<Item, string>({
+          name: 'index_unique',
+          to: 'items',
+          trait: 'attr_unique',
+          unique: true,
+        }),
+
+        addIndex<Item, string>({
+          name: 'index_explode',
+          to: 'items',
+          trait: 'attr_explode',
+          explode: true,
+        }),
+
+        addIndex<Item, number>({
+          name: 'index_derived',
+          to: 'items',
+          trait: item => item.attr.length,
+        }),
+      ],
+    },
+
+  ];
+
   let jine!: Jine<$$>;
+  let conn!: BoundConnection<$$> & $$;
 
   beforeEach(async () => {
-
     await reset();
-
-    const migrations = [
-
-      {
-        version: 1,
-
-        alterations: [
-          addStore<Item>({
-            name: 'items',
-            encode: x => x,
-            decode: x => x as Item,
-          }),
-
-          addIndex<Item, string>({
-            name: 'index',
-            to: 'items',
-            trait: 'attr',
-          }),
-
-          addIndex<Item, string>({
-            name: 'index_unique',
-            to: 'items',
-            trait: 'attr_unique',
-            unique: true,
-          }),
-
-          addIndex<Item, string>({
-            name: 'index_explode',
-            to: 'items',
-            trait: 'attr_explode',
-            explode: true,
-          }),
-
-          addIndex<Item, number>({
-            name: 'index_derived',
-            to: 'items',
-            trait: item => item.attr.length,
-          }),
-        ],
-      },
-
-    ];
-
     jine = await newJine<$$>('jine', migrations);
-
+    conn = await jine.newConnection();
   });
 
   afterEach(async () => {
-    jine._idb_db.close();
+    conn.close();
   });
 
   describe('path index', () => {
@@ -87,15 +86,15 @@ describe('index', () => {
         attr_explode: [],
       }
 
-      await jine.$items.add(item);
-      const got = await jine.$items.$index.get("get me!");
+      await conn.$items.add(item);
+      const got = await conn.$items.$index.get("get me!");
       expect(got).toEqual(item);
 
     });
 
     it("throws on a failed get()", async () => {
 
-      expect(async () => await jine.$items.$index.get('xxx'))
+      expect(async () => await conn.$items.$index.get('xxx'))
         .rejects.toThrow();
 
     });
@@ -114,10 +113,10 @@ describe('index', () => {
         attr_explode: [],
       };
 
-      await jine.$items.add(item_a);
-      await jine.$items.add(item_b);
+      await conn.$items.add(item_a);
+      await conn.$items.add(item_b);
 
-      expect(async () => await jine.$items.$index.get('same'))
+      expect(async () => await conn.$items.$index.get('same'))
         .rejects.toThrow();
 
     });
@@ -136,14 +135,14 @@ describe('index', () => {
         attr_explode: ['be1', 'be2'],
       }
 
-      await jine.$items.add(item_a);
+      await conn.$items.add(item_a);
 
-      await expect(jine.$items.add(item_b))
+      await expect(conn.$items.add(item_b))
         .rejects.toThrow();
 
       // The following check is disabled because a bug in fake-indexeddb prevents
       // the test from passing. See commit f61d36fb6f401b6aec4c5c2b93077e2a02532478.
-      // expect(await jine.$items.count()).toEqual(1);
+      // expect(await conn.$items.count()).toEqual(1);
 
     });
 
@@ -155,11 +154,11 @@ describe('index', () => {
         attr_explode: ['a', 'b', 'c'],
       };
 
-      await jine.$items.add(item);
+      await conn.$items.add(item);
 
-      expect(await jine.$items.$index_explode.get('a')).toEqual(item);
-      expect(await jine.$items.$index_explode.get('b')).toEqual(item);
-      expect(await jine.$items.$index_explode.get('c')).toEqual(item);
+      expect(await conn.$items.$index_explode.get('a')).toEqual(item);
+      expect(await conn.$items.$index_explode.get('b')).toEqual(item);
+      expect(await conn.$items.$index_explode.get('c')).toEqual(item);
 
     });
 
@@ -175,15 +174,15 @@ describe('index', () => {
         attr_explode: [],
       }
 
-      await jine.$items.add(item);
-      const got = await jine.$items.$index_derived.get(5);
+      await conn.$items.add(item);
+      const got = await conn.$items.$index_derived.get(5);
       expect(got).toEqual(item);
 
     });
 
     it("throws on a failed get()", async () => {
 
-      expect(async () => await jine.$items.$index_derived.get(10))
+      expect(async () => await conn.$items.$index_derived.get(10))
         .rejects.toThrow();
 
     });

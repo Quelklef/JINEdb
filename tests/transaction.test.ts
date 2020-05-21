@@ -1,6 +1,6 @@
 
 import 'fake-indexeddb/auto';
-import { newJine, Jine, addStore, addIndex, Store, Index } from '../src/jine';
+import { newJine, Jine, addStore, addIndex, Store, Index, BoundConnection } from '../src/jine';
 import { reset } from './shared';
 
 type Person = {
@@ -15,34 +15,33 @@ interface $$ {
 
 describe('index', () => {
 
+  const migrations = [
+
+    {
+      version: 1,
+
+      alterations: [
+        addStore<Person>({
+          name: 'people',
+          encode: x => x,
+          decode: x => x as Person,
+        }),
+      ],
+    },
+
+  ];
+
   let jine!: Jine<$$>;
+  let conn!: BoundConnection<$$> & $$;
 
   beforeEach(async () => {
-
     await reset();
-
-    const migrations = [
-
-      {
-        version: 1,
-
-        alterations: [
-          addStore<Person>({
-            name: 'people',
-            encode: x => x,
-            decode: x => x as Person,
-          }),
-        ],
-      },
-
-    ];
-
     jine = await newJine<$$>('jine', migrations);
-
+    conn = await jine.newConnection();
   });
 
-  afterEach(() => {
-    jine._idb_db.close();
+  afterEach(async () => {
+    conn.close();
   });
 
   const catherine = {
@@ -58,18 +57,18 @@ describe('index', () => {
   describe('transaction', () => {
 
     it("aborts atomically with .abort()", async () => {
-      await jine.transact([jine.$people], 'rw', async tx => {
+      await conn.transact([conn.$people], 'rw', async tx => {
         await tx.$people.add(catherine);
         await tx.$people.add(katheryn);
         tx.abort();
       });
-      expect(await jine.$people.count()).toEqual(0);
+      expect(await conn.$people.count()).toEqual(0);
     });
 
     it("aborts atomically with an error", async () => {
       class MyError extends Error { }
       try {
-        await jine.transact([jine.$people], 'rw', async tx => {
+        await conn.transact([conn.$people], 'rw', async tx => {
           await tx.$people.add(catherine);
           await tx.$people.add(katheryn);
           throw new MyError('oh no');
@@ -77,7 +76,7 @@ describe('index', () => {
       } catch (e) {
         if (!(e instanceof MyError)) throw e;
       }
-      expect(await jine.$people.count()).toEqual(0);
+      expect(await conn.$people.count()).toEqual(0);
     });
 
   });

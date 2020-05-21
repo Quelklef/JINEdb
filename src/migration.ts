@@ -107,10 +107,12 @@ export class Migration {
     // Do async work
     // Unfortunately, I think this has to be done in a different transaction.
     // It involves get/put work, which I don't believe is supported on versionchange transactions...
-    await db._transact(this.needed_store_names, 'rw', async tx => {
-      for (const work of async_work) {
-        await work(tx);
-      }
+    await db.connect(async conn => {
+      await conn._transact(this.needed_store_names, 'rw', async tx => {
+        for (const work of async_work) {
+          await work(tx);
+        }
+      });
     });
 
     if (this.after !== undefined) {
@@ -218,15 +220,16 @@ export class Migrations {
 
   calcSchema(db_name: string, up_to_version?: number): DatabaseSchema {
 
-    const db_schema: DatabaseSchema = {
-      name: db_name,
-      store_names: new Set(),
-      store_schemas: {},
-    };
-
     let migrations = this.migrations;
     migrations.sort((m1, m2) => m1.version - m2.version);
     if (up_to_version !== undefined) migrations = migrations.filter(m => m.version <= up_to_version);
+
+    const db_schema: DatabaseSchema = {
+      name: db_name,
+      version: migrations.map(m => m.version).reduce((a, b) => Math.max(a, b), 0),
+      store_names: new Set(),
+      store_schemas: {},
+    };
 
     for (const migration of migrations) {
       for (const spec of migration.alteration_specs) {

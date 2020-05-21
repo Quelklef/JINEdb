@@ -1,80 +1,57 @@
 
 import { Row } from './row';
-import { Index } from './index';
 import { Cursor } from './cursor';
 import { Storable } from './storable';
 import { some, Dict } from './util';
-import { Transaction } from './transaction';
-import { StoreSchema, IndexSchema } from './schema';
 import { IndexableTrait } from './traits';
 import { fullDecode, fullEncode } from './codec';
+import { StoreSchema, IndexSchema } from './schema';
+import { Connection } from './connection';
+import { Transaction, TransactionMode } from './transaction';
+import { Index, BoundIndex, AutonomousIndex } from './index';
 
+export interface Store<Item extends Storable> {
 
-export class Store<Item extends Storable> {
+  readonly schema: StoreSchema<Item>;
+  readonly indexes: Dict<string, Index<Item, IndexableTrait>>;
+
+  add(item: Item): Promise<void>;
+  clear(): Promise<void>;
+  count(): Promise<number>;
+  all(): Promise<Array<Item>>;
+
+}
+
+export class BoundStore<Item extends Storable> {
 
   public readonly schema: StoreSchema<Item>;
-  public readonly indexes: Dict<string, Index<Item, IndexableTrait>>;
+  public readonly indexes: Dict<string, BoundIndex<Item, IndexableTrait>>;
 
-  private readonly _get_idb_store: (mode: IDBTransactionMode) => IDBObjectStore;
+  private readonly _idb_store: IDBObjectStore;
 
   constructor(
     schema: StoreSchema<Item>,
-    indexes: Dict<string, Index<Item, IndexableTrait>>,
-    get_idb_store: (mode: IDBTransactionMode) => IDBObjectStore,
+    idb_store: IDBObjectStore,
   ) {
     this.schema = schema;
-    this.indexes = indexes;
 
-    this._get_idb_store = get_idb_store;
+    this._idb_store = idb_store;
 
+    this.indexes = {};
+    for (const index_name of schema.index_names) {
+      const index_schema = some(schema.index_schemas[index_name]);
+      const idb_index = this._idb_store.index(index_name);
+      this.indexes[index_name] = new BoundIndex(index_schema, idb_index);
+    }
+
+    // TODO: this seems out-of-place
     for (const [index_name, index] of Object.entries(this.indexes)) {
       (this as any)['$' + index_name] = index;
     }
   }
 
-  static bound<Item extends Storable>(schema: StoreSchema<Item>, idb_store: IDBObjectStore): Store<Item> {
-
-    const indexes: Dict<string, Index<Item, IndexableTrait>> = {};
-    for (const index_name of Object.keys(schema.index_schemas)) {
-      const index_schema = some(schema.index_schemas[index_name]);
-      const idb_index = idb_store.index(index_name);
-      indexes[index_name] = Index.bound(index_schema, idb_index);
-    }
-
-    const get_idb_store = (_mode: IDBTransactionMode): IDBObjectStore => {
-      // It's possible that the requested mode is not compatible with the
-      // current transaction. We will ignore that here and let it blow up
-      // later on.
-      return idb_store;
-    };
-
-    return new Store(schema, indexes, get_idb_store);
-
-  }
-
-  static autonomous<Item extends Storable>(schema: StoreSchema<Item>, idb_db: IDBDatabase): Store<Item> {
-    // TODO: this and Index.autonomous both use transactions that autocommit on
-    //       the first unused tick. This is mostly fine, but it's inconsistent with
-    //       the rest of the user-facing API where transactions commit ASAP
-
-    const indexes: Dict<string, Index<Item, IndexableTrait>> = {};
-    for (const index_name of schema.index_names) {
-      const index_schema = some(schema.index_schemas[index_name]);
-      indexes[index_name] = Index.autonomous(index_schema, idb_db);
-    }
-
-    const get_idb_store = (mode: IDBTransactionMode): IDBObjectStore => {
-      const idb_tx = idb_db.transaction([schema.name], mode);
-      const idb_store = idb_tx.objectStore(schema.name);
-      return idb_store;
-    };
-
-    return new Store(schema, indexes, get_idb_store);
-
-  }
-
   _addIndex<$$>(index_schema: IndexSchema<Item, IndexableTrait>): ((tx: Transaction<$$>) => Promise<void>) | undefined {
-    this._get_idb_store('versionchange').createIndex(
+    this._idb_store.createIndex(
       index_schema.name,
       `traits.${index_schema.name}`,
       {
@@ -89,10 +66,10 @@ export class Store<Item extends Storable> {
       return undefined;
     } else {
       return async tx => {
-        const store = some(tx.stores[this.schema.name]);
+        const store = some(tx.stores[this.schema.name]) as any as BoundStore<Item>;
         await store._mapExistingRows(row => {
           const item = fullDecode(row.payload, store.schema.item_codec) as Item;
-          const index = some(tx.stores[this.schema.name]?.indexes[index_schema.name]);
+          const index = some(tx.stores[this.schema.name]?.indexes[index_schema.name]) as any as BoundIndex<Item, any>;
           const trait = index._get_trait(item);
           row.traits[index_schema.name] = trait;
           row.payload = fullEncode(item, store.schema.item_codec);
@@ -104,7 +81,7 @@ export class Store<Item extends Storable> {
 
   _removeIndex<$$>(index_name: string): ((tx: Transaction<$$>) => Promise<void>) | undefined {
     // TODO: This one should also be refactored into two methods, I think
-    this._get_idb_store('versionchange').deleteIndex(index_name);
+    this._idb_store.deleteIndex(index_name);
     delete this.schema.index_schemas[index_name];
 
     const index_schema = some(this.schema.index_schemas[index_name]);
@@ -112,7 +89,7 @@ export class Store<Item extends Storable> {
       return undefined;
     } else {
       return async tx => {
-        const store = some(tx.stores[this.schema.name]);
+        const store = some(tx.stores[this.schema.name]) as any as BoundStore<Item>;
         await store._mapExistingRows(row => {
           delete row.traits[index_name];
           return row;
@@ -122,7 +99,7 @@ export class Store<Item extends Storable> {
   }
 
   async _mapExistingRows(f: (r: Row) => Row): Promise<void> {
-    const cursor_req = this._get_idb_store('readwrite').openCursor();
+    const cursor_req = this._idb_store.openCursor();
     const cursor = await Cursor.new(cursor_req, this.schema.item_codec);
     await cursor._replaceAllRows(f);
   }
@@ -135,7 +112,7 @@ export class Store<Item extends Storable> {
         traits: this._calcTraits(item),
       };
 
-      const req = this._get_idb_store('readwrite').add(row);
+      const req = this._idb_store.add(row);
       req.onsuccess = _event => resolve();
       req.onerror = _event => reject(req.error);
     });
@@ -155,7 +132,7 @@ export class Store<Item extends Storable> {
 
   async clear(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const req = this._get_idb_store('readwrite').clear();
+      const req = this._idb_store.clear();
       req.onsuccess = _event => resolve();
       req.onerror = _event => reject(req.error);
     });
@@ -163,7 +140,7 @@ export class Store<Item extends Storable> {
 
   async count(): Promise<number> {
     return new Promise((resolve, reject) => {
-      const req = this._get_idb_store('readonly').count();
+      const req = this._idb_store.count();
       req.onsuccess = event => {
         const count = (event.target as any).result as number;
         resolve(count);
@@ -174,7 +151,7 @@ export class Store<Item extends Storable> {
 
   async all(): Promise<Array<Item>> {
     return new Promise((resolve, reject) => {
-      const req = this._get_idb_store('readonly').getAll();
+      const req = this._idb_store.getAll();
       req.onsuccess = (event) => {
         const rows = (event.target as any).result as Array<Row>;
         const items = rows.map(row => fullDecode(row.payload, this.schema.item_codec));
@@ -186,3 +163,45 @@ export class Store<Item extends Storable> {
 
 }
 
+export class AutonomousStore<Item extends Storable> implements Store<Item> {
+
+  public readonly schema: StoreSchema<Item>;
+  public readonly indexes: Dict<string, AutonomousIndex<Item, IndexableTrait>>;
+
+  private readonly _conn: Connection<unknown>;
+
+  // TODO: split T<$$> types into T and $T<$$>. This Connection shouldn't need or have a type param.
+  constructor(schema: StoreSchema<Item>, conn: Connection<unknown>) {
+    this.schema = schema;
+    this.indexes = {};
+    for (const index_name of schema.index_names) {
+      const index_schema = some(schema.index_schemas[index_name]);
+      this.indexes[index_name] = new AutonomousIndex(index_schema, this);
+    }
+    this._conn = conn;
+  }
+
+  async _transact<T>(mode: TransactionMode, callback: (bound_store: BoundStore<Item>) => Promise<T>): Promise<T> {
+    return await this._conn._transact([this.schema.name], mode, async tx => {
+      const bound_store = some(tx.stores[this.schema.name]) as any as BoundStore<Item>;
+      return await callback(bound_store);
+    });
+  }
+
+  async add(item: Item): Promise<void> {
+    await this._transact('rw', async bound_store => await bound_store.add(item));
+  }
+
+  async clear(): Promise<void> {
+    await this._transact('rw', async bound_store => await bound_store.clear());
+  }
+
+  async count(): Promise<number> {
+    return await this._transact('r', async bound_store => await bound_store.count());
+  }
+
+  async all(): Promise<Array<Item>> {
+    return await this._transact('r', async bound_store => await bound_store.all());
+  }
+
+}

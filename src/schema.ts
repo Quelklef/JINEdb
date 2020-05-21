@@ -7,13 +7,16 @@ import { IndexableTrait } from './traits';
 export class DatabaseSchema {
 
   public name: string;
+  public version: number;
   public store_schemas: Dict<string, StoreSchema<Storable>>;
 
   constructor(args: {
     name: string;
+    version: number;
     store_schemas: Dict<string, StoreSchema<Storable>>;
   }) {
-    this.name = name;
+    this.name = args.name;
+    this.version = args.version;
     this.store_schemas = args.store_schemas;
   }
 

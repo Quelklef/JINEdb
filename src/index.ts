@@ -1,13 +1,15 @@
 
 import { Row } from './row';
+import { some } from './util';
 import { Cursor } from './cursor';
 import { Storable } from './storable';
-import { IndexSchema } from './schema';
 import { fullDecode } from './codec';
+import { IndexSchema } from './schema';
+import { AutonomousStore } from './store';
+import { TransactionMode } from './transaction';
 import { encodeTrait, IndexableTrait } from './traits';
 
 interface QueryMeta {
-  mode: IDBTransactionMode;
   reversed?: boolean;
   unique?: boolean;
 }
@@ -113,31 +115,27 @@ function compileCursorDirection(query_spec: QuerySpec): IDBCursorDirection {
 }
 
 
+export interface Index<Item extends Storable, Trait extends IndexableTrait> {
 
-export class Index<Item extends Storable, Trait extends IndexableTrait> {
+  // TODO: Schema types should probably be in respective files, not together in schema.ts
+  readonly schema: IndexSchema<Item, Trait>;
+
+  count(): Promise<number>;
+  tryGet(trait: Trait): Promise<Item | undefined>;
+  get(trait: Trait): Promise<Item>;
+  all(): Promise<Array<Item>>;
+
+}
+
+export class BoundIndex<Item extends Storable, Trait extends IndexableTrait> implements Index<Item, Trait> {
 
   public readonly schema: IndexSchema<Item, Trait>
 
-  private readonly _get_idb_index: (mode: IDBTransactionMode) => IDBIndex;
+  private readonly _idb_index: IDBIndex;
 
-  constructor(schema: IndexSchema<Item, Trait>, get_idb_index: (mode: IDBTransactionMode) => IDBIndex) {
-    this._get_idb_index = get_idb_index;
+  constructor(schema: IndexSchema<Item, Trait>, idb_index: IDBIndex) {
     this.schema = schema;
-  }
-
-  static bound<Item extends Storable, Trait extends IndexableTrait>(schema: IndexSchema<Item, Trait>, idb_index: IDBIndex): Index<Item, Trait> {
-    return new Index(schema, () => idb_index);
-  }
-
-  static autonomous<Item extends Storable, Trait extends IndexableTrait>(schema: IndexSchema<Item, Trait>, idb_db: IDBDatabase): Index<Item, Trait> {
-    const get_idb_index = (mode: IDBTransactionMode): IDBIndex => {
-      const store_name = schema.parent_store_name;
-      const idb_tx = idb_db.transaction([store_name], mode);
-      const idb_store = idb_tx.objectStore(store_name);
-      const idb_index = idb_store.index(schema.name);
-      return idb_index;
-    };
-    return new Index(schema, get_idb_index);
+    this._idb_index = idb_index;
   }
 
   _get_trait(item: Item): Trait {
@@ -149,8 +147,7 @@ export class Index<Item extends Storable, Trait extends IndexableTrait> {
   }
 
   async query(query_spec: QuerySpec): Promise<Cursor<Item, Trait>> {
-    // TODO: unclear what kind of transaction will be needed
-    const req = this._get_idb_index(query_spec.mode).openCursor(
+    const req = this._idb_index.openCursor(
       compileTraitRange(query_spec),
       compileCursorDirection(query_spec)
     );
@@ -159,7 +156,7 @@ export class Index<Item extends Storable, Trait extends IndexableTrait> {
 
   async count(): Promise<number> {
     return new Promise((resolve, reject) => {
-      const req = this._get_idb_index('readonly').count();
+      const req = this._idb_index.count();
       req.onsuccess = event => {
         const count = (event.target as any).result as number;
         resolve(count);
@@ -170,7 +167,7 @@ export class Index<Item extends Storable, Trait extends IndexableTrait> {
 
   async tryGet(trait: Trait): Promise<Item | undefined> {
     const encoded = encodeTrait(trait);
-    const cur = await this.query({ equals: encoded, mode: 'readonly' });
+    const cur = await this.query({ equals: encoded });
     if (!cur.isInBounds) return undefined;
     const item = cur.item;
     await cur.step();
@@ -188,7 +185,7 @@ export class Index<Item extends Storable, Trait extends IndexableTrait> {
 
   async all(): Promise<Array<Item>> {
     return new Promise((resolve, reject) => {
-      const req = this._get_idb_index('readonly').getAll();
+      const req = this._idb_index.getAll();
       req.onsuccess = event => {
         const rows = (event.target as any).result as Array<Row>;
         const items = rows.map(row => fullDecode(row.payload, this.schema.item_codec));
@@ -200,3 +197,38 @@ export class Index<Item extends Storable, Trait extends IndexableTrait> {
 
 }
 
+export class AutonomousIndex<Item extends Storable, Trait extends IndexableTrait> implements Index<Item, Trait> {
+
+  public readonly schema: IndexSchema<Item, Trait>
+
+  readonly _parent: AutonomousStore<Item>;
+
+  constructor(schema: IndexSchema<Item, Trait>, parent: AutonomousStore<Item>) {
+    this.schema = schema;
+    this._parent = parent;
+  }
+
+  async _transact<T>(mode: TransactionMode, callback: (bound_index: BoundIndex<Item, Trait>) => Promise<T>): Promise<T> {
+    return this._parent._transact(mode, async bound_store => {
+      const index = some(bound_store.indexes[this.schema.name]) as BoundIndex<Item, Trait>;
+      return await callback(index);
+    });
+  }
+
+  async count(): Promise<number> {
+    return await this._transact('r', async bound_index => await bound_index.count());
+  }
+
+  async tryGet(trait: Trait): Promise<Item | undefined> {
+    return await this._transact('r', async bound_index => await bound_index.tryGet(trait));
+  }
+
+  async get(trait: Trait): Promise<Item> {
+    return await this._transact('r', async bound_index => await bound_index.get(trait));
+  }
+
+  async all(): Promise<Array<Item>> {
+    return await this._transact('r', async bound_index => await bound_index.all());
+  }
+
+}

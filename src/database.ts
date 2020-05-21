@@ -1,9 +1,9 @@
 
 import { some } from './util';
-import { Store } from './store';
+import { BoundConnection } from './connection';
 import { DatabaseSchema } from './schema';
 import { MigrationSpec, Migrations } from './migration';
-import { Transaction, withTransaction, withTransactionSynchronous, TransactionMode, uglifyTransactionMode } from './transaction';
+import { Transaction, withTransactionSynchronous } from './transaction';
 
 async function getDbVersion(db_name: string): Promise<number> {
   /* Return current database version number. Returns an integer greater than or
@@ -12,7 +12,6 @@ async function getDbVersion(db_name: string): Promise<number> {
   version number.
 
   This method does NOT prolong the curernt transaction. */
-
 
   const database_names: Array<string> =
     // [2020-05-17] types don't include .databases() but docs do:
@@ -23,13 +22,13 @@ async function getDbVersion(db_name: string): Promise<number> {
   if (!database_names.includes(db_name)) {
     return 0;
   } else {
-    return await new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const req = indexedDB.open(db_name);
+      req.onupgradeneeded = _event => reject(Error('upgrade needed'));
       req.onsuccess = _event => {
-        const idb_db = req.result;
-        const version = idb_db.version;
-        idb_db.close();
-        resolve(version);
+        const conn = req.result;
+        resolve(conn.version);
+        conn.close();
       }
       req.onerror = _event => reject(req.error);
     });
@@ -41,12 +40,10 @@ export class Database<$$> {
   schema!: DatabaseSchema;
   migrations: Migrations;
 
-  _idb_db!: IDBDatabase;
-
   static readonly _allow_construction: symbol = Symbol();
   constructor(override: any, migrations: Migrations) {
     if (override !== Database._allow_construction)
-      throw Error('Do not construct a Jine directly; use Jine.new');
+      throw Error(`Do not construct a Database directly; use Database.new.`);
 
     this.migrations = migrations;
   }
@@ -62,6 +59,28 @@ export class Database<$$> {
     return db;
   }
 
+  async _newIdbConn(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(this.schema.name, this.schema.version);
+      req.onupgradeneeded = _event => reject(Error('Upgrade needed.'));
+      req.onsuccess = _event => resolve(req.result);
+      req.onerror = _event => reject(req.error);
+    });
+  }
+
+  async newConnection(): Promise<BoundConnection<$$> & $$> {
+    const idb_conn = await this._newIdbConn();
+    const conn = new BoundConnection<$$>(this.schema, idb_conn);
+    return conn._setUpShorthand();
+  }
+
+  async connect<T>(callback: (conn: BoundConnection<$$> & $$) => Promise<T>): Promise<T> {
+    const conn = await this.newConnection();
+    const result = await callback(conn);
+    conn.close();
+    return result;
+  }
+
   _versionChange(version: number, new_schema: DatabaseSchema, upgrade: (tx: Transaction<$$>) => void): Promise<void> {
     /* Asynchronously re-open the underlying idb database with the given
     version number, if supplied. If an upgrade function is given, it will be
@@ -74,33 +93,22 @@ export class Database<$$> {
         withTransactionSynchronous(idb_tx, this.schema, upgrade);
       };
       req.onsuccess = _event => {
-        this._idb_db = req.result;
         this.schema = new_schema;
+        const idb_db = req.result;
+        idb_db.close();
         resolve();
       };
-      req.onerror = _event => reject(req.error);
+      req.onerror = _event => {
+        reject(req.error);
+      };
     });
   }
 
-  async _transact(store_names: Array<string>, mode: TransactionMode, callback: (tx: Transaction<$$>) => Promise<void>): Promise<void> {
-    const idb_tx = this._idb_db.transaction(store_names, uglifyTransactionMode(mode));
-    await withTransaction(idb_tx, this.schema, callback);
-  }
-
-  // stores really has type Array<Store<? extends Storable>>, but TypeScript
-  // doesn't support existential types at the moment :(
-  // Apparently they can be emulated. This would be nice, as a massive amount
-  // of this codebase has existential types hidden around it.
-  // TODO: try emulating existential types.
-  async transact(stores: Array<Store<any>>, mode: TransactionMode, callback: (tx: Transaction<$$>) => Promise<void>): Promise<void> {
-    const store_names = stores.map(store => store.schema.name);
-    await this._transact(store_names, mode, callback);
-  }
-
   async destroy(): Promise<void> {
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
       const req = indexedDB.deleteDatabase(this.schema.name);
       req.onsuccess = _event => resolve();
+      req.onerror = _event => reject(req.error);
     });
   }
 
