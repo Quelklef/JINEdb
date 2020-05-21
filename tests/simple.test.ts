@@ -1,7 +1,7 @@
 
 import 'fake-indexeddb/auto';
-
 import { newJine, Jine, addStore, addIndex, Store, Index } from '../src/jine';
+import { reset } from './shared';
 
 type Post = {
   title: string;
@@ -19,12 +19,7 @@ describe('End-to-end simple', () => {
 
   beforeEach(async () => {
 
-    await new Promise(resolve => {
-      const req = indexedDB.deleteDatabase('jine');
-      req.onsuccess = _event => resolve();
-      req.onerror = () => console.log('database deletion error')
-      req.onblocked = () => console.log('database deletion blocked');
-    });
+    await reset();
 
     const migrations = [
 
@@ -48,10 +43,8 @@ describe('End-to-end simple', () => {
 
   });
 
-  afterEach(async () => {
-
+  afterEach(() => {
     jine._idb_db.close();
-
   });
 
   const some_post = {

@@ -3,7 +3,7 @@ import { Database } from './database';
 import { Storable } from './storable';
 import { some } from './util';
 import { DatabaseSchema, StoreSchema, IndexSchema } from './schema';
-import { Transaction, withTransaction, withTransactionSynchronous } from './transaction';
+import { Transaction } from './transaction';
 import { IndexableTrait } from './traits';
 
 export interface AddIndexAlterationSpec<Item, Trait extends IndexableTrait> {
@@ -96,25 +96,18 @@ export class Migration {
 
     const async_work: Array<(tx: Transaction<$$>) => Promise<void>> = [];
 
-    // TODO: using an underscore method of another class is a code smell
-    await db._openIdbDb(this.version, upgrade_event => {
-      const idb_tx = (upgrade_event.target as any).transaction as IDBTransaction;
-
-      const db_schema_so_far = db.migrations.calcSchema(db.schema.name, this.version);
-      withTransactionSynchronous<$$>(idb_tx, db_schema_so_far, upgrade_tx => {
-        for (const alteration_spec of this.alteration_specs) {
-          const work = this._applyAlteration(upgrade_tx, alteration_spec)
-          if (work !== undefined) async_work.push(work);
-        }
-      });
-
+    const new_schema = db.migrations.calcSchema(db.schema.name, this.version);
+    await db._versionChange(this.version, new_schema, tx => {
+      for (const alteration_spec of this.alteration_specs) {
+        const work = this._applyAlteration(tx, alteration_spec)
+        if (work !== undefined) async_work.push(work);
+      }
     });
 
     // Do async work
     // Unfortunately, I think this has to be done in a different transaction.
     // It involves get/put work, which I don't believe is supported on versionchange transactions...
-    const idb_tx = db._idb_db.transaction(this.needed_store_names, 'readwrite');
-    await withTransaction<$$>(idb_tx, db.schema, async tx => {
+    await db._transact(this.needed_store_names, 'rw', async tx => {
       for (const work of async_work) {
         await work(tx);
       }
@@ -223,7 +216,7 @@ export class Migrations {
     }
   }
 
-  calcSchema(db_name: string, before_version?: number): DatabaseSchema {
+  calcSchema(db_name: string, up_to_version?: number): DatabaseSchema {
 
     const db_schema: DatabaseSchema = {
       name: db_name,
@@ -233,7 +226,7 @@ export class Migrations {
 
     let migrations = this.migrations;
     migrations.sort((m1, m2) => m1.version - m2.version);
-    if (before_version) migrations = migrations.filter(m => m.version < before_version);
+    if (up_to_version !== undefined) migrations = migrations.filter(m => m.version <= up_to_version);
 
     for (const migration of migrations) {
       for (const spec of migration.alteration_specs) {
