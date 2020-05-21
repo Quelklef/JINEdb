@@ -57,11 +57,12 @@ export class Cursor<Item extends Storable, Trait extends IndexableTrait> {
     Waits for the advanement to complete, retrieves the new IDBCursor object, and sets this._idb_cur to it.
     Returns a promise that resolves when getting the new cursor is complete. */
 
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
       this._req.onsuccess = event => {
         this._idb_cur = (event.target as any).result;
         resolve();
       };
+      this._req.onerror = _event => reject(this._req.error);
       advance(this._valid_cur);
     });
   }
@@ -100,16 +101,18 @@ export class Cursor<Item extends Storable, Trait extends IndexableTrait> {
 
   async delete(): Promise<void> {
     // Delete the current object
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
       const req = this._valid_cur.delete();
       req.onsuccess = _event => resolve();
+      req.onerror = _evnet => reject(req.error);
     });
   }
 
   async _replaceRow(new_row: Row): Promise<void> {
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
       const req = this._valid_cur.update(new_row);
-      req.onsuccess = () => resolve();
+      req.onsuccess = _event => resolve();
+      req.onerror = _event => reject(req.error);
     });
   }
 

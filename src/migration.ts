@@ -3,7 +3,7 @@ import { Database } from './database';
 import { Storable } from './storable';
 import { some } from './util';
 import { DatabaseSchema, StoreSchema, IndexSchema } from './schema';
-import { Transaction, newTransaction } from './transaction';
+import { Transaction, withTransaction, withTransactionSynchronous } from './transaction';
 import { IndexableTrait } from './traits';
 
 export interface AddIndexAlterationSpec<Item, Trait extends IndexableTrait> {
@@ -101,24 +101,24 @@ export class Migration {
       const idb_tx = (upgrade_event.target as any).transaction as IDBTransaction;
 
       const db_schema_so_far = db.migrations.calcSchema(db.schema.name, this.version);
-      const upgrade_tx = newTransaction(idb_tx, db_schema_so_far);
+      withTransactionSynchronous<$$>(idb_tx, db_schema_so_far, upgrade_tx => {
+        for (const alteration_spec of this.alteration_specs) {
+          const work = this._applyAlteration(upgrade_tx, alteration_spec)
+          if (work !== undefined) async_work.push(work);
+        }
+      });
 
-      for (const alteration_spec of this.alteration_specs) {
-        const work = this._applyAlteration(upgrade_tx, alteration_spec)
-        if (work !== undefined) async_work.push(work);
-      }
-      upgrade_tx.commit();
     });
 
     // Do async work
     // Unfortunately, I think this has to be done in a different transaction.
     // It involves get/put work, which I don't believe is supported on versionchange transactions...
     const idb_tx = db._idb_db.transaction(this.needed_store_names, 'readwrite');
-    const tx = newTransaction<$$>(idb_tx, db.schema);
-    for (const work of async_work) {
-      await work(tx);
-    }
-    tx.commit();
+    await withTransaction<$$>(idb_tx, db.schema, async tx => {
+      for (const work of async_work) {
+        await work(tx);
+      }
+    });
 
     if (this.after !== undefined) {
       await this.after();

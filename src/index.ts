@@ -158,12 +158,13 @@ export class Index<Item extends Storable, Trait extends IndexableTrait> {
   }
 
   async count(): Promise<number> {
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
       const req = this._get_idb_index('readonly').count();
       req.onsuccess = event => {
         const count = (event.target as any).result as number;
         resolve(count);
       };
+      req.onerror = _event => reject(req.error);
     });
   }
 
@@ -186,13 +187,14 @@ export class Index<Item extends Storable, Trait extends IndexableTrait> {
   }
 
   async all(): Promise<Array<Item>> {
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
       const req = this._get_idb_index('readonly').getAll();
       req.onsuccess = event => {
         const rows = (event.target as any).result as Array<Row>;
         const items = rows.map(row => fullDecode(row.payload, this.schema.item_codec));
         resolve(items as Array<Item>);
       };
+      req.onerror = _event => reject(req.error);
     });
   }
 

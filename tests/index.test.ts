@@ -145,8 +145,10 @@ describe('index', () => {
 
       await jine.$items.add(item_a);
 
-      expect(async () => await jine.$items.add(item_b))
+      await expect(jine.$items.add(item_b))
         .rejects.toThrow();
+
+      expect(await jine.$items.count()).toEqual(1);
 
     });
 

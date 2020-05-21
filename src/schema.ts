@@ -23,6 +23,22 @@ export class DatabaseSchema {
 
 }
 
+export class TransactionSchema {
+
+  public store_schemas: Dict<string, StoreSchema<Storable>>;
+
+  constructor(args: {
+    store_schemas: Dict<string, StoreSchema<Storable>>;
+  }) {
+    this.store_schemas = args.store_schemas;
+  }
+
+  get store_names(): Set<string> {
+    return new Set(Object.keys(this.store_schemas));
+  }
+
+}
+
 export class StoreSchema<Item extends Storable> {
 
   public name: string;

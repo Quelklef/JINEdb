@@ -58,7 +58,7 @@ export class Store<Item extends Storable> {
     //       the rest of the user-facing API where transactions commit ASAP
 
     const indexes: Dict<string, Index<Item, IndexableTrait>> = {};
-    for (const index_name of Object.keys(schema.index_schemas)) {
+    for (const index_name of schema.index_names) {
       const index_schema = some(schema.index_schemas[index_name]);
       indexes[index_name] = Index.autonomous(index_schema, idb_db);
     }
@@ -128,11 +128,8 @@ export class Store<Item extends Storable> {
   }
 
   async add(item: Item): Promise<void> {
-    return new Promise(resolve => {
-
-      // Don't include the id in the added row
-      // since it will be automatically assigned by
-      // indexedDB
+    return new Promise((resolve, reject) => {
+      // Don't include the id since it's autoincrement'd
       const row: Omit<Row, 'id'> = {
         payload: fullEncode(item, this.schema.item_codec),
         traits: this._calcTraits(item),
@@ -140,7 +137,7 @@ export class Store<Item extends Storable> {
 
       const req = this._get_idb_store('readwrite').add(row);
       req.onsuccess = _event => resolve();
-
+      req.onerror = _event => reject(req.error);
     });
   }
 
@@ -157,30 +154,33 @@ export class Store<Item extends Storable> {
   }
 
   async clear(): Promise<void> {
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
       const req = this._get_idb_store('readwrite').clear();
       req.onsuccess = _event => resolve();
+      req.onerror = _event => reject(req.error);
     });
   }
 
   async count(): Promise<number> {
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
       const req = this._get_idb_store('readonly').count();
       req.onsuccess = event => {
         const count = (event.target as any).result as number;
         resolve(count);
       };
+      req.onerror = _event => reject(req.error);
     });
   }
 
   async all(): Promise<Array<Item>> {
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
       const req = this._get_idb_store('readonly').getAll();
       req.onsuccess = (event) => {
         const rows = (event.target as any).result as Array<Row>;
         const items = rows.map(row => fullDecode(row.payload, this.schema.item_codec));
         resolve(items);
       };
+      req.onerror = _event => reject(req.error);
     });
   }
 

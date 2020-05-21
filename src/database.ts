@@ -2,7 +2,7 @@
 import { Store } from './store';
 import { DatabaseSchema } from './schema';
 import { MigrationSpec, Migrations } from './migration';
-import { Transaction, newTransaction, TransactionMode, uglifyTransactionMode } from './transaction';
+import { Transaction, withTransaction, TransactionMode, uglifyTransactionMode } from './transaction';
 
 export class Database<$$> {
 
@@ -86,14 +86,7 @@ export class Database<$$> {
   async transact(stores: Array<Store<any>>, mode: TransactionMode, callback: (tx: Transaction<$$>) => Promise<void>): Promise<void> {
     const store_names = stores.map(store => store.schema.name);
     const idb_tx = this._idb_db.transaction(store_names, uglifyTransactionMode(mode));
-    const tx = newTransaction<$$>(idb_tx, this.schema);
-    try {
-      await callback(tx);
-    } catch (ex) {
-      if (tx.state === 'active') tx.abort();
-      throw ex;
-    }
-    if (tx.state === 'active') tx.commit();
+    await withTransaction(idb_tx, this.schema, callback);
   }
 
   async destroy(): Promise<void> {

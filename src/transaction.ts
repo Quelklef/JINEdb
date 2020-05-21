@@ -2,7 +2,7 @@
 import { Storable } from './storable';
 import { some, Dict } from './util';
 import { Store } from './store';
-import { DatabaseSchema, StoreSchema } from './schema';
+import { TransactionSchema, StoreSchema } from './schema';
 
 export type TransactionMode = 'r' | 'rw' | 'vc';
 
@@ -24,14 +24,44 @@ export function uglifyTransactionMode(tx_mode: TransactionMode): IDBTransactionM
 
 export type Transaction<$$> = TransactionImpl & $$;
 
-export function newTransaction<$$>(idb_tx: IDBTransaction, db_schema: DatabaseSchema): Transaction<$$> {
-  const tx = new TransactionImpl(idb_tx, db_schema);
+export async function withTransaction<$$>(
+  idb_tx: IDBTransaction,
+  tx_schema: TransactionSchema,
+  callback: (tx: Transaction<$$>) => Promise<void>,
+): Promise<void> {
+  const tx = newTransaction<$$>(idb_tx, tx_schema);
+  try {
+    await callback(tx);
+  } catch (ex) {
+    if (tx.state === 'active') tx.abort();
+    throw ex;
+  }
+  if (tx.state === 'active') tx.commit();
+}
+
+export function withTransactionSynchronous<$$>(
+  idb_tx: IDBTransaction,
+  tx_schema: TransactionSchema,
+  callback: (tx: Transaction<$$>) => void,
+): void {
+  const tx = newTransaction<$$>(idb_tx, tx_schema);
+  try {
+    callback(tx);
+  } catch (ex) {
+    if (tx.state === 'active') tx.abort();
+    throw ex;
+  }
+  if (tx.state === 'active') tx.commit();
+}
+
+function newTransaction<$$>(idb_tx: IDBTransaction, tx_schema: TransactionSchema): Transaction<$$> {
+  const tx = new TransactionImpl(idb_tx, tx_schema);
   return tx as TransactionImpl & $$;
 }
 
 class TransactionImpl {
 
-  readonly db_schema: DatabaseSchema;
+  readonly tx_schema: TransactionSchema;
   readonly stores: Dict<string, Store<Storable>>;
   readonly id: number;
   state: 'active' | 'committed' | 'aborted';
@@ -42,28 +72,28 @@ class TransactionImpl {
   _addStore(store_name: string, schema: StoreSchema<Storable>): void {
     const idb_store = this._idb_db.createObjectStore(store_name, { keyPath: 'id', autoIncrement: true });
     const store = Store.bound(schema, idb_store);
-    this.db_schema.store_schemas[store_name] = schema;
+    this.tx_schema.store_schemas[store_name] = schema;
     this.stores[store_name] = store;
     (this as any)['$' + store_name] = store;
   }
 
   _removeStore(store_name: string): void {
     this._idb_db.deleteObjectStore(store_name);
-    delete this.db_schema.store_schemas[store_name];
+    delete this.tx_schema.store_schemas[store_name];
     delete this.stores[store_name];
     delete (this as any)['$' + store_name];
   }
 
-  constructor(idb_tx: IDBTransaction, db_schema: DatabaseSchema) {
+  constructor(idb_tx: IDBTransaction, tx_schema: TransactionSchema) {
     this._idb_tx = idb_tx;
     this._idb_db = this._idb_tx.db;
-    this.db_schema = db_schema;
+    this.tx_schema = tx_schema;
     this.id = Math.floor(Math.random() * 1e6);
 
     this.stores = {};
-    for (const store_name of db_schema.store_names) {
+    for (const store_name of tx_schema.store_names) {
       const idb_store = this._idb_tx.objectStore(store_name);
-      const store_schema = some(db_schema.store_schemas[store_name]);
+      const store_schema = some(tx_schema.store_schemas[store_name]);
       const store = Store.bound(store_schema, idb_store);
       this.stores[store_name] = store;
       (this as any)['$' + store_name] = store;
@@ -126,4 +156,3 @@ class TransactionImpl {
   }
 
 }
-
