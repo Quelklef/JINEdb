@@ -1,6 +1,6 @@
 
 import { some } from './util';
-import { DatabaseSchema } from './schema';
+import { DatabaseSchema } from './database';
 import { AutonomousIndex } from './index';
 import { Store, AutonomousStore } from './store';
 import { Transaction, TransactionMode, withTransaction, uglifyTransactionMode } from './transaction';

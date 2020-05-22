@@ -1,8 +1,7 @@
 
 import { Storable } from './storable';
 import { some, Dict } from './util';
-import { BoundStore } from './store';
-import { TransactionSchema, StoreSchema } from './schema';
+import { StoreSchema, BoundStore } from './store';
 
 export type TransactionMode = 'r' | 'rw' | 'vc';
 
@@ -57,6 +56,22 @@ export function withTransactionSynchronous<T, $$ = {}>(
   }
   if (tx.state === 'active') tx.commit();
   return result;
+}
+
+export class TransactionSchema {
+
+  public store_schemas: Dict<string, StoreSchema<Storable>>;
+
+  constructor(args: {
+    store_schemas: Dict<string, StoreSchema<Storable>>;
+  }) {
+    this.store_schemas = args.store_schemas;
+  }
+
+  get store_names(): Set<string> {
+    return new Set(Object.keys(this.store_schemas));
+  }
+
 }
 
 export class Transaction<$$ = {}> {

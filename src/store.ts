@@ -3,12 +3,33 @@ import { Row } from './row';
 import { Cursor } from './cursor';
 import { Storable } from './storable';
 import { some, Dict } from './util';
-import { IndexableTrait } from './traits';
-import { fullDecode, fullEncode } from './codec';
-import { StoreSchema, IndexSchema } from './schema';
 import { Connection } from './connection';
+import { IndexableTrait } from './traits';
 import { Transaction, TransactionMode } from './transaction';
-import { Index, BoundIndex, AutonomousIndex } from './index';
+import { ItemCodec, fullDecode, fullEncode } from './codec';
+import { IndexSchema, Index, BoundIndex, AutonomousIndex } from './index';
+
+export class StoreSchema<Item extends Storable> {
+
+  public name: string;
+  public item_codec: ItemCodec<Item>;
+  public index_schemas: Dict<string, IndexSchema<Item, IndexableTrait>>;
+
+  constructor(args: {
+    name: string;
+    item_codec: ItemCodec<Item>;
+    index_schemas: Dict<string, IndexSchema<Item, IndexableTrait>>;
+  }) {
+    this.name = args.name;
+    this.item_codec = args.item_codec;
+    this.index_schemas = args.index_schemas;
+  }
+
+  get index_names(): Set<string> {
+    return new Set(Object.keys(this.index_schemas));
+  }
+
+}
 
 export interface Store<Item extends Storable> {
 

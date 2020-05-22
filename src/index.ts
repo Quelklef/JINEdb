@@ -3,10 +3,9 @@ import { Row } from './row';
 import { some } from './util';
 import { Cursor } from './cursor';
 import { Storable } from './storable';
-import { fullDecode } from './codec';
-import { IndexSchema } from './schema';
 import { AutonomousStore } from './store';
 import { TransactionMode } from './transaction';
+import { ItemCodec, fullDecode } from './codec';
 import { encodeTrait, IndexableTrait } from './traits';
 
 interface QueryMeta {
@@ -114,6 +113,50 @@ function compileCursorDirection(query_spec: QuerySpec): IDBCursorDirection {
   return result as IDBCursorDirection;
 }
 
+export class IndexSchema<Item extends Storable, Trait extends IndexableTrait> {
+
+  public name: string;
+  public unique: boolean;
+  public explode: boolean;
+  public item_codec: ItemCodec<Item>;
+  public parent_store_name: string;
+  public trait_path_or_getter: string | ((item: Item) => Trait);
+
+  constructor(args: {
+    name: string;
+    unique?: boolean;
+    explode?: boolean;
+    item_codec: ItemCodec<Item>;
+    parent_store_name: string;
+    trait_path_or_getter: string | ((item: Item) => Trait);
+  }) {
+    this.name = args.name;
+    this.unique = args.unique ?? false;
+    this.explode = args.explode ?? false;
+    this.item_codec = args.item_codec;
+    this.parent_store_name = args.parent_store_name;
+    this.trait_path_or_getter = args.trait_path_or_getter;
+  }
+
+  get kind(): 'path' | 'derived' {
+    if (typeof this.trait_path_or_getter === 'string')
+      return 'path';
+    return 'derived';
+  }
+
+  get trait_path(): string {
+    if (this.kind !== 'path')
+      throw Error('Cannot get .path on a non-path index.');
+    return this.trait_path_or_getter as string;
+  }
+
+  get trait_getter(): (item: Item) => Trait {
+    if (this.kind !== 'derived')
+      throw Error('Cannot get .trait_getter on a non-derived index.');
+    return this.trait_path_or_getter as (item: Item) => Trait;
+  }
+
+}
 
 export interface Index<Item extends Storable, Trait extends IndexableTrait> {
 

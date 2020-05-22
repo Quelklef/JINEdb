@@ -1,10 +1,11 @@
 
-import { Database } from './database';
-import { Storable } from './storable';
 import { some } from './util';
-import { DatabaseSchema, StoreSchema, IndexSchema } from './schema';
+import { Storable } from './storable';
+import { StoreSchema } from './store';
+import { IndexSchema } from './index';
 import { Transaction } from './transaction';
 import { IndexableTrait } from './traits';
+import { DatabaseSchema, Database } from './database';
 
 export interface AddIndexAlterationSpec<Item, Trait extends IndexableTrait> {
   kind: 'add_index';

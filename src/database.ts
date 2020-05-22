@@ -1,7 +1,7 @@
 
-import { some } from './util';
-import { DatabaseSchema } from './schema';
-import { AutonomousStore } from './store';
+import { Storable } from './storable';
+import { some, Dict } from './util';
+import { StoreSchema, AutonomousStore } from './store';
 import { MigrationSpec, Migrations } from './migration';
 import { BoundConnection, AutonomousConnection } from './connection';
 import { Transaction, withTransactionSynchronous } from './transaction';
@@ -34,6 +34,28 @@ async function getDbVersion(db_name: string): Promise<number> {
       req.onerror = _event => reject(req.error);
     });
   }
+}
+
+export class DatabaseSchema {
+
+  public name: string;
+  public version: number;
+  public store_schemas: Dict<string, StoreSchema<Storable>>;
+
+  constructor(args: {
+    name: string;
+    version: number;
+    store_schemas: Dict<string, StoreSchema<Storable>>;
+  }) {
+    this.name = args.name;
+    this.version = args.version;
+    this.store_schemas = args.store_schemas;
+  }
+
+  get store_names(): Set<string> {
+    return new Set(Object.keys(this.store_schemas));
+  }
+
 }
 
 export class Database<$$ = {}> {
