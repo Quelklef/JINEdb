@@ -47,19 +47,6 @@ export class Transaction<$$ = {}> {
   readonly _idb_tx: IDBTransaction;
   readonly _idb_db: IDBDatabase;
 
-  _addStore(store_name: string, schema: StoreSchema<Storable>): void {
-    const idb_store = this._idb_db.createObjectStore(store_name, { keyPath: 'id', autoIncrement: true });
-    const store = new BoundStore(schema, idb_store);
-    this.tx_schema.store_schemas[store_name] = schema;
-    this.stores[store_name] = store;
-  }
-
-  _removeStore(store_name: string): void {
-    this._idb_db.deleteObjectStore(store_name);
-    delete this.tx_schema.store_schemas[store_name];
-    delete this.stores[store_name];
-  }
-
   constructor(idb_tx: IDBTransaction, tx_schema: TransactionSchema) {
     this._idb_tx = idb_tx;
     this._idb_db = this._idb_tx.db;

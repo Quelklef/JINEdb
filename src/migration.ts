@@ -1,6 +1,7 @@
 
 import { some } from './util';
 import { Storable } from './storable';
+import { fullEncode, fullDecode } from './codec';
 import { StoreSchema } from './store';
 import { IndexSchema } from './index';
 import { Transaction } from './transaction';
@@ -95,23 +96,19 @@ export class Migration {
       await this.before();
     }
 
-    const async_work: Array<(tx: Transaction) => Promise<void>> = [];
-
     const new_schema = db.migrations.calcSchema(db.schema.name, this.version);
     await db._versionChange(this.version, new_schema, tx => {
       for (const alteration_spec of this.alteration_specs) {
-        const work = this._applyAlteration(tx, alteration_spec)
-        if (work !== undefined) async_work.push(work);
+        this._stageOne(tx, alteration_spec)
       }
     });
 
-    // Do async work
-    // Unfortunately, I think this has to be done in a different transaction.
+    // This has to be done in a different transaction.
     // It involves get/put work, which I don't believe is supported on versionchange transactions...
     await db.connect(async conn => {
       await conn._transact(this.needed_store_names, 'rw', async tx => {
-        for (const work of async_work) {
-          await work(tx);
+        for (const alteration_spec of this.alteration_specs) {
+          await this._stageTwo(tx, alteration_spec)
         }
       });
     });
@@ -122,71 +119,88 @@ export class Migration {
 
   }
 
-  _applyAlteration(tx: Transaction, spec: AlterationSpec): ((tx: Transaction) => Promise<void>) | undefined {
-    /*
-
-    Apply part of a database alteration to the underlying idb database,
-    and possibly return leftover work.
-
-    This method MUST be called on a versionchange transaction.
-
-    Alterations all require some synchronous work applied to the underling
-    idb database; some also require some asynchronous work applied afterwards.
-
-    A store addition or deletion, for instance, only requires synchronously
-    creating or deleting an idb objectStore.
-
-    A trait addition or deletion, however, is more complex. It first requires
-    creating or deleting an idb index, and then it requires updating all existing
-    objects in the database to either add or remove the trait. This second part
-    is asynchronous.
-
-    This function does two things:
-      1. Performs the sychronous work of the alteration
-      2. Returns a function which asynchronously performs the rest of the
-         work on the DB, if there is any; otherwise, returns undefined.
-
-    */
-
+  _stageOne(tx: Transaction, spec: AlterationSpec): void {
     switch(spec.kind) {
 
       case 'add_store': {
         const store_name = spec.name;
-        const item_codec = { encode: spec.encode, decode: spec.decode };
-        const schema = new StoreSchema<Storable>({
-          name: store_name,
-          item_codec: item_codec,
-          index_schemas: {},
-        });
-        tx._addStore(store_name, schema);
-        return undefined;
+        tx._idb_db.createObjectStore(store_name, { keyPath: 'id', autoIncrement: true });
+        break;
       }
 
       case 'remove_store': {
         const store_name = spec.name;
-        tx._removeStore(store_name);
-        return undefined;
+        tx._idb_db.deleteObjectStore(store_name);
+        break;
       }
 
       case 'add_index': {
         const store_name = spec.to;
+        const idb_store = tx._idb_tx.objectStore(store_name);
         const index_name = spec.name;
-        const store = some(tx.stores[store_name]);
-        return store._addIndex(new IndexSchema({
-          name: index_name,
-          unique: spec.unique,
-          explode: spec.explode,
-          item_codec: store.schema.item_codec,
-          trait_path_or_getter: spec.trait,
-          parent_store_name: store_name,
-        }));
+        idb_store.createIndex(
+          index_name,
+          `traits.${index_name}`,
+          {
+            unique: spec.unique,
+            multiEntry: spec.explode,
+          },
+        );
+        break;
       }
 
       case 'remove_index': {
         const store_name = spec.from;
         const index_name = spec.name;
-        const store = some(tx.stores[store_name]);
-        return store._removeIndex(index_name);
+        const idb_store = tx._idb_tx.objectStore(store_name);
+        idb_store.deleteIndex(index_name);
+        break;
+      }
+
+    }
+  }
+
+  async _stageTwo(tx: Transaction, spec: AlterationSpec): Promise<void> {
+    switch(spec.kind) {
+
+      case 'add_store':
+      case 'remove_store':
+        break;
+
+      case 'add_index': {
+        const is_path_index = typeof spec.trait === 'string';
+        if (is_path_index) {
+          return;
+        } else {
+          const store_name = spec.to;
+          const index_name = spec.name;
+          const store = some(tx.stores[store_name]);
+          await store._mapExistingRows(row => {
+            const item = fullDecode(row.payload, store.schema.item_codec);
+            const index = some(tx.stores[store_name]?.indexes[index_name]);
+            const trait = index._get_trait(item);
+            row.traits[index_name] = trait;
+            row.payload = fullEncode(item, store.schema.item_codec);
+            return row;
+          });
+          return;
+        }
+      }
+
+      case 'remove_index': {
+        const store_name = spec.from;
+        const index_name = spec.name;
+        const index_spec = some(tx.tx_schema.store_schemas[store_name]?.index_schemas[index_name]);
+        if (index_spec.kind === 'path') {
+          return;
+        } else {
+          const store = some(tx.stores[store_name]);
+          await store._mapExistingRows(row => {
+            delete row.traits[index_name];
+            return row;
+          });
+          return;
+        }
       }
 
     }
