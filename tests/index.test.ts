@@ -64,7 +64,7 @@ describe('index', () => {
   ];
 
   let jine!: Jine<$$>;
-  let conn!: BoundConnection<$$> & $$;
+  let conn!: $$ & BoundConnection<$$>;
 
   beforeEach(async () => {
     await reset();

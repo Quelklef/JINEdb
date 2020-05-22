@@ -22,7 +22,7 @@ export interface Store<Item extends Storable> {
 
 }
 
-export class BoundStore<Item extends Storable> {
+export class BoundStore<Item extends Storable> implements Store<Item> {
 
   public readonly schema: StoreSchema<Item>;
   public readonly indexes: Dict<string, BoundIndex<Item, IndexableTrait>>;
@@ -50,7 +50,7 @@ export class BoundStore<Item extends Storable> {
     }
   }
 
-  _addIndex<$$>(index_schema: IndexSchema<Item, IndexableTrait>): ((tx: Transaction<$$>) => Promise<void>) | undefined {
+  _addIndex(index_schema: IndexSchema<Item, IndexableTrait>): ((tx: Transaction) => Promise<void>) | undefined {
     this._idb_store.createIndex(
       index_schema.name,
       `traits.${index_schema.name}`,
@@ -79,7 +79,7 @@ export class BoundStore<Item extends Storable> {
     }
   }
 
-  _removeIndex<$$>(index_name: string): ((tx: Transaction<$$>) => Promise<void>) | undefined {
+  _removeIndex(index_name: string): ((tx: Transaction) => Promise<void>) | undefined {
     // TODO: This one should also be refactored into two methods, I think
     this._idb_store.deleteIndex(index_name);
     delete this.schema.index_schemas[index_name];
@@ -168,10 +168,9 @@ export class AutonomousStore<Item extends Storable> implements Store<Item> {
   public readonly schema: StoreSchema<Item>;
   public readonly indexes: Dict<string, AutonomousIndex<Item, IndexableTrait>>;
 
-  private readonly _conn: Connection<unknown>;
+  private readonly _conn: Connection;
 
-  // TODO: split T<$$> types into T and $T<$$>. This Connection shouldn't need or have a type param.
-  constructor(schema: StoreSchema<Item>, conn: Connection<unknown>) {
+  constructor(schema: StoreSchema<Item>, conn: Connection) {
     this.schema = schema;
     this.indexes = {};
     for (const index_name of schema.index_names) {
@@ -179,6 +178,15 @@ export class AutonomousStore<Item extends Storable> implements Store<Item> {
       this.indexes[index_name] = new AutonomousIndex(index_schema, this);
     }
     this._conn = conn;
+  }
+
+  withShorthand(): AutonomousStore<Item> {
+    for (const index_name of this.schema.index_names) {
+      const index_schema = some(this.schema.index_schemas[index_name]);
+      const index = new AutonomousIndex(index_schema, this);
+      (this as any)['$' + index_name] = index;
+    }
+    return this;
   }
 
   async _transact<T>(mode: TransactionMode, callback: (bound_store: BoundStore<Item>) => Promise<T>): Promise<T> {

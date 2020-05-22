@@ -5,7 +5,7 @@ import { AutonomousIndex } from './index';
 import { Store, AutonomousStore } from './store';
 import { Transaction, TransactionMode, withTransaction, uglifyTransactionMode } from './transaction';
 
-export interface Connection<$$> {
+export interface Connection {
 
   readonly schema: DatabaseSchema;
 
@@ -14,18 +14,18 @@ export interface Connection<$$> {
   //       If so, is that a code smell?
   getVersion(): Promise<number>;
 
-  _transact<T>(store_names: Array<string>, mode: TransactionMode, callback: (tx: Transaction<$$>) => Promise<T>): Promise<T>;
+  _transact<T>(store_names: Array<string>, mode: TransactionMode, callback: (tx: Transaction) => Promise<T>): Promise<T>;
 
   // `stores` really has type Array<Store<? extends Storable>>, but TypeScript
   // doesn't support existential types at the moment :(
   // Apparently they can be emulated. This would be nice, as a massive amount
   // of this codebase has existential types hidden around it.
   // TODO: try emulating existential types.
-  transact<T>(stores: Array<Store<any>>, mode: TransactionMode, callback: (tx: Transaction<$$>) => Promise<T>): Promise<T>;
+  transact<T>(stores: Array<Store<any>>, mode: TransactionMode, callback: (tx: Transaction) => Promise<T>): Promise<T>;
 
 }
 
-export class BoundConnection<$$> implements Connection<$$> {
+export class BoundConnection<$$ = {}> implements Connection {
 
   readonly schema: DatabaseSchema;
 
@@ -39,7 +39,11 @@ export class BoundConnection<$$> implements Connection<$$> {
     this._idb_conn = idb_conn;
   }
 
-  _setUpShorthand<$$>(): BoundConnection<$$> & $$ {
+  getVersion(): Promise<number> {
+    return Promise.resolve(this._idb_conn.version);
+  }
+
+  withShorthand(): $$ & BoundConnection<$$> {
     for (const store_name of this.schema.store_names) {
       const store_schema = some(this.schema.store_schemas[store_name]);
       const aut_store = new AutonomousStore(store_schema, this);
@@ -52,27 +56,23 @@ export class BoundConnection<$$> implements Connection<$$> {
       }
     }
 
-    return this as any as BoundConnection<$$> & $$;
-  }
-
-  getVersion(): Promise<number> {
-    return Promise.resolve(this._idb_conn.version);
+    return this as any as $$ & BoundConnection<$$>;
   }
 
   async _transact<T>(
     store_names: Array<string>,
     mode: TransactionMode,
-    callback: (tx: Transaction<$$>) => Promise<T>,
+    callback: (tx: $$ & Transaction<$$>) => Promise<T>,
   ): Promise<T> {
     const idb_conn = await this._idb_conn;
     const idb_tx = idb_conn.transaction(store_names, uglifyTransactionMode(mode));
-    return await withTransaction(idb_tx, this.schema, callback);
+    return await withTransaction<T, $$>(idb_tx, this.schema, callback);
   }
 
   async transact<T>(
     stores: Array<Store<any>>,
     mode: TransactionMode,
-    callback: (tx: Transaction<$$>) => Promise<T>,
+    callback: (tx: $$ & Transaction<$$>) => Promise<T>,
   ): Promise<T> {
     const store_names = stores.map(store => store.schema.name);
     return await this._transact(store_names, mode, callback);
@@ -82,7 +82,7 @@ export class BoundConnection<$$> implements Connection<$$> {
     this._idb_conn.close();
   }
 
-  async wrap<T>(callback: (me: Connection<$$>) => Promise<T>): Promise<T> {
+  async wrap<T>(callback: (me: Connection) => Promise<T>): Promise<T> {
     const result = await callback(this);
     this.close();
     return result;
@@ -90,7 +90,7 @@ export class BoundConnection<$$> implements Connection<$$> {
 
 }
 
-export class AutonomousConnection<$$> implements Connection<$$> {
+export class AutonomousConnection implements Connection {
 
   readonly schema: DatabaseSchema;
 
@@ -108,7 +108,7 @@ export class AutonomousConnection<$$> implements Connection<$$> {
     });
   }
 
-  async _new_bound_conn(): Promise<BoundConnection<$$>> {
+  async _new_bound_conn(): Promise<BoundConnection> {
     const idb_conn = await this._new_idb_conn();
     return new BoundConnection(this.schema, idb_conn);
   }
@@ -123,7 +123,7 @@ export class AutonomousConnection<$$> implements Connection<$$> {
   async _transact<T>(
     store_names: Array<string>,
     mode: TransactionMode,
-    callback: (tx: Transaction<$$>) => Promise<T>,
+    callback: (tx: Transaction) => Promise<T>,
   ): Promise<T> {
     const conn = await this._new_bound_conn();
     const result = await conn._transact(store_names, mode, callback);
@@ -134,7 +134,7 @@ export class AutonomousConnection<$$> implements Connection<$$> {
   async transact<T>(
     stores: Array<Store<any>>,
     mode: TransactionMode,
-    callback: (tx: Transaction<$$>) => Promise<T>,
+    callback: (tx: Transaction) => Promise<T>,
   ): Promise<T> {
     const conn = await this._new_bound_conn();
     const result = await conn.transact(stores, mode, callback);

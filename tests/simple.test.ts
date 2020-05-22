@@ -34,7 +34,7 @@ describe('End-to-end simple', () => {
   ];
 
   let jine!: Jine<$$>;
-  let conn!: BoundConnection<$$> & $$;
+  let conn!: $$ & BoundConnection<$$>;
 
   beforeEach(async () => {
     await reset();

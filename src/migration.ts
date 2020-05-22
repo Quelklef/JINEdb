@@ -85,7 +85,7 @@ export class Migration {
       .map(spec => spec.name);
   }
 
-  async run<$$>(db: Database<$$>): Promise<void> {
+  async run(db: Database): Promise<void> {
     /* Run a migration. This method MUST NOT be called within an
     existing upgradeneeded event. It will create and hanlde its own
     event. */
@@ -94,7 +94,7 @@ export class Migration {
       await this.before();
     }
 
-    const async_work: Array<(tx: Transaction<$$>) => Promise<void>> = [];
+    const async_work: Array<(tx: Transaction) => Promise<void>> = [];
 
     const new_schema = db.migrations.calcSchema(db.schema.name, this.version);
     await db._versionChange(this.version, new_schema, tx => {
@@ -121,7 +121,7 @@ export class Migration {
 
   }
 
-  _applyAlteration<$$>(tx: Transaction<$$>, spec: AlterationSpec): ((tx: Transaction<$$>) => Promise<void>) | undefined {
+  _applyAlteration(tx: Transaction, spec: AlterationSpec): ((tx: Transaction) => Promise<void>) | undefined {
     /*
 
     Apply part of a database alteration to the underlying idb database,
@@ -207,7 +207,7 @@ export class Migrations {
     return this.migrations[Symbol.iterator]();
   }
 
-  async upgrade<$$>(db: Database<$$>, old_version: number): Promise<void> {
+  async upgrade(db: Database, old_version: number): Promise<void> {
     /* Run all migrations with a version number greater than the current version. */
     const new_migrations = this.migrations
           .sort((m1, m2) => +m1.version - +m2.version)

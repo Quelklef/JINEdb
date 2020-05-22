@@ -22,14 +22,15 @@ export function uglifyTransactionMode(tx_mode: TransactionMode): IDBTransactionM
   }[tx_mode] as IDBTransactionMode;
 }
 
-export type Transaction<$$> = TransactionImpl & $$;
-
-export async function withTransaction<T, $$>(
+// TODO: remove the following two methods
+//       and replace with a .run, if needed,
+//       or otherwise just use Connection.transact
+export async function withTransaction<T, $$ = {}>(
   idb_tx: IDBTransaction,
   tx_schema: TransactionSchema,
-  callback: (tx: Transaction<$$>) => Promise<T>,
+  callback: (tx: $$ & Transaction<$$>) => Promise<T>,
 ): Promise<T> {
-  const tx = newTransaction<$$>(idb_tx, tx_schema);
+  const tx = new Transaction<$$>(idb_tx, tx_schema).withShorthand();
   let result!: T;
   try {
     result = await callback(tx);
@@ -41,12 +42,12 @@ export async function withTransaction<T, $$>(
   return result;
 }
 
-export function withTransactionSynchronous<T, $$>(
+export function withTransactionSynchronous<T, $$ = {}>(
   idb_tx: IDBTransaction,
   tx_schema: TransactionSchema,
-  callback: (tx: Transaction<$$>) => T,
+  callback: (tx: $$ & Transaction<$$>) => T,
 ): T {
-  const tx = newTransaction<$$>(idb_tx, tx_schema);
+  const tx = new Transaction<$$>(idb_tx, tx_schema).withShorthand();
   let result!: T;
   try {
     result = callback(tx);
@@ -58,12 +59,7 @@ export function withTransactionSynchronous<T, $$>(
   return result;
 }
 
-function newTransaction<$$>(idb_tx: IDBTransaction, tx_schema: TransactionSchema): Transaction<$$> {
-  const tx = new TransactionImpl(idb_tx, tx_schema);
-  return tx as TransactionImpl & $$;
-}
-
-class TransactionImpl {
+export class Transaction<$$ = {}> {
 
   readonly tx_schema: TransactionSchema;
   readonly stores: Dict<string, BoundStore<Storable>>;
@@ -78,14 +74,12 @@ class TransactionImpl {
     const store = new BoundStore(schema, idb_store);
     this.tx_schema.store_schemas[store_name] = schema;
     this.stores[store_name] = store;
-    (this as any)['$' + store_name] = store;
   }
 
   _removeStore(store_name: string): void {
     this._idb_db.deleteObjectStore(store_name);
     delete this.tx_schema.store_schemas[store_name];
     delete this.stores[store_name];
-    delete (this as any)['$' + store_name];
   }
 
   constructor(idb_tx: IDBTransaction, tx_schema: TransactionSchema) {
@@ -100,7 +94,6 @@ class TransactionImpl {
       const store_schema = some(tx_schema.store_schemas[store_name]);
       const store = new BoundStore(store_schema, idb_store);
       this.stores[store_name] = store;
-      (this as any)['$' + store_name] = store;
     }
 
     this.state = 'active';
@@ -110,6 +103,13 @@ class TransactionImpl {
     });
 
     if (this._idb_tx.mode !== 'versionchange') this._prolong();
+  }
+
+  withShorthand(): $$ & Transaction<$$> {
+    for (const store_name of this.tx_schema.store_names) {
+      (this as any)['$' + store_name] = this.stores[store_name];
+    }
+    return this as any as $$ & Transaction<$$>;
   }
 
   _poke(): void {

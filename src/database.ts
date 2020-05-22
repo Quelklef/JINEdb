@@ -1,8 +1,9 @@
 
 import { some } from './util';
-import { BoundConnection } from './connection';
 import { DatabaseSchema } from './schema';
+import { AutonomousStore } from './store';
 import { MigrationSpec, Migrations } from './migration';
+import { BoundConnection, AutonomousConnection } from './connection';
 import { Transaction, withTransactionSynchronous } from './transaction';
 
 async function getDbVersion(db_name: string): Promise<number> {
@@ -35,7 +36,7 @@ async function getDbVersion(db_name: string): Promise<number> {
   }
 }
 
-export class Database<$$> {
+export class Database<$$ = {}> {
 
   schema!: DatabaseSchema;
   migrations: Migrations;
@@ -48,7 +49,7 @@ export class Database<$$> {
     this.migrations = migrations;
   }
 
-  static async new<$$>(name: string, migration_specs: Array<MigrationSpec>): Promise<Database<$$>> {
+  static async new<$$ = {}>(name: string, migration_specs: Array<MigrationSpec>): Promise<Database<$$>> {
     const migrations = new Migrations(migration_specs);
     const db = new Database<$$>(Database._allow_construction, migrations);
 
@@ -57,6 +58,16 @@ export class Database<$$> {
     await migrations.upgrade(db, old_version);
 
     return db;
+  }
+
+  async withShorthand(): Promise<$$ & Database<$$>> {
+    const conn = new AutonomousConnection(this.schema);
+    for (const store_name of this.schema.store_names) {
+      const store_schema = some(this.schema.store_schemas[store_name]);
+      const store = new AutonomousStore(store_schema, conn);
+      (this as any)['$' + store_name] = store.withShorthand();
+    }
+    return this as any as $$ & Database<$$>;
   }
 
   async _newIdbConn(): Promise<IDBDatabase> {
@@ -68,20 +79,20 @@ export class Database<$$> {
     });
   }
 
-  async newConnection(): Promise<BoundConnection<$$> & $$> {
+  async newConnection(): Promise<$$ & BoundConnection<$$>> {
     const idb_conn = await this._newIdbConn();
     const conn = new BoundConnection<$$>(this.schema, idb_conn);
-    return conn._setUpShorthand();
+    return conn.withShorthand();
   }
 
-  async connect<T>(callback: (conn: BoundConnection<$$> & $$) => Promise<T>): Promise<T> {
+  async connect<T>(callback: (conn: $$ & BoundConnection<$$>) => Promise<T>): Promise<T> {
     const conn = await this.newConnection();
     const result = await callback(conn);
     conn.close();
     return result;
   }
 
-  _versionChange(version: number, new_schema: DatabaseSchema, upgrade: (tx: Transaction<$$>) => void): Promise<void> {
+  _versionChange(version: number, new_schema: DatabaseSchema, upgrade: (tx: Transaction) => void): Promise<void> {
     /* Asynchronously re-open the underlying idb database with the given
     version number, if supplied. If an upgrade function is given, it will be
     attached to the upgradeneeded event of the database open request. */
@@ -113,4 +124,3 @@ export class Database<$$> {
   }
 
 }
-
