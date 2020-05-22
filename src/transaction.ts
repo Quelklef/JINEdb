@@ -21,43 +21,6 @@ export function uglifyTransactionMode(tx_mode: TransactionMode): IDBTransactionM
   }[tx_mode] as IDBTransactionMode;
 }
 
-// TODO: remove the following two methods
-//       and replace with a .run, if needed,
-//       or otherwise just use Connection.transact
-export async function withTransaction<T, $$ = {}>(
-  idb_tx: IDBTransaction,
-  tx_schema: TransactionSchema,
-  callback: (tx: $$ & Transaction<$$>) => Promise<T>,
-): Promise<T> {
-  const tx = new Transaction<$$>(idb_tx, tx_schema).withShorthand();
-  let result!: T;
-  try {
-    result = await callback(tx);
-  } catch (ex) {
-    if (tx.state === 'active') tx.abort();
-    throw ex;
-  }
-  if (tx.state === 'active') tx.commit();
-  return result;
-}
-
-export function withTransactionSynchronous<T, $$ = {}>(
-  idb_tx: IDBTransaction,
-  tx_schema: TransactionSchema,
-  callback: (tx: $$ & Transaction<$$>) => T,
-): T {
-  const tx = new Transaction<$$>(idb_tx, tx_schema).withShorthand();
-  let result!: T;
-  try {
-    result = callback(tx);
-  } catch (ex) {
-    if (tx.state === 'active') tx.abort();
-    throw ex;
-  }
-  if (tx.state === 'active') tx.commit();
-  return result;
-}
-
 export class TransactionSchema {
 
   public store_schemas: Dict<string, StoreSchema<Storable>>;
@@ -121,10 +84,37 @@ export class Transaction<$$ = {}> {
   }
 
   withShorthand(): $$ & Transaction<$$> {
-    for (const store_name of this.tx_schema.store_names) {
-      (this as any)['$' + store_name] = this.stores[store_name];
+    const has_shorthand = Object.keys(this).some(k => k.startsWith('$'));
+    if (!has_shorthand) {
+      for (const store_name of this.tx_schema.store_names) {
+        (this as any)['$' + store_name] = this.stores[store_name];
+      }
     }
     return this as any as $$ & Transaction<$$>;
+  }
+
+  wrapSynchronous<T>(callback: (tx: $$ & Transaction<$$>) => T): T {
+    let result!: T;
+    try {
+      result = callback(this.withShorthand());
+    } catch (ex) {
+      if (this.state === 'active') this.abort();
+      throw ex;
+    }
+    if (this.state === 'active') this.commit();
+    return result;
+  }
+
+  async wrap<T>(callback: (tx: $$ & Transaction<$$>) => Promise<T>): Promise<T> {
+    let result!: T;
+    try {
+      result = await callback(this.withShorthand());
+    } catch (ex) {
+      if (this.state === 'active') this.abort();
+      throw ex;
+    }
+    if (this.state === 'active') this.commit();
+    return result;
   }
 
   _poke(): void {

@@ -3,7 +3,7 @@ import { some } from './util';
 import { DatabaseSchema } from './database';
 import { AutonomousIndex } from './index';
 import { Store, AutonomousStore } from './store';
-import { Transaction, TransactionMode, withTransaction, uglifyTransactionMode } from './transaction';
+import { Transaction, TransactionMode, uglifyTransactionMode } from './transaction';
 
 export interface Connection {
 
@@ -66,7 +66,7 @@ export class BoundConnection<$$ = {}> implements Connection {
   ): Promise<T> {
     const idb_conn = await this._idb_conn;
     const idb_tx = idb_conn.transaction(store_names, uglifyTransactionMode(mode));
-    return await withTransaction<T, $$>(idb_tx, this.schema, callback);
+    return await new Transaction<$$>(idb_tx, this.schema).wrap(async tx => await callback(tx));
   }
 
   async transact<T>(

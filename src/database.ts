@@ -4,7 +4,7 @@ import { some, Dict } from './util';
 import { StoreSchema, AutonomousStore } from './store';
 import { MigrationSpec, Migrations } from './migration';
 import { BoundConnection, AutonomousConnection } from './connection';
-import { Transaction, withTransactionSynchronous } from './transaction';
+import { Transaction } from './transaction';
 
 async function getDbVersion(db_name: string): Promise<number> {
   /* Return current database version number. Returns an integer greater than or
@@ -123,7 +123,7 @@ export class Database<$$ = {}> {
       const req = indexedDB.open(this.schema.name, version);
       req.onupgradeneeded = _event => {
         const idb_tx = some(req.transaction);
-        withTransactionSynchronous(idb_tx, this.schema, upgrade);
+        new Transaction<$$>(idb_tx, this.schema).wrapSynchronous(tx => upgrade(tx));
       };
       req.onsuccess = _event => {
         this.schema = new_schema;
