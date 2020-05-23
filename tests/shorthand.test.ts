@@ -13,7 +13,7 @@ interface $$ {
 }
 
 
-describe('End-to-end simple', () => {
+describe('shorthand', () => {
 
   const migrations = [
 
@@ -51,20 +51,20 @@ describe('End-to-end simple', () => {
     text: 'body text',
   }
 
-  it('add/all', async () => {
+  it('supports $store.add and $store.all', async () => {
     await conn.$posts.add(some_post);
     const posts = await conn.$posts.all();
     expect(posts).toEqual([some_post]);
   });
 
-  it('add/count', async () => {
+  it('supports $store.add and $store.count', async () => {
     await conn.$posts.add(some_post);
     await conn.$posts.add(some_post);
     const count = await conn.$posts.count();
     expect(count).toEqual(2);
   });
 
-  it('add/clear', async () => {
+  it('supports $store.add and $store.clear', async () => {
     await conn.$posts.add(some_post);
     await conn.$posts.add(some_post);
     await conn.$posts.clear();

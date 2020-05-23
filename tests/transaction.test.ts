@@ -13,7 +13,7 @@ interface $$ {
 }
 
 
-describe('index', () => {
+describe('transaction', () => {
 
   const migrations = [
 
@@ -54,31 +54,28 @@ describe('index', () => {
     age: 30,
   };
 
-  describe('transaction', () => {
 
-    it("aborts atomically with .abort()", async () => {
+  it("aborts atomically with .abort()", async () => {
+    await conn.transact([conn.$people], 'rw', async tx => {
+      await tx.$people.add(catherine);
+      await tx.$people.add(katheryn);
+      tx.abort();
+    });
+    expect(await conn.$people.count()).toEqual(0);
+  });
+
+  it("aborts atomically with an error", async () => {
+    class MyError extends Error { }
+    try {
       await conn.transact([conn.$people], 'rw', async tx => {
         await tx.$people.add(catherine);
         await tx.$people.add(katheryn);
-        tx.abort();
+        throw new MyError('oh no');
       });
-      expect(await conn.$people.count()).toEqual(0);
-    });
-
-    it("aborts atomically with an error", async () => {
-      class MyError extends Error { }
-      try {
-        await conn.transact([conn.$people], 'rw', async tx => {
-          await tx.$people.add(catherine);
-          await tx.$people.add(katheryn);
-          throw new MyError('oh no');
-        });
-      } catch (e) {
-        if (!(e instanceof MyError)) throw e;
-      }
-      expect(await conn.$people.count()).toEqual(0);
-    });
-
+    } catch (e) {
+      if (!(e instanceof MyError)) throw e;
+    }
+    expect(await conn.$people.count()).toEqual(0);
   });
 
 });
