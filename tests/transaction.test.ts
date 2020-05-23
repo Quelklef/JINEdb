@@ -54,6 +54,13 @@ describe('transaction', () => {
     age: 30,
   };
 
+  it("supports multiple operations", async () => {
+    await conn.transact([conn.$people], 'rw', async tx => {
+      await tx.$people.add(catherine);
+      await tx.$people.add(katheryn);
+    });
+    expect(await conn.$people.count()).toEqual(2);
+  });
 
   it("aborts atomically with .abort()", async () => {
     await conn.transact([conn.$people], 'rw', async tx => {
