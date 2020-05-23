@@ -62,8 +62,14 @@ export class Transaction<$$ = {}> {
     }
 
     this.state = 'active';
+    this._idb_tx.addEventListener('abort', () => {
+      this.state = 'aborted';
+    });
     this._idb_tx.addEventListener('error', () => {
       this.state = 'aborted';
+    });
+    this._idb_tx.addEventListener('complete', () => {
+      this.state = 'committed';
     });
   }
 
