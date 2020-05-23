@@ -1,0 +1,13 @@
+Do you realize how many different ways Catherine can be spelled?
+The name Catherine is pronounced /ˈkæθ(ə)ɹɪn/.
+There are different ways to spell some phonemes:
+
+/k/ - k, c
+/æ/ - a
+/θ/ - th
+/ə/ - e, y
+/ɹ/ - r
+/ɪ/ - i, y
+/n/ - n, ne, nne
+
+All in all, this gives 2*1*1*2*1*2*3 = 24 different ways!
