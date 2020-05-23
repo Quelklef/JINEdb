@@ -138,9 +138,9 @@ export class Transaction<$$ = {}> {
 
   commit(): void {
     /* Commit and end the transaction */
+    this._cease();
     // [2020-05-16] For some reason the types don't have IDBTransaction.commit(),
     // but it's in the online docs: https://developer.mozilla.org/en-US/docs/Web/API/IDBTransaction/commit
-    this._cease();
     (this._idb_tx as any).commit();
     this.state = 'committed';
   }

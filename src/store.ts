@@ -1,6 +1,6 @@
 
 import { Row } from './row';
-import { Cursor } from './cursor';
+import { Cursor } from './query';
 import { Storable } from './storable';
 import { some, Dict } from './util';
 import { Connection } from './connection';
@@ -71,10 +71,12 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     }
   }
 
-  async _mapExistingRows(f: (r: Row) => Row): Promise<void> {
-    const cursor_req = this._idb_store.openCursor();
-    const cursor = await Cursor.new(cursor_req, this.schema.item_codec);
-    await cursor._replaceAllRows(f);
+  async _mapExistingRows(mapper: (row: Row) => Row): Promise<void> {
+    const cursor = new Cursor(this._idb_store, null, this.schema.item_codec);
+    await cursor.init();
+    while (cursor.active) {
+      await cursor._replaceRow(mapper(cursor._currentRow()));
+    }
   }
 
   async add(item: Item): Promise<void> {

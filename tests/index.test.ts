@@ -78,7 +78,7 @@ describe('index', () => {
 
   describe('path index', () => {
 
-    it("allows for get()'ing items", async () => {
+    it("allows for find()'ing items", async () => {
 
       const item = {
         attr: "get me!",
@@ -87,37 +87,8 @@ describe('index', () => {
       }
 
       await conn.$items.add(item);
-      const got = await conn.$items.$index.get("get me!");
-      expect(got).toEqual(item);
-
-    });
-
-    it("throws on a failed get()", async () => {
-
-      expect(async () => await conn.$items.$index.get('xxx'))
-        .rejects.toThrow();
-
-    });
-
-    it("throws on multiple matches for a get()", async () => {
-
-      const item_a = {
-        attr: 'same',
-        attr_unique: 'A',
-        attr_explode: [],
-      };
-
-      const item_b = {
-        attr: 'same',
-        attr_unique: 'B',
-        attr_explode: [],
-      };
-
-      await conn.$items.add(item_a);
-      await conn.$items.add(item_b);
-
-      expect(async () => await conn.$items.$index.get('same'))
-        .rejects.toThrow();
+      const got = await conn.$items.$index.find("get me!");
+      expect(got).toEqual([item]);
 
     });
 
@@ -156,9 +127,34 @@ describe('index', () => {
 
       await conn.$items.add(item);
 
-      expect(await conn.$items.$index_explode.get('a')).toEqual(item);
-      expect(await conn.$items.$index_explode.get('b')).toEqual(item);
-      expect(await conn.$items.$index_explode.get('c')).toEqual(item);
+      expect(await conn.$items.$index_explode.find('a')).toEqual([item]);
+      expect(await conn.$items.$index_explode.find('b')).toEqual([item]);
+      expect(await conn.$items.$index_explode.find('c')).toEqual([item]);
+
+    });
+
+  });
+
+  describe('unique index', () => {
+
+    it("allows for get()'ing items", async () => {
+
+      const item = {
+        attr: "",
+        attr_unique: 'get me!',
+        attr_explode: [],
+      }
+
+      await conn.$items.add(item);
+      const got = await conn.$items.$index_unique.get("get me!");
+      expect(got).toEqual(item);
+
+    });
+
+    it("throws on a failed get()", async () => {
+
+      expect(async () => await conn.$items.$index_unique.get('xxx'))
+        .rejects.toThrow();
 
     });
 
@@ -166,7 +162,7 @@ describe('index', () => {
 
   describe('derived index', () => {
 
-    it("allows for get()'ing items", async () => {
+    it("allows for find()'ing items", async () => {
 
       const item = {
         attr: "12345",
@@ -175,18 +171,10 @@ describe('index', () => {
       }
 
       await conn.$items.add(item);
-      const got = await conn.$items.$index_derived.get(5);
-      expect(got).toEqual(item);
+      const got = await conn.$items.$index_derived.find(5);
+      expect(got).toEqual([item]);
 
     });
-
-    it("throws on a failed get()", async () => {
-
-      expect(async () => await conn.$items.$index_derived.get(10))
-        .rejects.toThrow();
-
-    });
-
 
   });
 
