@@ -1,16 +1,16 @@
 
 import { some } from './util';
-import { DatabaseSchema } from './database';
+import { DatabaseStructure } from './database';
 import { AutonomousIndex } from './index';
 import { Store, AutonomousStore } from './store';
 import { Transaction, TransactionMode, uglifyTransactionMode } from './transaction';
 
 export interface Connection {
 
-  readonly schema: DatabaseSchema;
+  readonly structure: DatabaseStructure;
 
   // TODO: will anything break if we implement
-  //       getVersion() as `return this.schema.version`?
+  //       getVersion() as `return this.structure.version`?
   //       If so, is that a code smell?
   getVersion(): Promise<number>;
 
@@ -27,15 +27,15 @@ export interface Connection {
 
 export class BoundConnection<$$ = {}> implements Connection {
 
-  readonly schema: DatabaseSchema;
+  readonly structure: DatabaseStructure;
 
   readonly _idb_conn: IDBDatabase;
 
   constructor(
-    schema: DatabaseSchema,
+    structure: DatabaseStructure,
     idb_conn: IDBDatabase,
   ) {
-    this.schema = schema;
+    this.structure = structure;
     this._idb_conn = idb_conn;
   }
 
@@ -44,14 +44,14 @@ export class BoundConnection<$$ = {}> implements Connection {
   }
 
   withShorthand(): $$ & BoundConnection<$$> {
-    for (const store_name of this.schema.store_names) {
-      const store_schema = some(this.schema.store_schemas[store_name]);
-      const aut_store = new AutonomousStore(store_schema, this);
+    for (const store_name of this.structure.store_names) {
+      const store_structure = some(this.structure.store_structures[store_name]);
+      const aut_store = new AutonomousStore(store_structure, this);
       (this as any)['$' + store_name] = aut_store;
 
-      for (const index_name of store_schema.index_names) {
-        const index_schema = some(store_schema.index_schemas[index_name]);
-        const aut_index = new AutonomousIndex(index_schema, aut_store);
+      for (const index_name of store_structure.index_names) {
+        const index_structure = some(store_structure.index_structures[index_name]);
+        const aut_index = new AutonomousIndex(index_structure, aut_store);
         (aut_store as any)['$' + index_name] = aut_index;
       }
     }
@@ -66,7 +66,7 @@ export class BoundConnection<$$ = {}> implements Connection {
   ): Promise<T> {
     const idb_conn = await this._idb_conn;
     const idb_tx = idb_conn.transaction(store_names, uglifyTransactionMode(mode));
-    return await new Transaction<$$>(idb_tx, this.schema).wrap(async tx => await callback(tx));
+    return await new Transaction<$$>(idb_tx, this.structure).wrap(async tx => await callback(tx));
   }
 
   async transact<T>(
@@ -74,7 +74,7 @@ export class BoundConnection<$$ = {}> implements Connection {
     mode: TransactionMode,
     callback: (tx: $$ & Transaction<$$>) => Promise<T>,
   ): Promise<T> {
-    const store_names = stores.map(store => store.schema.name);
+    const store_names = stores.map(store => store.structure.name);
     return await this._transact(store_names, mode, callback);
   }
 
@@ -92,15 +92,15 @@ export class BoundConnection<$$ = {}> implements Connection {
 
 export class AutonomousConnection implements Connection {
 
-  readonly schema: DatabaseSchema;
+  readonly structure: DatabaseStructure;
 
-  constructor(schema: DatabaseSchema) {
-    this.schema = schema;
+  constructor(structure: DatabaseStructure) {
+    this.structure = structure;
   }
 
   _new_idb_conn(): Promise<IDBDatabase> {
     return new Promise<IDBDatabase>((resolve, reject) => {
-      const db_name = this.schema.name;
+      const db_name = this.structure.name;
       const req = indexedDB.open(db_name);
       req.onupgradeneeded = _event => reject(Error('upgrade needed'));
       req.onsuccess = _event => resolve(req.result);
@@ -110,7 +110,7 @@ export class AutonomousConnection implements Connection {
 
   async _new_bound_conn(): Promise<BoundConnection> {
     const idb_conn = await this._new_idb_conn();
-    return new BoundConnection(this.schema, idb_conn);
+    return new BoundConnection(this.structure, idb_conn);
   }
 
   async getVersion(): Promise<number> {

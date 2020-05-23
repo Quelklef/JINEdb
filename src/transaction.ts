@@ -1,7 +1,7 @@
 
 import { Storable } from './storable';
 import { some, Dict } from './util';
-import { StoreSchema, BoundStore } from './store';
+import { StoreStructure, BoundStore } from './store';
 
 export type TransactionMode = 'r' | 'rw' | 'vc';
 
@@ -21,25 +21,25 @@ export function uglifyTransactionMode(tx_mode: TransactionMode): IDBTransactionM
   }[tx_mode] as IDBTransactionMode;
 }
 
-export class TransactionSchema {
+export class TransactionStructure {
 
-  public store_schemas: Dict<string, StoreSchema<Storable>>;
+  public store_structures: Dict<string, StoreStructure<Storable>>;
 
   constructor(args: {
-    store_schemas: Dict<string, StoreSchema<Storable>>;
+    store_structures: Dict<string, StoreStructure<Storable>>;
   }) {
-    this.store_schemas = args.store_schemas;
+    this.store_structures = args.store_structures;
   }
 
   get store_names(): Set<string> {
-    return new Set(Object.keys(this.store_schemas));
+    return new Set(Object.keys(this.store_structures));
   }
 
 }
 
 export class Transaction<$$ = {}> {
 
-  readonly tx_schema: TransactionSchema;
+  readonly tx_structure: TransactionStructure;
   readonly stores: Dict<string, BoundStore<Storable>>;
   readonly id: number;
   state: 'active' | 'committed' | 'aborted';
@@ -47,17 +47,17 @@ export class Transaction<$$ = {}> {
   readonly _idb_tx: IDBTransaction;
   readonly _idb_db: IDBDatabase;
 
-  constructor(idb_tx: IDBTransaction, tx_schema: TransactionSchema) {
+  constructor(idb_tx: IDBTransaction, tx_structure: TransactionStructure) {
     this._idb_tx = idb_tx;
     this._idb_db = this._idb_tx.db;
-    this.tx_schema = tx_schema;
+    this.tx_structure = tx_structure;
     this.id = Math.floor(Math.random() * 1e6);
 
     this.stores = {};
-    for (const store_name of tx_schema.store_names) {
+    for (const store_name of tx_structure.store_names) {
       const idb_store = this._idb_tx.objectStore(store_name);
-      const store_schema = some(tx_schema.store_schemas[store_name]);
-      const store = new BoundStore(store_schema, idb_store);
+      const store_structure = some(tx_structure.store_structures[store_name]);
+      const store = new BoundStore(store_structure, idb_store);
       this.stores[store_name] = store;
     }
 
@@ -76,7 +76,7 @@ export class Transaction<$$ = {}> {
   withShorthand(): $$ & Transaction<$$> {
     const has_shorthand = Object.keys(this).some(k => k.startsWith('$'));
     if (!has_shorthand) {
-      for (const store_name of this.tx_schema.store_names) {
+      for (const store_name of this.tx_structure.store_names) {
         (this as any)['$' + store_name] = this.stores[store_name];
       }
     }

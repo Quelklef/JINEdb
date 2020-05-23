@@ -8,7 +8,7 @@ import { query, QuerySpec, QueryExecutor } from './query';
 import { ItemCodec, fullDecode } from './codec';
 import { IndexableTrait } from './traits';
 
-export class IndexSchema<Item extends Storable, Trait extends IndexableTrait> {
+export class IndexStructure<Item extends Storable, Trait extends IndexableTrait> {
 
   public name: string;
   public unique: boolean;
@@ -55,8 +55,8 @@ export class IndexSchema<Item extends Storable, Trait extends IndexableTrait> {
 
 export interface Index<Item extends Storable, Trait extends IndexableTrait> {
 
-  // TODO: Schema types should probably be in respective files, not together in schema.ts
-  readonly schema: IndexSchema<Item, Trait>;
+  // TODO: Structure types should probably be in respective files, not together in structure.ts
+  readonly structure: IndexStructure<Item, Trait>;
 
   count(): Promise<number>;
   find(trait: Trait): Promise<Array<Item>>;
@@ -71,20 +71,20 @@ export interface Index<Item extends Storable, Trait extends IndexableTrait> {
 
 export class BoundIndex<Item extends Storable, Trait extends IndexableTrait> implements Index<Item, Trait> {
 
-  readonly schema: IndexSchema<Item, Trait>
+  readonly structure: IndexStructure<Item, Trait>
 
   readonly _idb_index: IDBIndex;
 
-  constructor(schema: IndexSchema<Item, Trait>, idb_index: IDBIndex) {
-    this.schema = schema;
+  constructor(structure: IndexStructure<Item, Trait>, idb_index: IDBIndex) {
+    this.structure = structure;
     this._idb_index = idb_index;
   }
 
   _get_trait(item: Item): Trait {
-    if (this.schema.kind === 'path') {
-      return (item as any)[this.schema.trait_path];
+    if (this.structure.kind === 'path') {
+      return (item as any)[this.structure.trait_path];
     } else {
-      return this.schema.trait_getter(item);
+      return this.structure.trait_getter(item);
     }
   }
 
@@ -104,7 +104,7 @@ export class BoundIndex<Item extends Storable, Trait extends IndexableTrait> imp
   }
 
   async tryGet(trait: Trait): Promise<Item | undefined> {
-    if (!this.schema.unique)
+    if (!this.structure.unique)
       throw new Error('.get() is only valid on a unique index');
     const results = await this.query({ equals: trait }).array();
     return results[0];
@@ -126,7 +126,7 @@ export class BoundIndex<Item extends Storable, Trait extends IndexableTrait> imp
       const req = this._idb_index.getAll();
       req.onsuccess = event => {
         const rows = (event.target as any).result as Array<Row>;
-        const items = rows.map(row => fullDecode(row.payload, this.schema.item_codec));
+        const items = rows.map(row => fullDecode(row.payload, this.structure.item_codec));
         resolve(items as Array<Item>);
       };
       req.onerror = _event => reject(req.error);
@@ -141,18 +141,18 @@ export class BoundIndex<Item extends Storable, Trait extends IndexableTrait> imp
 
 export class AutonomousIndex<Item extends Storable, Trait extends IndexableTrait> implements Index<Item, Trait> {
 
-  public readonly schema: IndexSchema<Item, Trait>
+  public readonly structure: IndexStructure<Item, Trait>
 
   readonly _parent: AutonomousStore<Item>;
 
-  constructor(schema: IndexSchema<Item, Trait>, parent: AutonomousStore<Item>) {
-    this.schema = schema;
+  constructor(structure: IndexStructure<Item, Trait>, parent: AutonomousStore<Item>) {
+    this.structure = structure;
     this._parent = parent;
   }
 
   async _transact<T>(mode: TransactionMode, callback: (bound_index: BoundIndex<Item, Trait>) => Promise<T>): Promise<T> {
     return this._parent._transact(mode, async bound_store => {
-      const bound_index = some(bound_store.indexes[this.schema.name]) as BoundIndex<Item, Trait>;
+      const bound_index = some(bound_store.indexes[this.structure.name]) as BoundIndex<Item, Trait>;
       return await callback(bound_index);
     });
   }

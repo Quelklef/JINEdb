@@ -2,11 +2,11 @@
 import { some } from './util';
 import { Storable } from './storable';
 import { fullEncode, fullDecode } from './codec';
-import { StoreSchema } from './store';
-import { IndexSchema } from './index';
+import { StoreStructure } from './store';
+import { IndexStructure } from './index';
 import { Transaction } from './transaction';
 import { IndexableTrait } from './traits';
-import { DatabaseSchema, Database } from './database';
+import { DatabaseStructure, Database } from './database';
 
 export interface AddIndexAlterationSpec<Item, Trait extends IndexableTrait> {
   kind: 'add_index';
@@ -96,8 +96,8 @@ export class Migration {
       await this.before();
     }
 
-    const new_schema = db.migrations.calcSchema(db.schema.name, this.version);
-    await db._versionChange(this.version, new_schema, tx => {
+    const new_structure = db.migrations.calcStructure(db.structure.name, this.version);
+    await db._versionChange(this.version, new_structure, tx => {
       for (const alteration_spec of this.alteration_specs) {
         this._stageOne(tx, alteration_spec)
       }
@@ -176,11 +176,11 @@ export class Migration {
           const index_name = spec.name;
           const store = some(tx.stores[store_name]);
           await store._mapExistingRows(row => {
-            const item = fullDecode(row.payload, store.schema.item_codec);
+            const item = fullDecode(row.payload, store.structure.item_codec);
             const index = some(tx.stores[store_name]?.indexes[index_name]);
             const trait = index._get_trait(item);
             row.traits[index_name] = trait;
-            row.payload = fullEncode(item, store.schema.item_codec);
+            row.payload = fullEncode(item, store.structure.item_codec);
             return row;
           });
           return;
@@ -190,7 +190,7 @@ export class Migration {
       case 'remove_index': {
         const store_name = spec.from;
         const index_name = spec.name;
-        const index_spec = some(tx.tx_schema.store_schemas[store_name]?.index_schemas[index_name]);
+        const index_spec = some(tx.tx_structure.store_structures[store_name]?.index_structures[index_name]);
         if (index_spec.kind === 'path') {
           return;
         } else {
@@ -233,17 +233,17 @@ export class Migrations {
     }
   }
 
-  calcSchema(db_name: string, up_to_version?: number): DatabaseSchema {
+  calcStructure(db_name: string, up_to_version?: number): DatabaseStructure {
 
     let migrations = this.migrations;
     migrations.sort((m1, m2) => m1.version - m2.version);
     if (up_to_version !== undefined) migrations = migrations.filter(m => m.version <= up_to_version);
 
-    const db_schema: DatabaseSchema = {
+    const db_structure: DatabaseStructure = {
       name: db_name,
       version: migrations.map(m => m.version).reduce((a, b) => Math.max(a, b), 0),
       store_names: new Set(),
-      store_schemas: {},
+      store_structures: {},
     };
 
     for (const migration of migrations) {
@@ -251,40 +251,40 @@ export class Migrations {
         switch (spec.kind) {
 
           case 'add_store': {
-            db_schema.store_names.add(spec.name);
+            db_structure.store_names.add(spec.name);
             const item_codec = { encode: spec.encode, decode: spec.decode };
-            db_schema.store_schemas[spec.name] = new StoreSchema({
+            db_structure.store_structures[spec.name] = new StoreStructure({
               name: spec.name,
               item_codec: item_codec,
-              index_schemas: {},
+              index_structures: {},
             });
             break;
           }
 
           case 'remove_store': {
-            db_schema.store_names.delete(spec.name);
-            delete db_schema.store_schemas[spec.name];
+            db_structure.store_names.delete(spec.name);
+            delete db_structure.store_structures[spec.name];
             break;
           }
 
           case 'add_index': {
-            const store_schema = some(db_schema.store_schemas[spec.to]);
-            store_schema.index_names.add(spec.name);
-            store_schema.index_schemas[spec.name] = new IndexSchema({
+            const store_structure = some(db_structure.store_structures[spec.to]);
+            store_structure.index_names.add(spec.name);
+            store_structure.index_structures[spec.name] = new IndexStructure({
               name: spec.name,
               unique: spec.unique,
               explode: spec.explode,
-              item_codec: store_schema.item_codec,
+              item_codec: store_structure.item_codec,
               trait_path_or_getter: spec.trait,
-              parent_store_name: store_schema.name,
+              parent_store_name: store_structure.name,
             });
             break;
           }
 
           case 'remove_index': {
-            const store_schema = some(db_schema.store_schemas[spec.from]);
-            store_schema.index_names.delete(spec.name);
-            delete store_schema.index_schemas[spec.name];
+            const store_structure = some(db_structure.store_structures[spec.from]);
+            store_structure.index_names.delete(spec.name);
+            delete store_structure.index_structures[spec.name];
             break;
           }
 
@@ -292,7 +292,7 @@ export class Migrations {
       }
     }
 
-    return db_schema;
+    return db_structure;
 
   }
 

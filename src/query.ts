@@ -288,7 +288,7 @@ export class QueryExecutor<Item extends Storable, Trait extends IndexableTrait> 
           ? (bound_source as any)._idb_store
           : (bound_source as any)._idb_index;
 
-      const cursor = new Cursor<Item, Trait>(idb_source, this.query_spec, this.source.schema.item_codec);
+      const cursor = new Cursor<Item, Trait>(idb_source, this.query_spec, this.source.structure.item_codec);
       await cursor.init();
       return await callback(cursor);
 

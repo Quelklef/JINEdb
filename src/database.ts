@@ -1,7 +1,7 @@
 
 import { Storable } from './storable';
 import { some, Dict } from './util';
-import { StoreSchema, AutonomousStore } from './store';
+import { StoreStructure, AutonomousStore } from './store';
 import { MigrationSpec, Migrations } from './migration';
 import { BoundConnection, AutonomousConnection } from './connection';
 import { Transaction } from './transaction';
@@ -36,31 +36,31 @@ async function getDbVersion(db_name: string): Promise<number> {
   }
 }
 
-export class DatabaseSchema {
+export class DatabaseStructure {
 
   public name: string;
   public version: number;
-  public store_schemas: Dict<string, StoreSchema<Storable>>;
+  public store_structures: Dict<string, StoreStructure<Storable>>;
 
   constructor(args: {
     name: string;
     version: number;
-    store_schemas: Dict<string, StoreSchema<Storable>>;
+    store_structures: Dict<string, StoreStructure<Storable>>;
   }) {
     this.name = args.name;
     this.version = args.version;
-    this.store_schemas = args.store_schemas;
+    this.store_structures = args.store_structures;
   }
 
   get store_names(): Set<string> {
-    return new Set(Object.keys(this.store_schemas));
+    return new Set(Object.keys(this.store_structures));
   }
 
 }
 
 export class Database<$$ = {}> {
 
-  schema!: DatabaseSchema;
+  structure!: DatabaseStructure;
   migrations: Migrations;
 
   static readonly _allow_construction: symbol = Symbol();
@@ -76,17 +76,17 @@ export class Database<$$ = {}> {
     const db = new Database<$$>(Database._allow_construction, migrations);
 
     const old_version = await getDbVersion(name);
-    db.schema = migrations.calcSchema(name, old_version);
+    db.structure = migrations.calcStructure(name, old_version);
     await migrations.upgrade(db, old_version);
 
     return db;
   }
 
   async withShorthand(): Promise<$$ & Database<$$>> {
-    const conn = new AutonomousConnection(this.schema);
-    for (const store_name of this.schema.store_names) {
-      const store_schema = some(this.schema.store_schemas[store_name]);
-      const store = new AutonomousStore(store_schema, conn);
+    const conn = new AutonomousConnection(this.structure);
+    for (const store_name of this.structure.store_names) {
+      const store_structure = some(this.structure.store_structures[store_name]);
+      const store = new AutonomousStore(store_structure, conn);
       (this as any)['$' + store_name] = store.withShorthand();
     }
     return this as any as $$ & Database<$$>;
@@ -94,7 +94,7 @@ export class Database<$$ = {}> {
 
   async _newIdbConn(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(this.schema.name, this.schema.version);
+      const req = indexedDB.open(this.structure.name, this.structure.version);
       req.onupgradeneeded = _event => reject(Error('Upgrade needed.'));
       req.onsuccess = _event => resolve(req.result);
       req.onerror = _event => reject(req.error);
@@ -103,7 +103,7 @@ export class Database<$$ = {}> {
 
   async newConnection(): Promise<$$ & BoundConnection<$$>> {
     const idb_conn = await this._newIdbConn();
-    const conn = new BoundConnection<$$>(this.schema, idb_conn);
+    const conn = new BoundConnection<$$>(this.structure, idb_conn);
     return conn.withShorthand();
   }
 
@@ -114,19 +114,19 @@ export class Database<$$ = {}> {
     return result;
   }
 
-  _versionChange(version: number, new_schema: DatabaseSchema, upgrade: (tx: Transaction) => void): Promise<void> {
+  _versionChange(version: number, new_structure: DatabaseStructure, upgrade: (tx: Transaction) => void): Promise<void> {
     /* Asynchronously re-open the underlying idb database with the given
     version number, if supplied. If an upgrade function is given, it will be
     attached to the upgradeneeded event of the database open request. */
 
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(this.schema.name, version);
+      const req = indexedDB.open(this.structure.name, version);
       req.onupgradeneeded = _event => {
         const idb_tx = some(req.transaction);
-        new Transaction<$$>(idb_tx, this.schema).wrapSynchronous(tx => upgrade(tx));
+        new Transaction<$$>(idb_tx, this.structure).wrapSynchronous(tx => upgrade(tx));
       };
       req.onsuccess = _event => {
-        this.schema = new_schema;
+        this.structure = new_structure;
         const idb_db = req.result;
         idb_db.close();
         resolve();
@@ -139,7 +139,7 @@ export class Database<$$ = {}> {
 
   async destroy(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.deleteDatabase(this.schema.name);
+      const req = indexedDB.deleteDatabase(this.structure.name);
       req.onsuccess = _event => resolve();
       req.onerror = _event => reject(req.error);
     });
