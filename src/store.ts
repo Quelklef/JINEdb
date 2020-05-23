@@ -41,14 +41,16 @@ export interface Store<Item extends Storable> {
   count(): Promise<number>;
   all(): Promise<Array<Item>>;
 
+  _transact<T>(mode: TransactionMode, callback: (store: BoundStore<Item>) => Promise<T>): Promise<T>;
+
 }
 
 export class BoundStore<Item extends Storable> implements Store<Item> {
 
-  public readonly schema: StoreSchema<Item>;
-  public readonly indexes: Dict<string, BoundIndex<Item, IndexableTrait>>;
+  readonly schema: StoreSchema<Item>;
+  readonly indexes: Dict<string, BoundIndex<Item, IndexableTrait>>;
 
-  private readonly _idb_store: IDBObjectStore;
+  readonly _idb_store: IDBObjectStore;
 
   constructor(
     schema: StoreSchema<Item>,
@@ -134,6 +136,10 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
       };
       req.onerror = _event => reject(req.error);
     });
+  }
+
+  async _transact<T>(mode: TransactionMode, callback: (store: BoundStore<Item>) => Promise<T>): Promise<T> {
+    return await callback(this);
   }
 
 }

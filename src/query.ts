@@ -1,8 +1,11 @@
 
 import { Row } from './row';
-import { some, Dict } from './util';
 import { Storable } from './storable';
+import { some, Dict } from './util';
 import { IndexableTrait } from './traits';
+import { TransactionMode } from './transaction';
+import { Store, BoundStore } from './store';
+import { Index, BoundIndex } from './index';
 import { fullEncode, fullDecode, ItemCodec } from './codec';
 
 interface QueryMeta {
@@ -117,13 +120,10 @@ function compileCursorDirection(query_spec: QuerySpec): IDBCursorDirection {
 }
 
 export function query<Item extends Storable, Trait extends IndexableTrait>(
-  idb_index: IDBIndex,
-  item_codec: ItemCodec<Item>,
+  source: Store<Item> | Index<Item, Trait>,
   query_spec: QuerySpec,
-): QueryResult<Item, Trait> {
-  const cursor = new Cursor<Item, Trait>(idb_index, query_spec, item_codec);
-  const query_result = new QueryResult<Item, Trait>(cursor);
-  return query_result;
+): QueryExecutor<Item, Trait> {
+  return new QueryExecutor<Item, Trait>(source, query_spec);
 }
 
 
@@ -266,52 +266,74 @@ export class Cursor<Item extends Storable, Trait extends IndexableTrait> impleme
 
 }
 
-export class QueryResult<Item extends Storable, Trait extends IndexableTrait> {
+export class QueryExecutor<Item extends Storable, Trait extends IndexableTrait> {
 
-  _cursor: Cursor<Item, Trait>;
+  readonly source: Store<Item> | Index<Item, Trait>;
+  readonly query_spec: QuerySpec;
 
-  constructor(cursor: Cursor<Item, Trait>) {
-    this._cursor = cursor;
+  constructor(source: Store<Item> | Index<Item, Trait>, query_spec: QuerySpec) {
+    this.source = source;
+    this.query_spec = query_spec;
   }
 
-  get cursor(): Cursor<Item, Trait> {
-    return this._cursor;
+  async _withCursor<T>(mode: TransactionMode, callback: (cursor: Cursor<Item, Trait>) => Promise<T>): Promise<T> {
+
+    type TransactType = <T>(mode: TransactionMode, callback: (bound_source: BoundStore<Item> | BoundIndex<Item, Trait>) => Promise<T>) => Promise<T>;
+    const transact: TransactType = this.source._transact.bind(this.source);
+
+    return await transact(mode, async (bound_source: BoundStore<Item> | BoundIndex<Item, Trait>) => {
+
+      const idb_source =
+        bound_source instanceof BoundStore
+          ? (bound_source as any)._idb_store
+          : (bound_source as any)._idb_index;
+
+      const cursor = new Cursor<Item, Trait>(idb_source, this.query_spec, this.source.schema.item_codec);
+      await cursor.init();
+      return await callback(cursor);
+
+    });
+
   }
 
   async replace(mapper: (item: Item) => Item): Promise<void> {
-    await this._cursor.init();
-    while (this._cursor.active) {
-      const old_item = this._cursor.currentItem();
-      const new_item = mapper(old_item);
-      await this._cursor.replace(new_item);
-      await this._cursor.step();
-    }
+    await this._withCursor('rw', async cursor => {
+      while (cursor.active) {
+        const old_item = cursor.currentItem();
+        const new_item = mapper(old_item);
+        await cursor.replace(new_item);
+        await cursor.step();
+      }
+    });
   }
 
   async update(updates: Partial<Item>): Promise<void> {
-    await this._cursor.init();
-    while (this._cursor.active) {
-      await this._cursor.update(updates);
-      await this._cursor.step();
-    }
+    await this._withCursor('rw', async cursor => {
+      while (cursor.active) {
+        await cursor.update(updates);
+        await cursor.step();
+      }
+    });
   }
 
   async delete(): Promise<void> {
-    await this._cursor.init();
-    while (this._cursor.active) {
-      await this._cursor.delete();
-      await this._cursor.step();
-    }
+    await this._withCursor('rw', async cursor => {
+      while (cursor.active) {
+        await cursor.delete();
+        await cursor.step();
+      }
+    });
   }
 
   async array(): Promise<Array<Item>> {
-    const result = [];
-    await this._cursor.init();
-    while (this._cursor.active) {
-      result.push(this._cursor.currentItem());
-      await this._cursor.step();
-    }
-    return result;
+    return await this._withCursor('r', async cursor => {
+      const result: Array<Item> = [];
+      while (cursor.active) {
+        result.push(cursor.currentItem());
+        await cursor.step();
+      }
+      return result;
+    });
   }
 
 }

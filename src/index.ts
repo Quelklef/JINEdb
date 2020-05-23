@@ -4,7 +4,7 @@ import { some } from './util';
 import { Storable } from './storable';
 import { AutonomousStore } from './store';
 import { TransactionMode } from './transaction';
-import { query, QuerySpec, QueryResult } from './query';
+import { query, QuerySpec, QueryExecutor } from './query';
 import { ItemCodec, fullDecode } from './codec';
 import { IndexableTrait } from './traits';
 
@@ -63,14 +63,17 @@ export interface Index<Item extends Storable, Trait extends IndexableTrait> {
   tryGet(trait: Trait): Promise<Item | undefined>;
   get(trait: Trait): Promise<Item>;
   all(): Promise<Array<Item>>;
+  query(spec: QuerySpec): QueryExecutor<Item, Trait>;
+
+  _transact<T>(mode: TransactionMode, callback: (index: BoundIndex<Item, Trait>) => Promise<T>): Promise<T>;
 
 }
 
 export class BoundIndex<Item extends Storable, Trait extends IndexableTrait> implements Index<Item, Trait> {
 
-  public readonly schema: IndexSchema<Item, Trait>
+  readonly schema: IndexSchema<Item, Trait>
 
-  private readonly _idb_index: IDBIndex;
+  readonly _idb_index: IDBIndex;
 
   constructor(schema: IndexSchema<Item, Trait>, idb_index: IDBIndex) {
     this.schema = schema;
@@ -85,8 +88,8 @@ export class BoundIndex<Item extends Storable, Trait extends IndexableTrait> imp
     }
   }
 
-  query(query_spec: QuerySpec): QueryResult<Item, Trait> {
-    return query(this._idb_index, this.schema.item_codec, query_spec);
+  query(query_spec: QuerySpec): QueryExecutor<Item, Trait> {
+    return query(this, query_spec);
   }
 
   async count(): Promise<number> {
@@ -130,6 +133,10 @@ export class BoundIndex<Item extends Storable, Trait extends IndexableTrait> imp
     });
   }
 
+  async _transact<T>(mode: TransactionMode, callback: (index: BoundIndex<Item, Trait>) => Promise<T>): Promise<T> {
+    return await callback(this);
+  }
+
 }
 
 export class AutonomousIndex<Item extends Storable, Trait extends IndexableTrait> implements Index<Item, Trait> {
@@ -143,18 +150,10 @@ export class AutonomousIndex<Item extends Storable, Trait extends IndexableTrait
     this._parent = parent;
   }
 
-  async _transact_NONDEBUG<T>(mode: TransactionMode, callback: (bound_index: BoundIndex<Item, Trait>) => Promise<T>): Promise<T> {
-    return this._parent._transact(mode, async bound_store => {
-      const index = some(bound_store.indexes[this.schema.name]) as BoundIndex<Item, Trait>;
-      return await callback(index);
-    });
-  }
-
   async _transact<T>(mode: TransactionMode, callback: (bound_index: BoundIndex<Item, Trait>) => Promise<T>): Promise<T> {
     return this._parent._transact(mode, async bound_store => {
-      const index = some(bound_store.indexes[this.schema.name]) as BoundIndex<Item, Trait>;
-      const result = await callback(index);
-      return result;
+      const bound_index = some(bound_store.indexes[this.schema.name]) as BoundIndex<Item, Trait>;
+      return await callback(bound_index);
     });
   }
 
@@ -176,6 +175,11 @@ export class AutonomousIndex<Item extends Storable, Trait extends IndexableTrait
 
   async all(): Promise<Array<Item>> {
     return await this._transact('r', async bound_index => await bound_index.all());
+  }
+
+  query(spec: QuerySpec): QueryExecutor<Item, Trait> {
+    // TODO: don't assume is a rw query
+    return query(this, spec);
   }
 
 }
