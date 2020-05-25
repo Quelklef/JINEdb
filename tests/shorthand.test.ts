@@ -1,6 +1,6 @@
 
 import 'fake-indexeddb/auto';
-import { newJine, Jine, addStore, addIndex, Store, Index, BoundConnection } from '../src/jine';
+import { newJine, Jine, addStore, addIndex, Store, Index, BoundConnection, Transaction } from '../src/jine';
 import { reset } from './shared';
 
 type Post = {
@@ -9,7 +9,9 @@ type Post = {
 }
 
 interface $$ {
-  $posts: Store<Post>;
+  $posts: Store<Post> & {
+    $title: Index<Post, string>;
+  };
 }
 
 
@@ -28,48 +30,106 @@ describe('shorthand', () => {
           encode: x => x,
           decode: x => x as Post,
         }),
+
+        addIndex<Post, string>({
+          name: 'title',
+          to: 'posts',
+          trait: 'title',
+        }),
       ],
     },
 
   ];
 
+  const some_post = {
+    title: 'On Bananas',
+    text: 'body text',
+  }
+
+  function tests(host_name: string, get_host: () => $$): void {
+
+    it(`supports ${host_name}.$store.add and ${host_name}.$store.all`, async () => {
+      const host = get_host();
+      await host.$posts.add(some_post);
+      const posts = await host.$posts.all();
+      expect(posts).toEqual([some_post]);
+    });
+
+    it(`supports ${host_name}.$store.add and ${host_name}.$store.count`, async () => {
+      const host = get_host();
+      await host.$posts.add(some_post);
+      await host.$posts.add(some_post);
+      const count = await host.$posts.count();
+      expect(count).toEqual(2);
+    });
+
+    it(`supports ${host_name}.$store.add and ${host_name}.$store.clear`, async () => {
+      const host = get_host();
+      await host.$posts.add(some_post);
+      await host.$posts.add(some_post);
+      await host.$posts.clear();
+      const count = await host.$posts.count();
+      expect(count).toEqual(0);
+    });
+
+    it(`supports ${host_name}.$store.add and ${host_name}.$store.$index.find`, async () => {
+      const host = get_host();
+      await host.$posts.add(some_post);
+      const got = await host.$posts.$title.find('On Bananas');
+      expect(got).toEqual([some_post]);
+    });
+
+    it(`supports ${host_name}.$store.add and ${host_name}.$store.$index.all`, async () => {
+      const host = get_host();
+      await host.$posts.add(some_post);
+      const got = await host.$posts.$title.all().delete();
+      const count = await host.$posts.count();
+      expect(count).toEqual(0);
+    });
+
+  }
+
+  // --
+
   let jine!: Jine<$$>;
-  let conn!: $$ & BoundConnection<$$>;
 
   beforeEach(async () => {
     await reset();
     jine = await newJine<$$>('jine', migrations);
-    conn = await jine.newConnection();
   });
 
-  afterEach(async () => {
-    conn.close();
-  });
+  tests('Database', () => jine);
 
-  const some_post = {
-    title: 'my new post',
-    text: 'body text',
-  }
+  describe("connection-bound", () => {
 
-  it('supports $store.add and $store.all', async () => {
-    await conn.$posts.add(some_post);
-    const posts = await conn.$posts.all();
-    expect(posts).toEqual([some_post]);
-  });
+    let conn!: $$ & BoundConnection<$$>;
 
-  it('supports $store.add and $store.count', async () => {
-    await conn.$posts.add(some_post);
-    await conn.$posts.add(some_post);
-    const count = await conn.$posts.count();
-    expect(count).toEqual(2);
-  });
+    beforeEach(async () => {
+      conn = await jine.newConnection();
+    });
 
-  it('supports $store.add and $store.clear', async () => {
-    await conn.$posts.add(some_post);
-    await conn.$posts.add(some_post);
-    await conn.$posts.clear();
-    const count = await conn.$posts.count();
-    expect(count).toEqual(0);
+    afterEach(async () => {
+      conn.close();
+    });
+
+    tests('Connection', () => conn);
+
+    describe("transaction-bound", () => {
+
+      let tx!: $$ & Transaction<$$>;
+
+      beforeEach(async () => {
+        tx = await conn.newTransaction([conn.$posts], 'rw');
+      });
+
+      afterEach(async () => {
+        tx.commit();
+      });
+
+      tests('Transaction', () => tx);
+
+    });
+
   });
 
 });

@@ -59,14 +59,24 @@ export class BoundConnection<$$ = {}> implements Connection {
     return this as any as $$ & BoundConnection<$$>;
   }
 
+  async _newTransaction(store_names: Array<string>, mode: TransactionMode): Promise<$$ & Transaction<$$>> {
+    const idb_conn = await this._idb_conn;
+    const idb_tx = idb_conn.transaction(store_names, uglifyTransactionMode(mode));
+    const tx = await new Transaction<$$>(idb_tx, this.structure).withShorthand();
+    return tx;
+  }
+
+  async newTransaction(stores: Array<Store<any>>, mode: TransactionMode): Promise<$$ & Transaction<$$>> {
+    const store_names = stores.map(store => store.structure.name);
+    return await this._newTransaction(store_names, mode);
+  }
+
   async _transact<T>(
     store_names: Array<string>,
     mode: TransactionMode,
     callback: (tx: $$ & Transaction<$$>) => Promise<T>,
   ): Promise<T> {
-    const idb_conn = await this._idb_conn;
-    const idb_tx = idb_conn.transaction(store_names, uglifyTransactionMode(mode));
-    return await new Transaction<$$>(idb_tx, this.structure).wrap(async tx => await callback(tx));
+    return (await this._newTransaction(store_names, mode)).wrap(async tx => await callback(tx));
   }
 
   async transact<T>(
@@ -74,8 +84,7 @@ export class BoundConnection<$$ = {}> implements Connection {
     mode: TransactionMode,
     callback: (tx: $$ & Transaction<$$>) => Promise<T>,
   ): Promise<T> {
-    const store_names = stores.map(store => store.structure.name);
-    return await this._transact(store_names, mode, callback);
+    return (await this.newTransaction(stores, mode)).wrap(async tx => await callback(tx));
   }
 
   close(): void {

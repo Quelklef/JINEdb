@@ -3,6 +3,7 @@
 // (in order of ownership; lower is bound to higher)
 export { Database } from './database';
 export { Connection, BoundConnection, AutonomousConnection } from './connection';
+export { Transaction } from './transaction';
 export { Store, BoundStore, AutonomousStore } from './store';
 export { Index, BoundIndex, AutonomousIndex } from './index';
 
