@@ -74,52 +74,52 @@ describe('query', () => {
     });
 
     it("supports * queries", async () => {
-      const result = await conn.$nums.$value.query(null).array();
+      const result = await conn.$nums.$value.range(null).array();
       expect(result).toEqual([one, two, three, four, five]);
     });
 
     it("supports EQ queries", async () => {
-      const result = await conn.$nums.$value.query({ equals: 3 }).array();
+      const result = await conn.$nums.$value.range({ equals: 3 }).array();
       expect(result).toEqual([three]);
     });
 
     it("supports GT queries", async () => {
-      const result = await conn.$nums.$value.query({ above: 2 }).array();
+      const result = await conn.$nums.$value.range({ above: 2 }).array();
       expect(result).toEqual([three, four, five]);
     });
 
     it("supports GE queries", async () => {
-      const result = await conn.$nums.$value.query({ from: 2 }).array();
+      const result = await conn.$nums.$value.range({ from: 2 }).array();
       expect(result).toEqual([two, three, four, five]);
     });
 
     it("supports LT queries", async () => {
-      const result = await conn.$nums.$value.query({ below: 4 }).array();
+      const result = await conn.$nums.$value.range({ below: 4 }).array();
       expect(result).toEqual([one, two, three]);
     });
 
     it("supports LE queries", async () => {
-      const result = await conn.$nums.$value.query({ through: 4 }).array();
+      const result = await conn.$nums.$value.range({ through: 4 }).array();
       expect(result).toEqual([one, two, three, four]);
     });
 
     it("supports GT/LT queries", async () => {
-      const result = await conn.$nums.$value.query({ above: 1, below: 4 }).array();
+      const result = await conn.$nums.$value.range({ above: 1, below: 4 }).array();
       expect(result).toEqual([two, three]);
     });
 
     it("supports GT/LE queries", async () => {
-      const result = await conn.$nums.$value.query({ above: 1, through: 4 }).array();
+      const result = await conn.$nums.$value.range({ above: 1, through: 4 }).array();
       expect(result).toEqual([two, three, four]);
     });
 
     it("supports GE/LT queries", async () => {
-      const result = await conn.$nums.$value.query({ from: 1, below: 4 }).array();
+      const result = await conn.$nums.$value.range({ from: 1, below: 4 }).array();
       expect(result).toEqual([one, two, three]);
     });
 
     it("supports GE/LE queries", async () => {
-      const result = await conn.$nums.$value.query({ from: 1, through: 4 }).array();
+      const result = await conn.$nums.$value.range({ from: 1, through: 4 }).array();
       expect(result).toEqual([one, two, three, four]);
     });
 

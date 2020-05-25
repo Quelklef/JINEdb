@@ -1,12 +1,11 @@
 
-import { Row } from './row';
 import { some } from './util';
 import { Storable } from './storable';
+import { IndexableTrait } from './traits';
 import { AutonomousStore } from './store';
 import { TransactionMode } from './transaction';
-import { query, QuerySpec, QueryExecutor } from './query';
-import { ItemCodec, fullDecode } from './codec';
-import { IndexableTrait } from './traits';
+import { ItemCodec } from './codec';
+import { query, queryUnique, QuerySpec, QueryExecutor, UniqueQueryExecutor } from './query';
 
 export class IndexStructure<Item extends Storable, Trait extends IndexableTrait> {
 
@@ -58,12 +57,12 @@ export interface Index<Item extends Storable, Trait extends IndexableTrait> {
   // TODO: Structure types should probably be in respective files, not together in structure.ts
   readonly structure: IndexStructure<Item, Trait>;
 
-  count(): Promise<number>;
-  find(trait: Trait): Promise<Array<Item>>;
-  tryGet(trait: Trait): Promise<Item | undefined>;
   get(trait: Trait): Promise<Item>;
-  all(): Promise<Array<Item>>;
-  query(spec: QuerySpec): QueryExecutor<Item, Trait>;
+  find(trait: Trait): Promise<Array<Item>>;
+
+  one(trait: Trait): UniqueQueryExecutor<Item, Trait>;
+  range(spec: QuerySpec): QueryExecutor<Item, Trait>;
+  all(): QueryExecutor<Item, Trait>;
 
   _transact<T>(mode: TransactionMode, callback: (index: BoundIndex<Item, Trait>) => Promise<T>): Promise<T>;
 
@@ -88,49 +87,24 @@ export class BoundIndex<Item extends Storable, Trait extends IndexableTrait> imp
     }
   }
 
-  query(query_spec: QuerySpec): QueryExecutor<Item, Trait> {
+  one(trait: Trait): UniqueQueryExecutor<Item, Trait> {
+    return queryUnique(this, { equals: trait });
+  }
+
+  range(query_spec: QuerySpec): QueryExecutor<Item, Trait> {
     return query(this, query_spec);
   }
 
-  async count(): Promise<number> {
-    return new Promise((resolve, reject) => {
-      const req = this._idb_index.count();
-      req.onsuccess = event => {
-        const count = (event.target as any).result as number;
-        resolve(count);
-      };
-      req.onerror = _event => reject(req.error);
-    });
-  }
-
-  async tryGet(trait: Trait): Promise<Item | undefined> {
-    if (!this.structure.unique)
-      throw new Error('.get() is only valid on a unique index');
-    const results = await this.query({ equals: trait }).array();
-    return results[0];
+  all(): QueryExecutor<Item, Trait> {
+    return this.range(null);
   }
 
   async get(trait: Trait): Promise<Item> {
-    const got = await this.tryGet(trait);
-    if (got === undefined)
-      throw new Error('No match');
-    return got;
+    return await this.one(trait).get();
   }
 
   async find(trait: Trait): Promise<Array<Item>> {
-    return await this.query({ equals: trait }).array();
-  }
-
-  async all(): Promise<Array<Item>> {
-    return new Promise((resolve, reject) => {
-      const req = this._idb_index.getAll();
-      req.onsuccess = event => {
-        const rows = (event.target as any).result as Array<Row>;
-        const items = rows.map(row => fullDecode(row.payload, this.structure.item_codec));
-        resolve(items as Array<Item>);
-      };
-      req.onerror = _event => reject(req.error);
-    });
+    return await this.range({ equals: trait }).array();
   }
 
   async _transact<T>(mode: TransactionMode, callback: (index: BoundIndex<Item, Trait>) => Promise<T>): Promise<T> {
@@ -157,29 +131,24 @@ export class AutonomousIndex<Item extends Storable, Trait extends IndexableTrait
     });
   }
 
-  async count(): Promise<number> {
-    return await this._transact('r', async bound_index => await bound_index.count());
+  one(trait: Trait): UniqueQueryExecutor<Item, Trait> {
+    return queryUnique(this, { equals: trait });
   }
 
-  async tryGet(trait: Trait): Promise<Item | undefined> {
-    return await this._transact('r', async bound_index => await bound_index.tryGet(trait));
+  range(spec: QuerySpec): QueryExecutor<Item, Trait> {
+    return query(this, spec);
+  }
+
+  all(): QueryExecutor<Item, Trait> {
+    return this.range(null);
   }
 
   async get(trait: Trait): Promise<Item> {
-    return await this._transact('r', async bound_index => await bound_index.get(trait));
+    return await this.one(trait).get();
   }
 
   async find(trait: Trait): Promise<Array<Item>> {
-    return await this._transact('r', async bound_index => await bound_index.find(trait));
-  }
-
-  async all(): Promise<Array<Item>> {
-    return await this._transact('r', async bound_index => await bound_index.all());
-  }
-
-  query(spec: QuerySpec): QueryExecutor<Item, Trait> {
-    // TODO: don't assume is a rw query
-    return query(this, spec);
+    return await this.range({ equals: trait }).array();
   }
 
 }

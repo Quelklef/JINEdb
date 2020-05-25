@@ -126,6 +126,13 @@ export function query<Item extends Storable, Trait extends IndexableTrait>(
   return new QueryExecutor<Item, Trait>(source, query_spec);
 }
 
+export function queryUnique<Item extends Storable, Trait extends IndexableTrait>(
+  source: Index<Item, Trait>,
+  query_spec: QuerySpec,
+): UniqueQueryExecutor<Item, Trait> {
+  return new UniqueQueryExecutor<Item, Trait>(source, query_spec);
+}
+
 
 
 export class Cursor<Item extends Storable, Trait extends IndexableTrait> implements Cursor<Item, Trait> {
@@ -325,6 +332,16 @@ export class QueryExecutor<Item extends Storable, Trait extends IndexableTrait> 
     });
   }
 
+  async count(): Promise<number> {
+    return await this._withCursor('r', async cursor => {
+      let result = 0;
+      for (; cursor.active; await cursor.step()) {
+        result++;
+      }
+      return result;
+    });
+  }
+
   async array(): Promise<Array<Item>> {
     return await this._withCursor('r', async cursor => {
       const result: Array<Item> = [];
@@ -334,6 +351,37 @@ export class QueryExecutor<Item extends Storable, Trait extends IndexableTrait> 
       }
       return result;
     });
+  }
+
+}
+
+export class UniqueQueryExecutor<Item extends Storable, Trait extends IndexableTrait> {
+
+  readonly qe: QueryExecutor<Item, Trait>;
+
+  constructor(source: Index<Item, Trait>, query_spec: QuerySpec) {
+    if (!source.structure.unique)
+      throw Error('Cannot create a UniqueQueryExecutor on a non-unique index.');
+    this.qe = new QueryExecutor(source, query_spec);
+  }
+
+  async replace(new_item: Item): Promise<void> {
+    await this.qe.replace(_old_item => new_item);
+  }
+
+  async update(updates: Partial<Item>): Promise<void> {
+    await this.qe.update(updates);
+  }
+
+  async delete(): Promise<void> {
+    await this.qe.delete();
+  }
+
+  async get(): Promise<Item> {
+    const got = (await this.qe.array())[0];
+    if (got === undefined)
+      throw Error('No item found');
+    return got;
   }
 
 }
