@@ -1,10 +1,10 @@
 
 import { Storable } from './storable';
 import { some, Dict } from './util';
-import { StoreStructure, AutonomousStore } from './store';
-import { MigrationSpec, Migrations } from './migration';
-import { BoundConnection, AutonomousConnection } from './connection';
 import { Transaction } from './transaction';
+import { MigrationSpec, Migrations } from './migration';
+import { StoreStructure, AutonomousStore } from './store';
+import { BoundConnection, AutonomousConnection } from './connection';
 
 async function getDbVersion(db_name: string): Promise<number> {
   /* Return current database version number. Returns an integer greater than or
