@@ -194,7 +194,7 @@ export class Migration {
       case 'remove_index': {
         const store_name = spec.from;
         const index_name = spec.name;
-        const index_spec = some(tx.tx_structure.store_structures[store_name]?.index_structures[index_name]);
+        const index_spec = some(tx.structure.store_structures[store_name]?.index_structures[index_name]);
         if (index_spec.kind === 'path') {
           return;
         } else {

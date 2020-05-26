@@ -36,11 +36,27 @@ async function getDbVersion(db_name: string): Promise<number> {
   }
 }
 
+/**
+ * Represents the structure of a database
+ */
 export class DatabaseStructure {
 
-  public name: string;
-  public version: number;
-  public store_structures: Dict<string, StoreStructure<Storable>>;
+  /**
+   * The name of the database.
+   * Database names are unique.
+   */
+  name: string;
+
+  /**
+   * The version of the database.
+   * Database versions are integers greater than zero.
+   */
+  version: number;
+
+  /**
+   * The structures of the stores within this database.
+   */
+  store_structures: Dict<string, StoreStructure<Storable>>;
 
   constructor(args: {
     name: string;
@@ -52,15 +68,28 @@ export class DatabaseStructure {
     this.store_structures = args.store_structures;
   }
 
+  /**
+   * The store names. Equivalent to `Object.keys(this.store_structures)`.
+   */
   get store_names(): Set<string> {
     return new Set(Object.keys(this.store_structures));
   }
 
 }
 
+/**
+ * A database
+ */
 export class Database<$$ = {}> {
 
+  /**
+   * The structure of the database
+   */
   structure!: DatabaseStructure;
+
+  /**
+   * The database migrations
+   */
   migrations: Migrations;
 
   static readonly _allow_construction: symbol = Symbol();
@@ -103,12 +132,31 @@ export class Database<$$ = {}> {
     });
   }
 
+  /**
+   * Creates and returns a new connection to the database.
+   *
+   * This connection must be manually closed. If this scope is well-defined, it is recommended
+   * to use {@link Database.connect}.
+   *
+   * @returns A new connection
+   */
   async newConnection(): Promise<$$ & BoundConnection<$$>> {
     const idb_conn = await this._newIdbConn();
     const conn = new BoundConnection<$$>(this.structure, idb_conn);
     return conn._withShorthand();
   }
 
+  /**
+   * Connect to a database and run some code.
+   *
+   * This will create a new connection to the database, run the given callback, and then
+   * close the connection once the callback has completed.
+   *
+   * @param callback The function to run with the database connection.
+   * @typeParam T The return type of the callback.
+   *
+   * @returns The callback result
+   */
   async connect<T>(callback: (conn: $$ & BoundConnection<$$>) => Promise<T>): Promise<T> {
     const conn = await this.newConnection();
     const result = await callback(conn);
@@ -139,6 +187,9 @@ export class Database<$$ = {}> {
     });
   }
 
+  /**
+   * Delete the database.
+   */
   async destroy(): Promise<void> {
     return new Promise((resolve, reject) => {
       const req = indexedDB.deleteDatabase(this.structure.name);

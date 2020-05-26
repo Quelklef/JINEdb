@@ -12,105 +12,81 @@ import { Store, BoundStore } from './store';
 import { Index, BoundIndex } from './index';
 import { some, Dict, Codec } from './util';
 
-interface QueryMeta {
+/**
+ * Query spec
+ *
+ * A query falls into one of 3 categories:
+ *
+ * Wildcard: A wildcard query selects everything. This is given by `null`.
+ *
+ * Exact: An exact query selects a particular value. This is given by `{ equals: value }`.
+ *
+ * Range: A range query selects values within a particular range. The range may be
+ * bounded below or above, or both, but not neither. Both bounds may be inclusive
+ * or exclusive. Lower bounds are given by the keys `from` and `above`, for inclusive
+ * and exclusive, respectively; likewise, upper bounds are given by keywords
+ * `through` and `below`. Thus `{ from: 0, below: 10 }` represents `0 <= x < 10` and
+ * `{ through: 3 }` represents
+ * `x <= 3`.
+ *
+ * Additionally, a query may have the `reversed` and `unique` keys. `reversed` marks that
+ * the query results should be traversed in reverse order, and `unique` marks that
+ * duplicated values should be skipped.
+ */
+export interface QuerySpec {  // TODO: should this be parameterized with <Trait>?
+  /** Select everything */
+  everything?: boolean;
+  /** Equality */
+  equals?: any;
+  /** Inclusive lower bound */
+  from?: any;
+  /** Exclusive lower bound */
+  above?: any;
+  /** Inclusive upper bound */
+  through?: any;
+  /** Exclusive upper bound */
+  below?: any;
+  /** Reversed? */
   reversed?: boolean;
+  /** Unique? */
   unique?: boolean;
-}
-
-interface ExactBound { equals: any }
-
-interface LowerInclusive { from?: any }
-interface LowerExclusive { above?: any }
-interface UpperInclusive { through?: any }
-interface UpperExclusive { below?: any }
-
-type EverythingQuerySpec = null;
-type ExactQuerySpec = ExactBound & QueryMeta;
-type LIQuerySpec = LowerInclusive & QueryMeta;
-type LEQuerySpec = LowerExclusive & QueryMeta;
-type UIQuerySpec = UpperInclusive & QueryMeta;
-type UEQuerySpec = UpperExclusive & QueryMeta;
-type IIQuerySpec = LowerInclusive & UpperInclusive & QueryMeta;
-type IEQuerySpec = LowerInclusive & UpperExclusive & QueryMeta;
-type EIQuerySpec = LowerExclusive & UpperInclusive & QueryMeta;
-type EEQuerySpec = LowerExclusive & UpperExclusive & QueryMeta;
-
-export type QuerySpec
-  = EverythingQuerySpec
-  | ExactQuerySpec
-  | LIQuerySpec
-  | LEQuerySpec
-  | UIQuerySpec
-  | UEQuerySpec
-  | IIQuerySpec
-  | IEQuerySpec
-  | EIQuerySpec
-  | EEQuerySpec
-  ;
+};
 
 
-function compileTraitRange(query_spec: QuerySpec): IDBKeyRange | undefined {
-  /*
-
-  Conpile an IDBKeyRange object from a QuerySpec.
-
-  If the QuerySpec object matches more than one particular type,
-  for instance by satisfying both ExactQuerySpec and EEQuerySpec,
-  then one type will win over the other with the following
-  order of precedence:
-
-    - ExactQuerySpec
-    - IIQuerySpec
-    - IEQuerySpec
-    - EIQuerySpec
-    - EEQuerySpec
-    - LIQuerySpec
-    - LEQuerySpec
-    - UIQuerySpec
-    - UEQuerySpec
-
-  */
+function compileTraitRange(spec: QuerySpec): IDBKeyRange | undefined {
+  /* Conpile an IDBKeyRange object from a QuerySpec. */
 
   // The implementation isn't elegant, but it's easy to understand
 
-  if (query_spec === null)
+  if (spec.everything)
     return undefined;
 
-  const exact_q = query_spec as ExactQuerySpec;
-  if ('equals' in exact_q)
-    return IDBKeyRange.only(exact_q.equals);
+  if ('equals' in spec)
+    return IDBKeyRange.only(spec.equals);
 
-  const ii_q = query_spec as IIQuerySpec;
-  if ('from' in ii_q && 'through' in ii_q)
-    return IDBKeyRange.bound(ii_q.from, ii_q.through, false, false);
+  if ('from' in spec && 'through' in spec)
+    return IDBKeyRange.bound(spec.from, spec.through, false, false);
 
-  const ie_q = query_spec as IEQuerySpec;
-  if ('from' in ie_q && 'below' in ie_q)
-    return IDBKeyRange.bound(ie_q.from, ie_q.below, false, true);
+  if ('from' in spec && 'below' in spec)
+    return IDBKeyRange.bound(spec.from, spec.below, false, true);
 
-  const ei_q = query_spec as EIQuerySpec;
-  if ('above' in ei_q && 'through' in ei_q)
-    return IDBKeyRange.bound(ei_q.above, ei_q.through, true, false);
+  if ('above' in spec && 'through' in spec)
+    return IDBKeyRange.bound(spec.above, spec.through, true, false);
 
-  const ee_q = query_spec as EEQuerySpec;
-  if ('above' in ee_q && 'below' in ee_q)
-    return IDBKeyRange.bound(ee_q.above, ee_q.below, true, true);
+  if ('above' in spec && 'below' in spec)
+    return IDBKeyRange.bound(spec.above, spec.below, true, true);
 
-  const li_q = query_spec as LIQuerySpec;
-  if ('from' in li_q)
-    return IDBKeyRange.lowerBound(li_q.from, false)
+  if ('from' in spec)
+    return IDBKeyRange.lowerBound(spec.from, false)
 
-  const le_q = query_spec as LEQuerySpec;
-  if ('above' in le_q)
-    return IDBKeyRange.lowerBound(le_q.above, true);
+  if ('above' in spec)
+    return IDBKeyRange.lowerBound(spec.above, true);
 
-  const ui_q = query_spec as UIQuerySpec;
-  if ('through' in ui_q)
-    return IDBKeyRange.upperBound(ui_q.through, false);
+  if ('through' in spec)
+    return IDBKeyRange.upperBound(spec.through, false);
 
-  const ue_q = query_spec as UEQuerySpec;
-  if ('below' in ue_q)
-    return IDBKeyRange.upperBound(ue_q.below, true);
+  if ('below' in spec)
+    return IDBKeyRange.upperBound(spec.below, true);
 
   throw new Error('uh oh');
 
@@ -281,6 +257,11 @@ export class Cursor<Item extends Storable, Trait extends Indexable> implements C
 
 }
 
+/**
+ * Used to execute queries.
+ * @typeParam Item The type of the items for the parent database
+ * @typeParam Trait The type of the trait for the parent index
+ */
 export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
 
   readonly source: Store<Item> | Index<Item, Trait>;
@@ -310,6 +291,10 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
 
   }
 
+  /**
+   * Replace all selected items.
+   * @param mapper Given an existing item, this function should return the new item.
+   */
   async replace(mapper: (item: Item) => Item): Promise<void> {
     await this._withCursor('rw', async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
@@ -320,6 +305,10 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
     });
   }
 
+  /**
+   * Update all selected items with the given delta.
+   * @param updates The delta
+   */
   async update(updates: Partial<Item>): Promise<void> {
     await this._withCursor('rw', async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
@@ -328,6 +317,9 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
     });
   }
 
+  /**
+   * Delete the selected items from the database.
+   */
   async delete(): Promise<void> {
     await this._withCursor('rw', async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
@@ -336,6 +328,9 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
     });
   }
 
+  /**
+   * Return the number of selected items.
+   */
   async count(): Promise<number> {
     return await this._withCursor('r', async cursor => {
       let result = 0;
@@ -346,6 +341,9 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
     });
   }
 
+  /**
+   * Return all selected items as an array.
+   */
   async array(): Promise<Array<Item>> {
     return await this._withCursor('r', async cursor => {
       const result: Array<Item> = [];
@@ -358,6 +356,9 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
 
 }
 
+/**
+ * Like [[QueryExecutor]], but for unique indexes.
+ */
 export class UniqueQueryExecutor<Item extends Storable, Trait extends Indexable> {
 
   readonly qe: QueryExecutor<Item, Trait>;
@@ -368,18 +369,39 @@ export class UniqueQueryExecutor<Item extends Storable, Trait extends Indexable>
     this.qe = new QueryExecutor(source, query_spec);
   }
 
+  /**
+   * Replace the item with a new item.
+   * @param new_item The new item
+   */
   async replace(new_item: Item): Promise<void> {
     await this.qe.replace(_old_item => new_item);
   }
 
+  /**
+   * Update the item with a delta
+   * @param updates The delta
+   */
   async update(updates: Partial<Item>): Promise<void> {
     await this.qe.update(updates);
   }
 
+  /**
+   * Delete the item from the database.
+   */
   async delete(): Promise<void> {
     await this.qe.delete();
   }
 
+  /**
+   * Get the item from the database.
+   *
+   * Example:
+   * ```ts
+   * await my_jine.$my_store.$my_index.one(trait_val).get()
+   * ```
+   *
+   * @returns The item
+   */
   async get(): Promise<Item> {
     const got = (await this.qe.array())[0];
     if (got === undefined)

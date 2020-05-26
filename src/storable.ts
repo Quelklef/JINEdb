@@ -2,8 +2,10 @@
 import { Dict } from './util';
 import { CodecRegistry, Encodable } from './codec-registry';
 
-// What types are storable in IndexedDB?
 // List is according to https://stackoverflow.com/a/22550288/4608364
+/**
+ * Types that Jine is able to store out-of-the-box.
+ */
 export type NativelyStorable
   = null
   | undefined
@@ -21,18 +23,26 @@ export type NativelyStorable
   | ImageBitmap
   | ImageData
   | Array<NativelyStorable>
-  | NativelyStorableObject
+  | PlainObject
   | Map<NativelyStorable, NativelyStorable>
   | Set<NativelyStorable>
   ;
 
 // works with "plain" objects. I assume that "plain" means string keys.
-// empty interface is a hack to get TS to work
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-interface NativelyStorableObject extends Dict<string, NativelyStorable> { }
+// (empty interface is a hack to get TS to work)
+/**
+ * An object with string keys and [[nativelyStorable]] values.
+ */
+interface PlainObject extends Dict<string, NativelyStorable> { } // eslint-disable-line @typescript-eslint/no-empty-interface
 
 // --
 
+/**
+ * Types that Jine is able to store.
+ *
+ * Jine supports a number of types out-of-the-box (see [[NativelyStorable]]).
+ * To be able to store a custom type, it must be registered, see [[registerStorable]].
+ */
 export type Storable = NativelyStorable | Encodable;
 
 type Box = {

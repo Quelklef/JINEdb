@@ -13,11 +13,26 @@ import { some, Dict, Codec } from './util';
 import { Transaction, TransactionMode } from './transaction';
 import { IndexStructure, Index, BoundIndex, AutonomousIndex } from './index';
 
+/**
+ * The structure of an object store
+ * @typeParam Item The type of objects contained in this store.
+ */
 export class StoreStructure<Item extends Storable> {
 
-  public name: string;
-  public item_codec: Codec<Item, Storable>;
-  public index_structures: Dict<string, IndexStructure<Item, Indexable>>;
+  /**
+   * The name of the store
+   */
+  name: string;
+
+  /**
+   * The codec involved in serialization and de-serialization of stored items.
+   */
+  item_codec: Codec<Item, Storable>;
+
+  /**
+   * The structure of the store's indexes
+   */
+  index_structures: Dict<string, IndexStructure<Item, Indexable>>;
 
   constructor(args: {
     name: string;
@@ -29,29 +44,71 @@ export class StoreStructure<Item extends Storable> {
     this.index_structures = args.index_structures;
   }
 
+  /**
+   * The names of the store's indexes.
+   * Equivalent to `Object.keys(this.index_structures)`
+   * @returns The store names
+   */
   get index_names(): Set<string> {
     return new Set(Object.keys(this.index_structures));
   }
 
 }
 
+/**
+ * Generic interface for Jine stores.
+ *
+ * A store is a collection of items saved and managed by Jine.
+ * Jine can natively handle storing a large number of types, but not all.
+ * Custom types must be registered. See [[Storable]].
+ *
+ * @typeParam Item The type of objects contained in this store.
+ */
 export interface Store<Item extends Storable> {
 
+  /**
+   * Store structure
+   */
   readonly structure: StoreStructure<Item>;
+
+  /**
+   * Store indexes
+   */
   readonly indexes: Dict<string, Index<Item, Indexable>>;
 
+  /**
+   * Add an item to the store.
+   */
   add(item: Item): Promise<void>;
+
+  /**
+   * Remove all items from the store.
+   */
   clear(): Promise<void>;
+
+  /**
+   * @returns The number of items in the store.
+   */
   count(): Promise<number>;
+
+  /**
+   * @returns An array with all items in the store.
+   */
   all(): Promise<Array<Item>>;
 
   _transact<T>(mode: TransactionMode, callback: (store: BoundStore<Item>) => Promise<T>): Promise<T>;
 
 }
 
+/**
+ * A store that is bound to a particular transaction
+ */
 export class BoundStore<Item extends Storable> implements Store<Item> {
 
+  /** @inheritDoc */
   readonly structure: StoreStructure<Item>;
+
+  /** @inheritDoc */
   readonly indexes: Dict<string, BoundIndex<Item, Indexable>>;
 
   readonly _idb_store: IDBObjectStore;
@@ -82,13 +139,14 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
   }
 
   async _mapExistingRows(mapper: (row: Row) => Row): Promise<void> {
-    const cursor = new Cursor(this._idb_store, null, this.structure.item_codec);
+    const cursor = new Cursor(this._idb_store, { everything: true }, this.structure.item_codec);
     await cursor.init();
     while (cursor.active) {
       await cursor._replaceRow(mapper(cursor._currentRow()));
     }
   }
 
+  /** @inheritDoc */
   async add(item: Item): Promise<void> {
     return new Promise((resolve, reject) => {
       // Don't include the id since it's autoincrement'd
@@ -116,6 +174,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     return traits;
   }
 
+  /** @inheritDoc */
   async clear(): Promise<void> {
     return new Promise((resolve, reject) => {
       const req = this._idb_store.clear();
@@ -124,6 +183,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     });
   }
 
+  /** @inheritDoc */
   async count(): Promise<number> {
     return new Promise((resolve, reject) => {
       const req = this._idb_store.count();
@@ -135,6 +195,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     });
   }
 
+  /** @inheritDoc */
   async all(): Promise<Array<Item>> {
     return new Promise((resolve, reject) => {
       const req = this._idb_store.getAll();
@@ -153,12 +214,18 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
 
 }
 
+/**
+ * A store that will start a new transaction on each method call
+ */
 export class AutonomousStore<Item extends Storable> implements Store<Item> {
 
-  public readonly structure: StoreStructure<Item>;
-  public readonly indexes: Dict<string, AutonomousIndex<Item, Indexable>>;
+  /** @inheritDoc */
+  readonly structure: StoreStructure<Item>;
 
-  private readonly _conn: Connection;
+  /** @inheritDoc */
+  readonly indexes: Dict<string, AutonomousIndex<Item, Indexable>>;
+
+  readonly _conn: Connection;
 
   constructor(structure: StoreStructure<Item>, conn: Connection) {
     this.structure = structure;
@@ -187,18 +254,22 @@ export class AutonomousStore<Item extends Storable> implements Store<Item> {
     });
   }
 
+  /** @inheritDoc */
   async add(item: Item): Promise<void> {
     await this._transact('rw', async bound_store => await bound_store.add(item));
   }
 
+  /** @inheritDoc */
   async clear(): Promise<void> {
     await this._transact('rw', async bound_store => await bound_store.clear());
   }
 
+  /** @inheritDoc */
   async count(): Promise<number> {
     return await this._transact('r', async bound_store => await bound_store.count());
   }
 
+  /** @inheritDoc */
   async all(): Promise<Array<Item>> {
     return await this._transact('r', async bound_store => await bound_store.all());
   }
