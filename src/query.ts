@@ -1,12 +1,16 @@
 
+import * as storable from './storable';
+import * as indexable from './indexable';
+
+type Storable = storable.Storable;
+type Indexable = indexable.Indexable;
+type NativelyIndexable = indexable.NativelyIndexable;
+
 import { Row } from './row';
-import { Storable } from './storable';
-import { some, Dict } from './util';
-import { IndexableTrait } from './traits';
 import { TransactionMode } from './transaction';
 import { Store, BoundStore } from './store';
 import { Index, BoundIndex } from './index';
-import { fullEncode, fullDecode, ItemCodec } from './codec';
+import { some, Dict, Codec } from './util';
 
 interface QueryMeta {
   reversed?: boolean;
@@ -119,14 +123,14 @@ function compileCursorDirection(query_spec: QuerySpec): IDBCursorDirection {
   return result as IDBCursorDirection;
 }
 
-export function query<Item extends Storable, Trait extends IndexableTrait>(
+export function query<Item extends Storable, Trait extends Indexable>(
   source: Store<Item> | Index<Item, Trait>,
   query_spec: QuerySpec,
 ): QueryExecutor<Item, Trait> {
   return new QueryExecutor<Item, Trait>(source, query_spec);
 }
 
-export function queryUnique<Item extends Storable, Trait extends IndexableTrait>(
+export function queryUnique<Item extends Storable, Trait extends Indexable>(
   source: Index<Item, Trait>,
   query_spec: QuerySpec,
 ): UniqueQueryExecutor<Item, Trait> {
@@ -135,7 +139,7 @@ export function queryUnique<Item extends Storable, Trait extends IndexableTrait>
 
 
 
-export class Cursor<Item extends Storable, Trait extends IndexableTrait> implements Cursor<Item, Trait> {
+export class Cursor<Item extends Storable, Trait extends Indexable> implements Cursor<Item, Trait> {
   /* IDBCursor wrapper */
 
   // For use by the API user to monkeypatch in any
@@ -143,14 +147,14 @@ export class Cursor<Item extends Storable, Trait extends IndexableTrait> impleme
   // TODO: replicate on other classes.
   my: Dict<string, any> = {};
 
-  readonly _item_codec: ItemCodec<Item>;
+  readonly _item_codec: Codec<Item, Storable>;
   readonly _query_spec: QuerySpec;
 
   readonly _idb_source: IDBIndex | IDBObjectStore;
   _idb_req: IDBRequest | null;
   _idb_cur: IDBCursorWithValue | null;
 
-  constructor(idb_source: IDBIndex | IDBObjectStore, query_spec: QuerySpec, item_codec: ItemCodec<Item>) {
+  constructor(idb_source: IDBIndex | IDBObjectStore, query_spec: QuerySpec, item_codec: Codec<Item, Storable>) {
     this._item_codec = item_codec;
     this._query_spec = query_spec;
     this._idb_source = idb_source;
@@ -225,13 +229,17 @@ export class Cursor<Item extends Storable, Trait extends IndexableTrait> impleme
     // Get the item at the cursor.
     this._assertActive();
     const row = some(this._idb_cur).value;
-    return fullDecode(row.payload, this._item_codec);
+    return this._item_codec.decode(storable.decode(row.payload));
   }
 
-  currentTrait(): Trait | undefined {
-    // TODO: trait decoding!!
+  get _sourceIsExploding(): boolean {
+    return this._idb_source instanceof IDBIndex && this._idb_source.multiEntry;
+  }
+
+  currentTrait(): Trait {
     this._assertActive();
-    return some(this._idb_cur).key as Trait;
+    const encoded = some(this._idb_cur).key as NativelyIndexable;
+    return indexable.decode(encoded, this._sourceIsExploding);
   }
 
   async delete(): Promise<void> {
@@ -256,8 +264,8 @@ export class Cursor<Item extends Storable, Trait extends IndexableTrait> impleme
   async replace(new_item: Item): Promise<void> {
     // Replace the current object with the given object
     this._assertActive();
-    const row = some(this._idb_cur).value;
-    row.payload = fullEncode(new_item, this._item_codec);
+    const row: any = some(this._idb_cur).value;
+    row.payload = storable.encode(this._item_codec.encode(new_item));
     return new Promise((resolve, reject) => {
       const req = some(this._idb_cur).update(row);
       req.onsuccess = _event => resolve();
@@ -273,7 +281,7 @@ export class Cursor<Item extends Storable, Trait extends IndexableTrait> impleme
 
 }
 
-export class QueryExecutor<Item extends Storable, Trait extends IndexableTrait> {
+export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
 
   readonly source: Store<Item> | Index<Item, Trait>;
   readonly query_spec: QuerySpec;
@@ -335,6 +343,8 @@ export class QueryExecutor<Item extends Storable, Trait extends IndexableTrait> 
   async count(): Promise<number> {
     return await this._withCursor('r', async cursor => {
       let result = 0;
+      // TODO: replace all while loops here with
+      // for (await cursor.init(); cursor.active; await cursor.step())
       for (; cursor.active; await cursor.step()) {
         result++;
       }
@@ -355,7 +365,7 @@ export class QueryExecutor<Item extends Storable, Trait extends IndexableTrait> 
 
 }
 
-export class UniqueQueryExecutor<Item extends Storable, Trait extends IndexableTrait> {
+export class UniqueQueryExecutor<Item extends Storable, Trait extends Indexable> {
 
   readonly qe: QueryExecutor<Item, Trait>;
 

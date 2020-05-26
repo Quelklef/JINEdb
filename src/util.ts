@@ -25,3 +25,8 @@ export function invoke<T>(iife: () => T): T {
 
   return iife();
 }
+
+export type Codec<Decoded, Encoded> = {
+  encode: (decoded: Decoded) => Encoded;
+  decode: (encoded: Encoded) => Decoded;
+}

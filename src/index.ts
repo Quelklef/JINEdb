@@ -1,18 +1,17 @@
 
-import { some } from './util';
 import { Storable } from './storable';
-import { IndexableTrait } from './traits';
+import { Indexable } from './indexable';
+import { some, Codec } from './util';
 import { AutonomousStore } from './store';
 import { TransactionMode } from './transaction';
-import { ItemCodec } from './codec';
 import { query, queryUnique, QuerySpec, QueryExecutor, UniqueQueryExecutor } from './query';
 
-export class IndexStructure<Item extends Storable, Trait extends IndexableTrait> {
+export class IndexStructure<Item extends Storable, Trait extends Indexable> {
 
   public name: string;
   public unique: boolean;
   public explode: boolean;
-  public item_codec: ItemCodec<Item>;
+  public item_codec: Codec<Item, Storable>;
   public parent_store_name: string;
   public trait_path_or_getter: string | ((item: Item) => Trait);
 
@@ -20,7 +19,7 @@ export class IndexStructure<Item extends Storable, Trait extends IndexableTrait>
     name: string;
     unique?: boolean;
     explode?: boolean;
-    item_codec: ItemCodec<Item>;
+    item_codec: Codec<Item, Storable>;
     parent_store_name: string;
     trait_path_or_getter: string | ((item: Item) => Trait);
   }) {
@@ -52,7 +51,7 @@ export class IndexStructure<Item extends Storable, Trait extends IndexableTrait>
 
 }
 
-export interface Index<Item extends Storable, Trait extends IndexableTrait> {
+export interface Index<Item extends Storable, Trait extends Indexable> {
 
   // TODO: Structure types should probably be in respective files, not together in structure.ts
   readonly structure: IndexStructure<Item, Trait>;
@@ -68,7 +67,7 @@ export interface Index<Item extends Storable, Trait extends IndexableTrait> {
 
 }
 
-export class BoundIndex<Item extends Storable, Trait extends IndexableTrait> implements Index<Item, Trait> {
+export class BoundIndex<Item extends Storable, Trait extends Indexable> implements Index<Item, Trait> {
 
   readonly structure: IndexStructure<Item, Trait>
 
@@ -113,7 +112,7 @@ export class BoundIndex<Item extends Storable, Trait extends IndexableTrait> imp
 
 }
 
-export class AutonomousIndex<Item extends Storable, Trait extends IndexableTrait> implements Index<Item, Trait> {
+export class AutonomousIndex<Item extends Storable, Trait extends Indexable> implements Index<Item, Trait> {
 
   public readonly structure: IndexStructure<Item, Trait>
 

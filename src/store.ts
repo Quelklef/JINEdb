@@ -1,24 +1,28 @@
 
+import * as storable from './storable';
+import * as indexable from './indexable';
+
+type Storable = storable.Storable;
+type Indexable = indexable.Indexable;
+type NativelyIndexable = indexable.NativelyIndexable;
+
 import { Row } from './row';
 import { Cursor } from './query';
-import { Storable } from './storable';
-import { some, Dict } from './util';
 import { Connection } from './connection';
-import { IndexableTrait } from './traits';
+import { some, Dict, Codec } from './util';
 import { Transaction, TransactionMode } from './transaction';
-import { ItemCodec, fullDecode, fullEncode } from './codec';
 import { IndexStructure, Index, BoundIndex, AutonomousIndex } from './index';
 
 export class StoreStructure<Item extends Storable> {
 
   public name: string;
-  public item_codec: ItemCodec<Item>;
-  public index_structures: Dict<string, IndexStructure<Item, IndexableTrait>>;
+  public item_codec: Codec<Item, Storable>;
+  public index_structures: Dict<string, IndexStructure<Item, Indexable>>;
 
   constructor(args: {
     name: string;
-    item_codec: ItemCodec<Item>;
-    index_structures: Dict<string, IndexStructure<Item, IndexableTrait>>;
+    item_codec: Codec<Item, Storable>;
+    index_structures: Dict<string, IndexStructure<Item, Indexable>>;
   }) {
     this.name = args.name;
     this.item_codec = args.item_codec;
@@ -34,7 +38,7 @@ export class StoreStructure<Item extends Storable> {
 export interface Store<Item extends Storable> {
 
   readonly structure: StoreStructure<Item>;
-  readonly indexes: Dict<string, Index<Item, IndexableTrait>>;
+  readonly indexes: Dict<string, Index<Item, Indexable>>;
 
   add(item: Item): Promise<void>;
   clear(): Promise<void>;
@@ -48,7 +52,7 @@ export interface Store<Item extends Storable> {
 export class BoundStore<Item extends Storable> implements Store<Item> {
 
   readonly structure: StoreStructure<Item>;
-  readonly indexes: Dict<string, BoundIndex<Item, IndexableTrait>>;
+  readonly indexes: Dict<string, BoundIndex<Item, Indexable>>;
 
   readonly _idb_store: IDBObjectStore;
 
@@ -85,7 +89,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     return new Promise((resolve, reject) => {
       // Don't include the id since it's autoincrement'd
       const row: Omit<Row, 'id'> = {
-        payload: fullEncode(item, this.structure.item_codec),
+        payload: storable.encode(this.structure.item_codec.encode(item)),
         traits: this._calcTraits(item),
       };
 
@@ -95,14 +99,15 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     });
   }
 
-  _calcTraits(item: Item): Dict<string, IndexableTrait> {
+  _calcTraits(item: Item): Dict<string, NativelyIndexable> {
     /* Calculate all indexed traits for an item */
-    const traits: Dict<string, IndexableTrait> = {};
+    const traits: Dict<string, NativelyIndexable> = {};
     for (const index_name of this.structure.index_names) {
       const index = some(this.indexes[index_name]);
       const trait_name = index_name;
       const trait = index._get_trait(item);
-      traits[trait_name] = trait;
+      const encoded = indexable.encode(trait, index.structure.explode);
+      traits[trait_name] = encoded;
     }
     return traits;
   }
@@ -131,7 +136,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
       const req = this._idb_store.getAll();
       req.onsuccess = (event) => {
         const rows = (event.target as any).result as Array<Row>;
-        const items = rows.map(row => fullDecode(row.payload, this.structure.item_codec));
+        const items = rows.map(row => this.structure.item_codec.decode(storable.decode(row.payload)));
         resolve(items);
       };
       req.onerror = _event => reject(req.error);
@@ -147,7 +152,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
 export class AutonomousStore<Item extends Storable> implements Store<Item> {
 
   public readonly structure: StoreStructure<Item>;
-  public readonly indexes: Dict<string, AutonomousIndex<Item, IndexableTrait>>;
+  public readonly indexes: Dict<string, AutonomousIndex<Item, Indexable>>;
 
   private readonly _conn: Connection;
 

@@ -1,6 +1,6 @@
 
-import { some, Dict, Constructor } from './util';
-import { TypeId, hasTypeId, getTypeId } from './type_id';
+import { Dict } from './util';
+import { CodecRegistry, Encodable } from './codec-registry';
 
 // What types are storable in IndexedDB?
 // List is according to https://stackoverflow.com/a/22550288/4608364
@@ -12,8 +12,7 @@ export type NativelyStorable
   | BigInt
   | string
   | Date
-    // as per the link, note that lastIndex on a RegExp is not preserved
-  | RegExp  
+  | RegExp  // as per the link, note that lastIndex on a RegExp is not preserved
   | Blob
   | File
   | FileList
@@ -32,107 +31,29 @@ export type NativelyStorable
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface NativelyStorableObject extends Dict<string, NativelyStorable> { }
 
-/*
-
-If a user wants Jine to be able to encoder a type beyond the native types,
-they may register a codec (encoder + decoder) of their own.
-
-*/
-
-type Encoder<T> = (x: T) => NativelyStorable;
-type Decoder<T> = (n: NativelyStorable) => T;
-
-interface Codec<T> {
-  encode: Encoder<T>;
-  decode: Decoder<T>;
-}
-
-const codecs: Dict<TypeId, Codec<any>> = {};
-
-export function register<T>(constructor: Constructor, codec: Codec<T>): void {
-  codecs[getTypeId(constructor)] = codec;
-}
-
-
-/*
-
-Define a 'Storable' type to be one that is either natively
-storable by IndexedDB or one for which we've defined an encoder.
-
-*/
-
-type Encodable = { __DONT__: never };
-
-export function itemNeedsEncoding(val: any): val is Encodable {
-  return (
-    // Must be an object
-    val.constructor
-    // Cannot be a plain object, since those are natively storable
-    && val.constructor !== Object
-    // Must be reigstered with a type id
-    && hasTypeId(val.constructor)
-    // Must be reigstered with an encoder
-    && getTypeId(val.constructor) in codecs);
-}
+// --
 
 export type Storable = NativelyStorable | Encodable;
 
+type Box = {
+  __JINE_BOX__: NativelyStorable;
+  __JINE_META__: string;
+};
 
-/*
-
-Now to encode a Storable item, we do one of three things.
-
-1) If the item is NativelyStorable and is NOT a plain object,
-   there's no work to be done. We can just give it to
-   indexedDB as-is.
-
-2) If the item is NOT NativelyStorable, then we encode it
-   and box it with its type id so that we can decode it
-   later. The final product looks like
-     { __JINE_TYPE_ID__: id,
-       __JINE_ENCODED__: encoded_val }
-
-3) If the item is NativelyStorable but an object, we can't
-    give it to IndexedDB as-is. If we did, and somebody
-    encoded an item with a __JINE_TYPE_ID__ attribute, then
-    decoding would crash and burn.
-    So instead we box the item in an object with the shape
-      { __JINE_BOX__: item }
-
-This encoding schema requires an overhead for plain objects
-as well as custom types. However, it requires no overhead for
-non-plain-object natively storable types, which is great!
-
-*/
-
-export function encode(item: Storable): NativelyStorable {
-  if (itemNeedsEncoding(item)) {
-    const type_id = getTypeId(item.constructor)
-    const encoded = some(codecs[type_id]).encode(item);
+const registry = new CodecRegistry<NativelyStorable, Box>({
+  box_constructor: Object,
+  box: (unboxed: NativelyStorable, metadata: string): Box => {
     return {
-      __JINE_TYPE_ID__: type_id,
-      __JINE_ENCODED__: encoded,
+      __JINE_BOX__: unboxed,
+      __JINE_META__: metadata,
     };
-  }
+  },
+  unbox: (boxed: Box): [NativelyStorable, string] => {
+    return [boxed.__JINE_BOX__, boxed.__JINE_META__];
+  },
+});
 
-  if ((item as Object).constructor === Object) {
-    return { __JINE_BOX__: item };
-  } else {
-    return item as NativelyStorable;
-  }
-}
+export const register = registry.register.bind(registry);
+export const encode = registry.encode.bind(registry);
+export const decode = registry.decode.bind(registry);
 
-export function decode<Item extends Storable>(nat: NativelyStorable): Item {
-
-  if (typeof nat !== 'object')
-    return nat as Item;
-
-  if ('__JINE_BOX__' in (nat as object))
-    return (nat as any).__JINE_BOX__ as Item;
-
-  const type_id = (nat as any).__JINE_TYPE_ID__ as TypeId;
-  const encoded = (nat as any).__JINE_ENCODED__ as NativelyStorable;
-  const decoded = some(codecs[type_id]).decode(encoded);
-  return decoded;
-
-}

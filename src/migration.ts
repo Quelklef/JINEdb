@@ -1,14 +1,17 @@
 
+import * as storable from './storable';
+import * as indexable from './indexable';
+
+type Storable = storable.Storable;
+type Indexable = indexable.Indexable;
+
 import { some } from './util';
-import { Storable } from './storable';
-import { fullEncode, fullDecode } from './codec';
+import { Transaction } from './transaction';
 import { StoreStructure } from './store';
 import { IndexStructure } from './index';
-import { Transaction } from './transaction';
-import { IndexableTrait } from './traits';
 import { DatabaseStructure, Database } from './database';
 
-export interface AddIndexAlterationSpec<Item, Trait extends IndexableTrait> {
+export interface AddIndexAlterationSpec<Item, Trait extends Indexable> {
   kind: 'add_index';
   name: string;
   to: string;
@@ -50,7 +53,7 @@ export function removeStore(spec: Omit<RemoveStoreAlterationSpec, 'kind'>): Remo
   return { ...spec, kind: 'remove_store' };
 }
 
-export function addIndex<Item, Trait extends IndexableTrait>(spec: Omit<AddIndexAlterationSpec<Item, Trait>, 'kind'>): AddIndexAlterationSpec<Item, Trait> {
+export function addIndex<Item, Trait extends Indexable>(spec: Omit<AddIndexAlterationSpec<Item, Trait>, 'kind'>): AddIndexAlterationSpec<Item, Trait> {
   return { ...spec, kind: 'add_index' };
 }
 
@@ -176,11 +179,12 @@ export class Migration {
           const index_name = spec.name;
           const store = some(tx.stores[store_name]);
           await store._mapExistingRows(row => {
-            const item = fullDecode(row.payload, store.structure.item_codec);
+            const item = store.structure.item_codec.decode(storable.decode(row.payload));
             const index = some(tx.stores[store_name]?.indexes[index_name]);
             const trait = index._get_trait(item);
-            row.traits[index_name] = trait;
-            row.payload = fullEncode(item, store.structure.item_codec);
+            const encoded = indexable.encode(trait, index.structure.explode);
+            row.traits[index_name] = encoded;
+            row.payload = store.structure.item_codec.encode(storable.encode(item));
             return row;
           });
           return;
@@ -208,7 +212,7 @@ export class Migration {
 
 }
 
-type TraitGetter<Item> = (x: Item) => IndexableTrait;
+type TraitGetter<Item> = (x: Item) => Indexable;
 
 export class Migrations {
 
