@@ -73,20 +73,19 @@ export class Transaction<$$ = {}> {
     });
   }
 
-  withShorthand(): $$ & Transaction<$$> {
-    const has_shorthand = Object.keys(this).some(k => k.startsWith('$'));
-    if (!has_shorthand) {
-      for (const store_name of this.tx_structure.store_names) {
-        (this as any)['$' + store_name] = this.stores[store_name];
-      }
+  _withShorthand(): $$ & this {
+    for (const store_name of this.tx_structure.store_names) {
+      (this as any)['$' + store_name] = some(this.stores[store_name])._withShorthand();
     }
-    return this as any as $$ & Transaction<$$>;
+    const $$this = this as any as $$ & this;
+    this._withShorthand = () => $$this;
+    return $$this;
   }
 
   wrapSynchronous<T>(callback: (tx: $$ & Transaction<$$>) => T): T {
     let result!: T;
     try {
-      result = callback(this.withShorthand());
+      result = callback(this._withShorthand());
     } catch (ex) {
       if (this.state === 'active') this.abort();
       throw ex;
@@ -98,7 +97,7 @@ export class Transaction<$$ = {}> {
   async wrap<T>(callback: (tx: $$ & Transaction<$$>) => Promise<T>): Promise<T> {
     let result!: T;
     try {
-      result = await callback(this.withShorthand());
+      result = await callback(this._withShorthand());
     } catch (ex) {
       if (this.state === 'active') this.abort();
       throw ex;

@@ -1,7 +1,6 @@
 
 import { some } from './util';
 import { DatabaseStructure } from './database';
-import { AutonomousIndex } from './index';
 import { Store, AutonomousStore } from './store';
 import { Transaction, TransactionMode, uglifyTransactionMode } from './transaction';
 
@@ -43,26 +42,21 @@ export class BoundConnection<$$ = {}> implements Connection {
     return Promise.resolve(this._idb_conn.version);
   }
 
-  withShorthand(): $$ & BoundConnection<$$> {
+  _withShorthand(): $$ & this {
     for (const store_name of this.structure.store_names) {
       const store_structure = some(this.structure.store_structures[store_name]);
       const aut_store = new AutonomousStore(store_structure, this);
-      (this as any)['$' + store_name] = aut_store;
-
-      for (const index_name of store_structure.index_names) {
-        const index_structure = some(store_structure.index_structures[index_name]);
-        const aut_index = new AutonomousIndex(index_structure, aut_store);
-        (aut_store as any)['$' + index_name] = aut_index;
-      }
+      (this as any)['$' + store_name] = aut_store._withShorthand();
     }
-
-    return this as any as $$ & BoundConnection<$$>;
+    const $$this = this as any as $$ & this;
+    this._withShorthand = () => $$this;
+    return $$this;
   }
 
   async _newTransaction(store_names: Array<string>, mode: TransactionMode): Promise<$$ & Transaction<$$>> {
     const idb_conn = await this._idb_conn;
     const idb_tx = idb_conn.transaction(store_names, uglifyTransactionMode(mode));
-    const tx = await new Transaction<$$>(idb_tx, this.structure).withShorthand();
+    const tx = await new Transaction<$$>(idb_tx, this.structure)._withShorthand();
     return tx;
   }
 

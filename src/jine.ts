@@ -19,6 +19,6 @@ export type Jine<$$> = $$ & Database<$$>;
 
 export async function newJine<$$>(name: string, migrations: Array<MigrationSpec>): Promise<Jine<$$>> {
   const db = await Database.new<$$>(name, migrations);
-  return db.withShorthand();
+  return db._withShorthand();
 }
 

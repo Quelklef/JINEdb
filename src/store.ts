@@ -70,11 +70,15 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
       const idb_index = this._idb_store.index(index_name);
       this.indexes[index_name] = new BoundIndex(index_structure, idb_index);
     }
+  }
 
-    // TODO: this seems out-of-place
-    for (const [index_name, index] of Object.entries(this.indexes)) {
+  _withShorthand(): this {
+    for (const index_name of this.structure.index_names) {
+      const index = some(this.indexes[index_name]);
       (this as any)['$' + index_name] = index;
     }
+    this._withShorthand = () => this;
+    return this;
   }
 
   async _mapExistingRows(mapper: (row: Row) => Row): Promise<void> {
@@ -166,12 +170,13 @@ export class AutonomousStore<Item extends Storable> implements Store<Item> {
     this._conn = conn;
   }
 
-  withShorthand(): AutonomousStore<Item> {
+  _withShorthand(): this {
     for (const index_name of this.structure.index_names) {
       const index_structure = some(this.structure.index_structures[index_name]);
       const index = new AutonomousIndex(index_structure, this);
       (this as any)['$' + index_name] = index;
     }
+    this._withShorthand = () => this;
     return this;
   }
 

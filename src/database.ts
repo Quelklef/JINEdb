@@ -82,14 +82,16 @@ export class Database<$$ = {}> {
     return db;
   }
 
-  async withShorthand(): Promise<$$ & Database<$$>> {
+  async _withShorthand(): Promise<$$ & this> {
     const conn = new AutonomousConnection(this.structure);
     for (const store_name of this.structure.store_names) {
       const store_structure = some(this.structure.store_structures[store_name]);
       const store = new AutonomousStore(store_structure, conn);
-      (this as any)['$' + store_name] = store.withShorthand();
+      (this as any)['$' + store_name] = store._withShorthand();
     }
-    return this as any as $$ & Database<$$>;
+    const $$this = this as any as $$ & this;
+    this._withShorthand = () => Promise.resolve($$this);
+    return $$this;
   }
 
   async _newIdbConn(): Promise<IDBDatabase> {
@@ -104,7 +106,7 @@ export class Database<$$ = {}> {
   async newConnection(): Promise<$$ & BoundConnection<$$>> {
     const idb_conn = await this._newIdbConn();
     const conn = new BoundConnection<$$>(this.structure, idb_conn);
-    return conn.withShorthand();
+    return conn._withShorthand();
   }
 
   async connect<T>(callback: (conn: $$ & BoundConnection<$$>) => Promise<T>): Promise<T> {
