@@ -32,8 +32,8 @@ export interface RemoveIndexAlterationSpec {
 export interface AddStoreAlterationSpec<Item> {
   kind: 'add_store';
   name: string;
-  encode: (x: Item) => Storable;
-  decode: (x: Item) => Storable;
+  encode?: (x: Item) => Storable;
+  decode?: (x: Item) => Storable;
 }
 
 export interface RemoveStoreAlterationSpec {
@@ -256,7 +256,10 @@ export class Migrations {
 
           case 'add_store': {
             db_structure.store_names.add(spec.name);
-            const item_codec = { encode: spec.encode, decode: spec.decode };
+            const item_codec = {
+              encode: spec.encode ?? (x => x),
+              decode: spec.decode ?? (x => x),
+            };
             db_structure.store_structures[spec.name] = new StoreStructure({
               name: spec.name,
               item_codec: item_codec,

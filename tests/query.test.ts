@@ -24,8 +24,6 @@ describe('query', () => {
       alterations: [
         addStore<Num>({
           name: 'nums',
-          encode: x => x,
-          decode: x => x as Num,
         }),
 
         addIndex<Num, number>({

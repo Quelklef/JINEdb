@@ -29,8 +29,6 @@ describe('index', () => {
       alterations: [
         addStore<Item>({
           name: 'items',
-          encode: x => x,
-          decode: x => x as Item,
         }),
 
         addIndex<Item, string>({

@@ -25,10 +25,6 @@ describe('shorthand', () => {
       alterations: [
         addStore<Post>({
           name: 'posts',
-          // TODO: would be nice to make these optional,
-          //       but perhaps clearer to leave them required...
-          encode: x => x,
-          decode: x => x as Post,
         }),
 
         addIndex<Post, string>({

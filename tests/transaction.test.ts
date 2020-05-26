@@ -23,8 +23,6 @@ describe('transaction', () => {
       alterations: [
         addStore<Person>({
           name: 'people',
-          encode: x => x,
-          decode: x => x as Person,
         }),
       ],
     },
