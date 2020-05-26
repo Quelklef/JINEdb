@@ -304,7 +304,6 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
           : (bound_source as any)._idb_index;
 
       const cursor = new Cursor<Item, Trait>(idb_source, this.query_spec, this.source.structure.item_codec);
-      await cursor.init();
       return await callback(cursor);
 
     });
@@ -313,29 +312,26 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
 
   async replace(mapper: (item: Item) => Item): Promise<void> {
     await this._withCursor('rw', async cursor => {
-      while (cursor.active) {
+      for (await cursor.init(); cursor.active; await cursor.step()) {
         const old_item = cursor.currentItem();
         const new_item = mapper(old_item);
         await cursor.replace(new_item);
-        await cursor.step();
       }
     });
   }
 
   async update(updates: Partial<Item>): Promise<void> {
     await this._withCursor('rw', async cursor => {
-      while (cursor.active) {
+      for (await cursor.init(); cursor.active; await cursor.step()) {
         await cursor.update(updates);
-        await cursor.step();
       }
     });
   }
 
   async delete(): Promise<void> {
     await this._withCursor('rw', async cursor => {
-      while (cursor.active) {
+      for (await cursor.init(); cursor.active; await cursor.step()) {
         await cursor.delete();
-        await cursor.step();
       }
     });
   }
@@ -343,9 +339,7 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
   async count(): Promise<number> {
     return await this._withCursor('r', async cursor => {
       let result = 0;
-      // TODO: replace all while loops here with
-      // for (await cursor.init(); cursor.active; await cursor.step())
-      for (; cursor.active; await cursor.step()) {
+      for (await cursor.init(); cursor.active; await cursor.step()) {
         result++;
       }
       return result;
@@ -355,9 +349,8 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
   async array(): Promise<Array<Item>> {
     return await this._withCursor('r', async cursor => {
       const result: Array<Item> = [];
-      while (cursor.active) {
+      for (await cursor.init(); cursor.active; await cursor.step()) {
         result.push(cursor.currentItem());
-        await cursor.step();
       }
       return result;
     });
