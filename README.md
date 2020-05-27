@@ -1,13 +1,11 @@
 # JINEdb 0.1.0
 For when **J**SON **i**s **n**ot **e**nough
 
-***
-
 JINEdb (henceforth 'Jine') is an in-browser database built on top of IndexedDB. Jine's main selling point is that **Jine can store user-defined types**, but Jine also has other features like transactions and indexes.
 
 Jine was built out of a frustration with systems that offer support for a few built-in types, such as JSON, and nothing else. This forces users who want to store other types to either (A) manually re- and de-serialize on every query; or (B) write their own serialization layer on top of the existing technology. And neither of these options are good.
 
-***
+See the API docs [here](https://quelklef.github.io/JINEdb/docs).
 
 ## Sample
 
