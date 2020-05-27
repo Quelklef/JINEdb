@@ -5,7 +5,30 @@ JINEdb (henceforth 'Jine') is an in-browser database built on top of IndexedDB. 
 
 Jine was built out of a frustration with systems that offer support for a few built-in types, such as JSON, and nothing else. This forces users who want to store other types to either (A) manually re- and de-serialize on every query; or (B) write their own serialization layer on top of the existing technology. And neither of these options are good.
 
-See the API docs [here](https://quelklef.github.io/JINEdb/docs).
+## Installation
+
+`npm i jinedb`
+
+then
+
+```ts
+import * as jine from 'jinedb'
+```
+
+As of right now, Jine requires Typescript to have DOM and es2020+ types. That means your `tsconfig.json` should include the following:
+
+```json
+{
+  "compilerOptions": {
+    "moduleResolution": "node",
+    "lib": ["dom", "es2020" /* or higher */]
+  }
+}
+```
+
+## API Docs
+
+API docs are [here](https://quelklef.github.io/JINEdb/docs).
 
 ## Sample
 
