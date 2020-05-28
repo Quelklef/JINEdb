@@ -41,9 +41,12 @@ export interface RemoveStoreAlterationSpec {
   name: string;
 }
 
-export type StoreAlterationSpec = AddStoreAlterationSpec<any> | RemoveStoreAlterationSpec;
-export type TraitAlterationSpec = AddIndexAlterationSpec<any, any> | RemoveIndexAlterationSpec;
-export type AlterationSpec = StoreAlterationSpec | TraitAlterationSpec;
+export type AlterationSpec
+  = AddStoreAlterationSpec<any>
+  | RemoveStoreAlterationSpec
+  | AddIndexAlterationSpec<any, any>
+  | RemoveIndexAlterationSpec
+  ;
 
 function parseStoreName(name: string): string {
   if (!name.startsWith('$'))
@@ -64,6 +67,11 @@ function parseIndexPath(path: string): [string, string] {
   return [store_name, index_name];
 }
 
+/**
+ * Create a database alteration specifying to add a new store to the database.
+ * @param $name The name of the store, preceeded with a '$'
+ * @param codec The store encoding and decoding functions, if needed
+ */
 export function addStore<Item>($name: string, codec?: Partial<Codec<Item, Storable>>): AddStoreAlterationSpec<Item> {
   return {
     kind: 'add_store',
@@ -74,6 +82,10 @@ export function addStore<Item>($name: string, codec?: Partial<Codec<Item, Storab
   };
 }
 
+/**
+ * Create a database alteration specifying to remove a store from the database.
+ * @param $name The name of the store, preceeded with a '$'
+ */
 export function removeStore($name: string): RemoveStoreAlterationSpec {
   return {
     kind: 'remove_store',
@@ -81,6 +93,19 @@ export function removeStore($name: string): RemoveStoreAlterationSpec {
   };
 }
 
+/**
+ * Create a database alteration specifying to add an index from the database.
+ * @param index_path Gives the store on which to place the index as well as the name
+ * of the index, in the format `"$store_name.$index_name"`.
+ * @param trait The trait to track. If tracking object attributes, this should be
+ * in the form `".attr"` or `".attr.nested_attr"`, to an arbitrary level of depth.
+ * If tracking functions of objects, this should be the function that generates
+ * the trait for each object.
+ * @param options Trait options. If `unique`, an error will be thrown when attempting
+ * to add an item where this trait matches that of an existing item. If `explode`, then
+ * the trait should resolve to an array for each item; each value in this array will
+ * be added to the index rather than the array as a whole.
+ */
 export function addIndex<Item, Trait extends Indexable>(
   index_path: string,
   trait: string | ((item: Item) => Trait),
@@ -105,6 +130,11 @@ export function addIndex<Item, Trait extends Indexable>(
   };
 }
 
+/**
+ * Create a database alteration specifying to remove an index from the database.
+ * @param index_path Gives the from where to remove the index as well as the name
+ * of the index to remove, in the format `"$store_name.$index_name"`.
+ */
 export function removeIndex(index_path: string): RemoveIndexAlterationSpec {
   const [store_name, index_name] = parseIndexPath(index_path);
   return {
