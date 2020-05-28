@@ -27,6 +27,7 @@
     "regenerator-runtime": "^0.13.5",
     "ts-jest": "^26.0.0",
     "typedoc": "^0.17.7",
+    "typedoc-plugin-pages": "^1.0.1",
     "typescript": "^3.9.2"
   },
   "dependencies": {

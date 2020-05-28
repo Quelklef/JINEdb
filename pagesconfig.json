@@ -1,0 +1,31 @@
+{
+  "groups": [
+    {
+      "title": "Overview",
+      "pages": [
+        { "title": "Introduction", "source": "./docs_pages/overview/introduction.md" },
+        { "title": "Installation", "source": "./docs_pages/overview/installation.md" },
+        { "title": "Quickstart", "source": "./docs_pages/overview/quickstart.md" }
+      ]
+    },
+    {
+      "title": "Concepts",
+      "pages": [
+        { "title": "Databases", "source": "./docs_pages/concepts/databases.md" },
+        { "title": "Connections", "source": "./docs_pages/concepts/connections.md" },
+        { "title": "Transactions", "source": "./docs_pages/concepts/transactions.md" },
+        { "title": "Stores", "source": "./docs_pages/concepts/stores.md" },
+        { "title": "Indexes", "source": "./docs_pages/concepts/indexes.md" },
+        { "title": "Traits", "source": "./docs_pages/concepts/traits.md" }
+      ]
+    },
+    {
+      "title": "Encoding",
+      "pages": [
+        { "title": "Overview", "source": "./docs_pages/encoding/overview.md" },
+        { "title": "Builtin Types", "source": "./docs_pages/encoding/builtin-types.md" },
+        { "title": "Custom Types", "source": "./docs_pages/encoding/custom-types.md" }
+      ]
+    }
+  ]
+}

@@ -3,5 +3,6 @@
   "out": "./docs/",
   "mode": "file",
   "excludeExternals": true,
-  "excludeNotDocumented": true
+  "excludeNotDocumented": true,
+  "theme": "pages-plugin"
 }
