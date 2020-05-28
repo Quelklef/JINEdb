@@ -1,4 +1,4 @@
-# JINEdb 0.1.0
+# JINEdb 0.2.0
 For when **J**SON **i**s **n**ot **e**nough
 
 JINEdb (henceforth 'Jine') is an in-browser database built on top of IndexedDB. Jine's main selling point is that **Jine can store user-defined types**, but Jine also has other features like transactions and indexes.
