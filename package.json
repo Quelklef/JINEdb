@@ -9,7 +9,7 @@
     "dev-one": "tsc --incremental && npm run lint",
     "lint": "eslint --cache src/ --ext .ts",
     "test": "jest --watch",
-    "update-docs": "git checkout gh-pages && git pull origin master --no-edit && npx typedoc && git add . && git commit -m 'update docs' && git push && git checkout master"
+    "update-docs": "git checkout gh-pages && git pull origin master --no-edit && npx typedoc && git add . && git add -f docs/ && git commit -m 'update docs' && git push && git checkout master"
   },
   "prepublish": "tsc",
   "keywords": [],
