@@ -22,43 +22,16 @@ interface $$ {
 describe('index', () => {
 
   const migrations = [
-
     {
       version: 1,
-
       alterations: [
-        addStore<Item>({
-          name: 'items',
-        }),
-
-        addIndex<Item, string>({
-          name: 'index',
-          to: 'items',
-          trait: 'attr',
-        }),
-
-        addIndex<Item, string>({
-          name: 'index_unique',
-          to: 'items',
-          trait: 'attr_unique',
-          unique: true,
-        }),
-
-        addIndex<Item, string>({
-          name: 'index_explode',
-          to: 'items',
-          trait: 'attr_explode',
-          explode: true,
-        }),
-
-        addIndex<Item, number>({
-          name: 'index_derived',
-          to: 'items',
-          trait: item => item.attr.length,
-        }),
+        addStore<Item>('$items'),
+        addIndex<Item, string>('$items.$index', '.attr'),
+        addIndex<Item, string>('$items.$index_unique', '.attr_unique', { unique: true }),
+        addIndex<Item, string>('$items.$index_explode', '.attr_explode', { explode: true }),
+        addIndex<Item, number>('$items.$index_derived', (item: Item) => item.attr.length),
       ],
     },
-
   ];
 
   let jine!: Jine<$$>;

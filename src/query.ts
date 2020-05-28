@@ -50,7 +50,7 @@ export interface QuerySpec {  // TODO: should this be parameterized with <Trait>
   reversed?: boolean;
   /** Unique? */
   unique?: boolean;
-};
+}
 
 
 function compileTraitRange(spec: QuerySpec): IDBKeyRange | undefined {

@@ -5,7 +5,7 @@ import * as indexable from './indexable';
 type Storable = storable.Storable;
 type Indexable = indexable.Indexable;
 
-import { some } from './util';
+import { some, Codec } from './util';
 import { Transaction } from './transaction';
 import { StoreStructure } from './store';
 import { IndexStructure } from './index';
@@ -15,8 +15,8 @@ export interface AddIndexAlterationSpec<Item, Trait extends Indexable> {
   kind: 'add_index';
   name: string;
   to: string;
-  unique?: boolean;
-  explode?: boolean;
+  unique: boolean;
+  explode: boolean;
   // Traits fall into one of two categories:
   // 'path traits', where the trait is an attribute of the item
   // 'derived traits', where the trait is given by a function
@@ -32,8 +32,8 @@ export interface RemoveIndexAlterationSpec {
 export interface AddStoreAlterationSpec<Item> {
   kind: 'add_store';
   name: string;
-  encode?: (x: Item) => Storable;
-  decode?: (x: Item) => Storable;
+  encode: (x: Item) => Storable;
+  decode: (x: Storable) => Item;
 }
 
 export interface RemoveStoreAlterationSpec {
@@ -45,20 +45,73 @@ export type StoreAlterationSpec = AddStoreAlterationSpec<any> | RemoveStoreAlter
 export type TraitAlterationSpec = AddIndexAlterationSpec<any, any> | RemoveIndexAlterationSpec;
 export type AlterationSpec = StoreAlterationSpec | TraitAlterationSpec;
 
-export function addStore<Item>(spec: Omit<AddStoreAlterationSpec<Item>, 'kind'>): AddStoreAlterationSpec<Item> {
-  return { ...spec, kind: 'add_store' };
+function parseStoreName(name: string): string {
+  if (!name.startsWith('$'))
+    throw Error("Store name must come after a '$'");
+  return name.slice(1);
 }
 
-export function removeStore(spec: Omit<RemoveStoreAlterationSpec, 'kind'>): RemoveStoreAlterationSpec {
-  return { ...spec, kind: 'remove_store' };
+function parseIndexPath(path: string): [string, string] {
+  const parts = path.split('.');
+  const error_message = "Index path must be in format '$store_name.$index_name'";
+  if (parts.length !== 2)
+    throw Error(error_message);
+  let [store_name, index_name] = parts;
+  if (!store_name.startsWith('$') || !index_name.startsWith('$'))
+    throw Error(error_message);
+  store_name = store_name.slice(1);
+  index_name = index_name.slice(1);
+  return [store_name, index_name];
 }
 
-export function addIndex<Item, Trait extends Indexable>(spec: Omit<AddIndexAlterationSpec<Item, Trait>, 'kind'>): AddIndexAlterationSpec<Item, Trait> {
-  return { ...spec, kind: 'add_index' };
+export function addStore<Item>($name: string, codec?: Partial<Codec<Item, Storable>>): AddStoreAlterationSpec<Item> {
+  return {
+    kind: 'add_store',
+    name: parseStoreName($name),
+    // Default codec is no codec, assume that the given type is storable
+    encode: codec?.encode ?? ((item: Item) => item as any as Storable),
+    decode: codec?.decode ?? ((encoded: Storable) => encoded as any as Item),
+  };
 }
 
-export function removeIndex(spec: Omit<RemoveIndexAlterationSpec, 'kind'>): RemoveIndexAlterationSpec {
-  return { ...spec, kind: 'remove_index' };
+export function removeStore($name: string): RemoveStoreAlterationSpec {
+  return {
+    kind: 'remove_store',
+    name: parseStoreName($name),
+  };
+}
+
+export function addIndex<Item, Trait extends Indexable>(
+  index_path: string,
+  trait: string | ((item: Item) => Trait),
+  options?: { unique?: boolean; explode?: boolean },
+): AddIndexAlterationSpec<Item, Trait> {
+  const [store_name, index_name] = parseIndexPath(index_path);
+
+  if (typeof trait === 'string') {
+    // trait is a key path
+    if (!trait.startsWith('.'))
+      throw Error("Key path must start with '.'");
+    trait = trait.slice(1);
+  }
+
+  return {
+    kind: 'add_index',
+    to: store_name,
+    name: index_name,
+    trait: trait,
+    unique: options?.unique ?? false,
+    explode: options?.explode ?? false,
+  };
+}
+
+export function removeIndex(index_path: string): RemoveIndexAlterationSpec {
+  const [store_name, index_name] = parseIndexPath(index_path);
+  return {
+    kind: 'remove_index',
+    from: store_name,
+    name: index_name,
+  };
 }
 
 export interface MigrationSpec {
@@ -257,8 +310,8 @@ export class Migrations {
           case 'add_store': {
             db_structure.store_names.add(spec.name);
             const item_codec = {
-              encode: spec.encode ?? (x => x),
-              decode: spec.decode ?? (x => x),
+              encode: spec.encode,
+              decode: spec.decode,
             };
             db_structure.store_structures[spec.name] = new StoreStructure({
               name: spec.name,

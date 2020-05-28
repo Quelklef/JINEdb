@@ -45,15 +45,15 @@ export class IndexStructure<Item extends Storable, Trait extends Indexable> {
 
   constructor(args: {
     name: string;
-    unique?: boolean;
-    explode?: boolean;
+    unique: boolean;
+    explode: boolean;
     item_codec: Codec<Item, Storable>;
     parent_store_name: string;
     trait_path_or_getter: string | ((item: Item) => Trait);
   }) {
     this.name = args.name;
-    this.unique = args.unique ?? false;
-    this.explode = args.explode ?? false;
+    this.unique = args.unique;
+    this.explode = args.explode;
     this.item_codec = args.item_codec;
     this.parent_store_name = args.parent_store_name;
     this.trait_path_or_getter = args.trait_path_or_getter;

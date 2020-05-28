@@ -17,23 +17,13 @@ interface $$ {
 describe('query', () => {
 
   const migrations = [
-
     {
       version: 1,
-
       alterations: [
-        addStore<Num>({
-          name: 'nums',
-        }),
-
-        addIndex<Num, number>({
-          name: 'value',
-          to: 'nums',
-          trait: 'value',
-        }),
+        addStore<Num>('$nums'),
+        addIndex<Num, number>('$nums.$value', '.value'),
       ],
     },
-
   ];
 
   let jine!: Jine<$$>;
@@ -72,7 +62,7 @@ describe('query', () => {
     });
 
     it("supports * queries", async () => {
-      const result = await conn.$nums.$value.range(null).array();
+      const result = await conn.$nums.$value.range({ everything: true }).array();
       expect(result).toEqual([one, two, three, four, five]);
     });
 

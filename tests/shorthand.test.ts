@@ -18,23 +18,13 @@ interface $$ {
 describe('shorthand', () => {
 
   const migrations = [
-
     {
       version: 1,
-
       alterations: [
-        addStore<Post>({
-          name: 'posts',
-        }),
-
-        addIndex<Post, string>({
-          name: 'title',
-          to: 'posts',
-          trait: 'title',
-        }),
+        addStore<Post>('$posts'),
+        addIndex<Post, string>('$posts.$title', '.title'),
       ],
     },
-
   ];
 
   const some_post = {
@@ -73,14 +63,6 @@ describe('shorthand', () => {
       await host.$posts.add(some_post);
       const got = await host.$posts.$title.find('On Bananas');
       expect(got).toEqual([some_post]);
-    });
-
-    it(`supports ${host_name}.$store.add and ${host_name}.$store.$index.all`, async () => {
-      const host = get_host();
-      await host.$posts.add(some_post);
-      const got = await host.$posts.$title.all().delete();
-      const count = await host.$posts.count();
-      expect(count).toEqual(0);
     });
 
   }

@@ -16,17 +16,12 @@ interface $$ {
 describe('transaction', () => {
 
   const migrations = [
-
     {
       version: 1,
-
       alterations: [
-        addStore<Person>({
-          name: 'people',
-        }),
+        addStore<Person>('$people'),
       ],
     },
-
   ];
 
   let jine!: Jine<$$>;
