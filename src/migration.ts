@@ -144,10 +144,21 @@ export function removeIndex(index_path: string): RemoveIndexAlterationSpec {
   };
 }
 
+/**
+ * Specifies a migration.
+ *
+ * Note that the changes made by `before`, `alterations`, and `after` all run in 3 **different** transactions.
+ * This is an unfortunate consequence of the fact that IndexedDB versionchange transactions cannot include
+ * get/put/update/etc database modifications.
+ */
 export interface MigrationSpec {
+  /** Version number we're migrating to */
   version: number;
+  /** Code to run before migration */
   before?: () => Promise<void>;
+  /** Database alterations */
   alterations: Array<AlterationSpec>;
+  /** Code to run after migration */
   after?: () => Promise<void>;
 }
 

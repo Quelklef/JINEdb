@@ -1,6 +1,13 @@
 
 import { some, Codec, Constructor } from './util';
 
+/**
+ * Cast a value to this type after registering it to be storable or indexable.
+ *
+ * Do **not** create a value that genuinely matches this type.
+ *
+ * For more information, see {@page Serialization and Custom Types}.
+ */
 export type Encodable = { __DONT__: never };
 
 export class CodecRegistry<Encoded, Box extends Encoded> {

@@ -3,6 +3,9 @@ import { CodecRegistry, Encodable } from './codec-registry';
 
 // What types are indexable in IndexedDB?
 // [2020-05-25] List is according to https://w3c.github.io/IndexedDB/
+/**
+ * Types that Jine is natively able to accept for values of traits.
+ */
 export type NativelyIndexable
   = number  // except for NaN
   | Date  // "except where the [[DateValue]] internal slot is NaN."
@@ -12,6 +15,12 @@ export type NativelyIndexable
   | Array<NativelyIndexable>
   ;
 
+/**
+ * Values that can be indexed, i.e. used as traits.
+ *
+ * Jine supports a number of types out-of-the-box (see [[NativelyIndexable]]).
+ * To be able to index with a custom type, it must be registered, see [[registerIndexable]].
+ */
 export type Indexable = NativelyIndexable | Encodable;
 
 // --
@@ -29,6 +38,7 @@ const registry = new CodecRegistry<NativelyIndexable, Box>({
 });
 
 export const register = registry.register.bind(registry);
+export const isIndexable = registry.hasCodec.bind(registry);
 
 /*
 

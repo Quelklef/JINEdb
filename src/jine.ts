@@ -29,37 +29,7 @@ type NativelyIndexable = indexable.NativelyIndexable;
 /**
  * Register a custom type with Jine so that it can be stored.
  *
- * In order to store your custom types, Jine asks you to tell it
- * how to encode your type down to a [[NativelyStorable]], and how
- * to decode it back from an encoded value.
- *
- * Additionally, Jine asks you to give your custom types a string
- * id. This id has no semantic value but must be globally unique.
- * When a custom type is stored with Jine, its encoded value is
- * stored with the type id. When retrieving data, this type id is
- * then used to find the decoding function.
- *
- * ```ts
- * class Person {
- *   constructor(public name: string, public age: number) { }
- * }
- *
- * jine.registerStorable<Person>(Person, 'Person:v1', {
- *   encode(person: Person): NativelyStorable {
- *     return [person.name, person.age];
- *   },
- *   decode(encoded: NativelyStorable): Person {
- *     const [name, age] = encoded as [string, number];
- *     return new Person(name, age);
- *   },
- * });
- * ```
- *
- * Changing or removing a type id or codec is dangerous.
- * If a type id is changed, item retrieval may fail since it cannot
- * find the codec. If a codec is changed, item retrieval may fail
- * since it is expecting the encoded data to be in an outdated
- * format.
+ * See {@page Serialization and Custom Types}.
  *
  * @typeParam T The custom type.
  * @param constructor The constructor for the type being reigstered.
@@ -77,7 +47,7 @@ export function registerStorable<T>(
 /**
  * Register a custom type with Jine so that it can be used  as trait values.
  *
- * Analogous to [[registerStorable]].
+ * See {@page Serialization and Custom Types}.
  *
  * @typeParam T The custom type
  * @param constructor The constructor of the custom type.
@@ -90,6 +60,28 @@ export function registerIndexable<T>(
   codec: Codec<T, NativelyIndexable>,
 ): void {
   indexable.register(constructor, id, codec);
+}
+
+/**
+ * Check if an item is Storable.
+ *
+ * See {@page Serialization and Custom Types}.
+ *
+ * @param item The item
+ */
+export function isStorable(item: any): item is Storable {
+  return storable.isStorable(item);
+}
+
+/**
+ * Check if a trait is Indexable.
+ *
+ * See {@page Serialization and Custom Types}.
+ *
+ * @param trait The trait
+ */
+export function isIndexable(trait: any): trait is Indexable {
+  return indexable.isIndexable(trait);
 }
 
 

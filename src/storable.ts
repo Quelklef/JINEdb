@@ -31,7 +31,7 @@ export type NativelyStorable
 // works with "plain" objects. I assume that "plain" means string keys.
 // (empty interface is a hack to get TS to work)
 /**
- * An object with string keys and [[nativelyStorable]] values.
+ * An object with string keys and [[NativelyStorable]] values.
  */
 interface PlainObject extends Dict<string, NativelyStorable> { } // eslint-disable-line @typescript-eslint/no-empty-interface
 
@@ -66,4 +66,4 @@ const registry = new CodecRegistry<NativelyStorable, Box>({
 export const register = registry.register.bind(registry);
 export const encode = registry.encode.bind(registry);
 export const decode = registry.decode.bind(registry);
-
+export const isStorable = registry.hasCodec.bind(registry);

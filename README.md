@@ -1,80 +1,80 @@
 # JINEdb 0.2.0
-For when **J**SON **i**s **n**ot **e**nough
 
-JINEdb (henceforth 'Jine') is an in-browser database built on top of IndexedDB. Jine's main selling point is that **Jine can store user-defined types**, but Jine also has other features like transactions and indexes.
+A client-side database for when **J**SON **i**s **n**ot **e**nough!
 
-Jine was built out of a frustration with systems that offer support for a few built-in types, such as JSON, and nothing else. This forces users who want to store other types to either (A) manually re- and de-serialize on every query; or (B) write their own serialization layer on top of the existing technology. And neither of these options are good.
+Almost all information is [in the docs](https://quelklef.github.io/JINEdb/docs).
 
-## Installation
-
-`npm i jinedb`
-
-then
+But while you're here, have some delicious sample code:
 
 ```ts
-import * as jine from 'jinedb'
-```
+import { newJine, Store, Index, addStore, addIndex } from 'jine';
 
-As of right now, Jine requires Typescript to have DOM and es2020+ types. That means your `tsconfig.json` should include the following:
+// Type to store in DB
+type User = {
+  username: string;
+  friends: Array<number>;
+};
 
-```json
-{
-  "compilerOptions": {
-    "moduleResolution": "node",
-    "lib": ["dom", "es2020" /* or higher */]
-  }
-}
-```
-
-## API Docs
-
-API docs are [here](https://quelklef.github.io/JINEdb/docs).
-
-## Sample
-
-```ts	
-import { newJine, Store, Index, addStore, addIndex } from 'jine';	
-
-// What are we going to be storing?
-type User = {	
-  id: number;	
-  username: string;	
-}	
-
-// Set up our stores and indexes
-const migrations = [	
-  {	
-    version: 1,	
-    alterations: [	
-      // Add a store in which to keep our users	
+// Set up migrations
+const migrations = [
+  {
+    version: 1,
+    alterations: [
+      // Add user storage
       addStore<User>('$users'),
-      // Create index '$users.$id' tracking attriute '.id'; ensure entries are unique
-      addIndex<User, number>('$users.$id', '.id', { unique: true }),
-      // Create index '$users.$username_length' tracking username length
-      addIndex<User, number>('$users.$username_length', (user: User) => user.username.length),
-    ],	
-  },	
-]	
+      // Index by unique username
+      addIndex<User, string>('$users.$name', '.username', { unique: true }),
+      // Index by friend names
+      addIndex<User, string>('$users.$friends', '.friends', { explode: true }),
+      // Index by friend count
+      addIndex<User, number>(
+        '$users.$popularity',
+        (user: User) => user.friends.length,
+      ),
+    ],
+  },
+];
 
-// We need to let typescript know what our database will look like	
-interface $$ {	
-  $users: Store<User> & {	
-    $id: Index<User, number>;	
-    $username_length: Index<User, number>;	
-  }	
-}	
+// Let typescript know what our database looks like
+interface $$ {
+  $users: Store<User> & {
+    $name: Index<User, string>;
+    $friends: Index<User, string>;
+    $popularity: Index<user, number>;
+  };
+};
 
-// Create our database and a connection to it	
-const jine = newJine<$$>('my jine', migrations);	
-const jcon = jine.newConnection();	
+// Initialize database and open connection
+const jine = newJine<$$>('users', migrations);
+const jcon = jine.newConnection();
 
-// Add some people!	
-await jcon.$users.add({ id: 0, username: 'Quelklef' });	
-await jcon.$users.add({ id: 1, username: 'JonSkeet' });	
-await jcon.$users.add({ id: 2, username: 'Dyrus' });	
+// Add users
+await jcon.$users.add({ username: 'billy02'   , friends: ['AverageJoe'] });
+await jcon.$users.add({ username: 'AverageJoe', friends: ['billy02']    });
+await jcon.$users.add({ username: 'l0neRider' , friends: []             });
 
-// Queries!
-await jcon.$users.$id.get(0); // gives the Quelklef object	
-await jcon.$users.$username_length.find(8);  // gives the Quelklef and JonSkeet objects	
-await jcon.$users.$id.range({ above: 0 }).array()  // gives the JonSkeet and Dyrus objects	
+// billy02 and l0neRider just become friends!
+await jcon.transact(tx => {
+  await tx.$users.$name.one('l0neRider').update({ friends: ['billy02'] });
+  const billy02 = await tx.$users.$name.get('billy02');
+  await tx.$users.$name.one('billy02').update({
+    friends: [...billy02.friends, 'l0neRider']
+  });
+});
+
+// Who's friends with billy02?
+const billy02_friends = await jcon.$users.$friends.find('billy02');
+billy02_friends.map(user => user.name) === ['AverageJoe', 'l0neRider'];
+
+// Anyone without friends?
+const lonely = await jcon.$users.$popularity.find(0);
+lonely.length === 0;  // nope!
+
+// Anyone super popular?
+const popular = await jcon.$users.$popularity.range({ above: 15 });
+poopular.length === 0;  // also nope!
+
+// Close database connection
+jcon.close();
 ```
+
