@@ -10,7 +10,7 @@ import { Row } from './row';
 import { TransactionMode } from './transaction';
 import { Store, BoundStore } from './store';
 import { Index, BoundIndex } from './index';
-import { some, Dict, Codec } from './util';
+import { some, Dict } from './util';
 
 /**
  * Query spec
@@ -123,15 +123,13 @@ export class Cursor<Item extends Storable, Trait extends Indexable> implements C
   // TODO: replicate on other classes.
   my: Dict<string, any> = {};
 
-  readonly _item_codec: Codec<Item, Storable>;
   readonly _query_spec: QuerySpec;
 
   readonly _idb_source: IDBIndex | IDBObjectStore;
   _idb_req: IDBRequest | null;
   _idb_cur: IDBCursorWithValue | null;
 
-  constructor(idb_source: IDBIndex | IDBObjectStore, query_spec: QuerySpec, item_codec: Codec<Item, Storable>) {
-    this._item_codec = item_codec;
+  constructor(idb_source: IDBIndex | IDBObjectStore, query_spec: QuerySpec) {
     this._query_spec = query_spec;
     this._idb_source = idb_source;
     this._idb_req = null;
@@ -205,7 +203,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> implements C
     // Get the item at the cursor.
     this._assertActive();
     const row = some(this._idb_cur).value;
-    return this._item_codec.decode(storable.decode(row.payload));
+    return storable.decode(row.payload);
   }
 
   get _sourceIsExploding(): boolean {
@@ -241,7 +239,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> implements C
     // Replace the current object with the given object
     this._assertActive();
     const row: any = some(this._idb_cur).value;
-    row.payload = storable.encode(this._item_codec.encode(new_item));
+    row.payload = storable.encode(new_item);
     return new Promise((resolve, reject) => {
       const req = some(this._idb_cur).update(row);
       req.onsuccess = _event => resolve();
@@ -284,7 +282,7 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
           ? (bound_source as any)._idb_store
           : (bound_source as any)._idb_index;
 
-      const cursor = new Cursor<Item, Trait>(idb_source, this.query_spec, this.source.structure.item_codec);
+      const cursor = new Cursor<Item, Trait>(idb_source, this.query_spec);
       return await callback(cursor);
 
     });

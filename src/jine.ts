@@ -9,9 +9,6 @@ export { Transaction } from './transaction';
 export { Store, BoundStore, AutonomousStore } from './store';
 export { Index, BoundIndex, AutonomousIndex } from './index';
 
-// Migrations
-export { addStore, removeStore, addIndex, removeIndex } from './migration';
-
 
 // == Storable and Indexable == //
 
@@ -87,7 +84,6 @@ export function isIndexable(trait: any): trait is Indexable {
 
 // == Top-level == //
 
-import { MigrationSpec } from './migration';
 import { Database } from './database';
 
 /**
@@ -98,8 +94,8 @@ export type Jine<$$> = $$ & Database<$$>;
 /**
  * Create a new database and run migrations on it.
  */
-export async function newJine<$$>(name: string, migrations: Array<MigrationSpec>): Promise<Jine<$$>> {
-  const db = await Database.new<$$>(name, migrations);
+export function newJine<$$>(name: string): Jine<$$> {
+  const db = new Database<$$>(name);
   return db._withShorthand();
 }
 

@@ -63,7 +63,7 @@ export class BoundConnection<$$ = {}> implements Connection {
   }
 
   async _newTransaction(store_names: Array<string>, mode: TransactionMode): Promise<$$ & Transaction<$$>> {
-    const idb_conn = await this._idb_conn;
+    const idb_conn = this._idb_conn;
     const idb_tx = idb_conn.transaction(store_names, uglifyTransactionMode(mode));
     const tx = await new Transaction<$$>(idb_tx, this.structure)._withShorthand();
     return tx;
@@ -85,7 +85,8 @@ export class BoundConnection<$$ = {}> implements Connection {
     mode: TransactionMode,
     callback: (tx: $$ & Transaction<$$>) => Promise<T>,
   ): Promise<T> {
-    return (await this._newTransaction(store_names, mode)).wrap(async tx => await callback(tx));
+    const tx = await this._newTransaction(store_names, mode);
+    return await tx.wrap(async tx => await callback(tx));
   }
 
   /**

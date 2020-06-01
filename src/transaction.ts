@@ -121,12 +121,12 @@ export class Transaction<$$ = {}> {
   }
 
   /**
-   * Like {@link Transaction.wrap}, but synchronous.
+   * Like [[Transaction.wrap]], but synchronous.
    */
-  wrapSynchronous<T>(callback: (tx: $$ & Transaction<$$>) => T): T {
+  wrapSynchronous<T>(callback: (tx: $$ & Transaction<$$>, dry: false) => T): T {
     let result!: T;
     try {
-      result = callback(this._withShorthand());
+      result = callback(this._withShorthand(), false);
     } catch (ex) {
       if (this.state === 'active') this.abort();
       throw ex;
@@ -143,16 +143,77 @@ export class Transaction<$$ = {}> {
    * @typeParam T The return type of the callback
    * @returns The return value of the callback
    */
-  async wrap<T>(callback: (tx: $$ & Transaction<$$>) => Promise<T>): Promise<T> {
+  async wrap<T>(callback: (tx: $$ & Transaction<$$>, dry: false) => Promise<T>): Promise<T> {
     let result!: T;
     try {
-      result = await callback(this._withShorthand());
+      result = await callback(this._withShorthand(), false);
     } catch (ex) {
       if (this.state === 'active') this.abort();
       throw ex;
     }
     if (this.state === 'active') this.commit();
     return result;
+  }
+
+  /**
+   * Like [[Transaction.wrap]], but the transaction cannot be committed and will
+   * be aborted at the end of the callback
+   */
+  async dry_run<T>(callback: (tx: $$ & Transaction<$$>, dry: true) => Promise<T>): Promise<T> {
+    const proxy = new Proxy(this, {
+      get(target: any, prop: any): any {
+        if (prop === 'commit') {
+          return () => { throw Error('Cannot commit in a dry run!'); };
+        } else {
+          return target[prop];
+        }
+      }
+    });
+
+    let result!: T;
+    try {
+      result = await callback(proxy._withShorthand(), true);
+    } finally {
+      this.abort();
+    }
+    return result;
+  }
+
+  /**
+   * Add a store.
+   *
+   * Store name must be preceeded with a `'$'`.
+   *
+   * @param $name `'$' +` store name
+   */
+  addStore<Item extends Storable>($name: string): BoundStore<Item> {
+    const name = $name.slice(1);
+    this._idb_db.createObjectStore(name, { keyPath: 'id', autoIncrement: true });
+    const idb_store = this._idb_tx.objectStore(name);
+    const store_structure = new StoreStructure({
+      name: name,
+      index_structures: {},
+    });
+    const store = new BoundStore<Item>(store_structure, idb_store);
+    this.structure.store_structures[name] = store_structure as StoreStructure<Storable>;
+    this.stores[name] = store as any as BoundStore<Storable>;
+    (this as any)[$name] = store;
+    return store;
+  }
+
+  /**
+   * Remove a store
+   *
+   * Store name must be preceeded with a `'$'`.
+   *
+   * @param $name `'$' +` store name
+   */
+  removeStore($name: string): void {
+    const name = $name.slice(1);
+    this._idb_db.deleteObjectStore(name);
+    delete this.structure.store_structures[name];
+    delete this.stores[name];
+    delete (this as any)[$name];
   }
 
   /**
@@ -175,3 +236,4 @@ export class Transaction<$$ = {}> {
   }
 
 }
+

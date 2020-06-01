@@ -1,6 +1,6 @@
 
 import 'fake-indexeddb/auto';
-import { newJine, Jine, addStore, addIndex, Store, Index, BoundConnection } from '../src/jine';
+import { newJine, Jine, Store, Index, BoundConnection } from '../src/jine';
 import { reset } from './shared';
 
 type Person = {
@@ -15,21 +15,15 @@ interface $$ {
 
 describe('transaction', () => {
 
-  const migrations = [
-    {
-      version: 1,
-      alterations: [
-        addStore<Person>('$people'),
-      ],
-    },
-  ];
-
   let jine!: Jine<$$>;
   let conn!: $$ & BoundConnection<$$> & $$;
 
   beforeEach(async () => {
-    await reset();
-    jine = await newJine<$$>('jine', migrations);
+    reset();
+    jine = newJine<$$>('jine');
+    await jine.upgrade(1, async tx => {
+      tx.addStore<Person>('$people');
+    });
     conn = await jine.newConnection();
   });
 

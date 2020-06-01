@@ -1,7 +1,7 @@
 
+import { some } from './util';
 import { Storable } from './storable';
 import { Indexable } from './indexable';
-import { some, Codec } from './util';
 import { AutonomousStore } from './store';
 import { TransactionMode } from './transaction';
 import { query, queryUnique, QuerySpec, QueryExecutor, UniqueQueryExecutor } from './query';
@@ -35,11 +35,6 @@ export class IndexStructure<Item extends Storable, Trait extends Indexable> {
    */
   explode: boolean;
 
-  /**
-   * The codec of the parent store
-   */
-  item_codec: Codec<Item, Storable>;
-
   parent_store_name: string;
   trait_path_or_getter: string | ((item: Item) => Trait);
 
@@ -47,14 +42,12 @@ export class IndexStructure<Item extends Storable, Trait extends Indexable> {
     name: string;
     unique: boolean;
     explode: boolean;
-    item_codec: Codec<Item, Storable>;
     parent_store_name: string;
     trait_path_or_getter: string | ((item: Item) => Trait);
   }) {
     this.name = args.name;
     this.unique = args.unique;
     this.explode = args.explode;
-    this.item_codec = args.item_codec;
     this.parent_store_name = args.parent_store_name;
     this.trait_path_or_getter = args.trait_path_or_getter;
   }

@@ -9,8 +9,8 @@ type NativelyIndexable = indexable.NativelyIndexable;
 import { Row } from './row';
 import { Cursor } from './query';
 import { Connection } from './connection';
-import { some, Dict, Codec } from './util';
-import { Transaction, TransactionMode } from './transaction';
+import { some, Dict } from './util';
+import { TransactionMode } from './transaction';
 import { IndexStructure, Index, BoundIndex, AutonomousIndex } from './index';
 
 /**
@@ -25,22 +25,15 @@ export class StoreStructure<Item extends Storable> {
   name: string;
 
   /**
-   * The codec involved in serialization and de-serialization of stored items.
-   */
-  item_codec: Codec<Item, Storable>;
-
-  /**
    * The structure of the store's indexes
    */
   index_structures: Dict<string, IndexStructure<Item, Indexable>>;
 
   constructor(args: {
     name: string;
-    item_codec: Codec<Item, Storable>;
     index_structures: Dict<string, IndexStructure<Item, Indexable>>;
   }) {
     this.name = args.name;
-    this.item_codec = args.item_codec;
     this.index_structures = args.index_structures;
   }
 
@@ -139,7 +132,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
   }
 
   async _mapExistingRows(mapper: (row: Row) => Row): Promise<void> {
-    const cursor = new Cursor(this._idb_store, { everything: true }, this.structure.item_codec);
+    const cursor = new Cursor(this._idb_store, { everything: true });
     await cursor.init();
     while (cursor.active) {
       await cursor._replaceRow(mapper(cursor._currentRow()));
@@ -151,7 +144,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     return new Promise((resolve, reject) => {
       // Don't include the id since it's autoincrement'd
       const row: Omit<Row, 'id'> = {
-        payload: storable.encode(this.structure.item_codec.encode(item)),
+        payload: storable.encode(item),
         traits: this._calcTraits(item),
       };
 
@@ -201,11 +194,59 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
       const req = this._idb_store.getAll();
       req.onsuccess = (event) => {
         const rows = (event.target as any).result as Array<Row>;
-        const items = rows.map(row => this.structure.item_codec.decode(storable.decode(row.payload)));
+        const items = rows.map(row => storable.decode(row.payload));
         resolve(items);
       };
       req.onerror = _event => reject(req.error);
     });
+  }
+
+  /**
+   * Add an index to the store
+   */
+  addIndex<Trait extends Indexable>(
+    $name: string,
+    trait: string | ((item: Item) => Trait),
+    options?: { unique?: boolean; explode?: boolean },
+  ): void {
+    if (!$name.startsWith('$'))
+      throw Error("Index name must begin with '$'");
+    const name = $name.slice(1);
+    const idb_tx = this._idb_store.transaction;
+    const idb_store = idb_tx.objectStore(this.structure.name);
+    const idb_index = idb_store.createIndex(name, `traits.${name}`, {
+      unique: options?.unique ?? false,
+      multiEntry: options?.explode ?? false,
+    });
+
+    if (typeof trait === 'string') {
+      if (!trait.startsWith('.'))
+        throw Error("Index path must start with '.'");
+      trait = trait.slice(1);
+    }
+
+    const index_structure = new IndexStructure({
+      name: name,
+      unique: options?.unique ?? false,
+      explode: options?.explode ?? false,
+      parent_store_name: this.structure.name,
+      trait_path_or_getter: trait,
+    });
+    const index = new BoundIndex(index_structure, idb_index);
+    this.structure.index_structures[name] = index_structure;
+    this.indexes[name] = index;
+    (this as any)[$name] = index;
+  }
+
+  /**
+   * Remove an index from the store
+   */
+  removeIndex($name: string): void {
+    const name = $name.slice(1);
+    this._idb_store.deleteIndex(name);
+    delete this.structure.index_structures[name];
+    delete this.indexes[name];
+    delete (this as any)[$name];
   }
 
   async _transact<T>(mode: TransactionMode, callback: (store: BoundStore<Item>) => Promise<T>): Promise<T> {

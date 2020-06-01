@@ -1,6 +1,6 @@
 
 import 'fake-indexeddb/auto';
-import { newJine, Jine, addStore, addIndex, Store, Index, BoundConnection } from '../src/jine';
+import { newJine, Jine, Store, Index, BoundConnection } from '../src/jine';
 import { reset } from './shared';
 
 type Num = {
@@ -16,22 +16,16 @@ interface $$ {
 
 describe('query', () => {
 
-  const migrations = [
-    {
-      version: 1,
-      alterations: [
-        addStore<Num>('$nums'),
-        addIndex<Num, number>('$nums.$value', '.value'),
-      ],
-    },
-  ];
-
   let jine!: Jine<$$>;
   let conn!: $$ & BoundConnection<$$> & $$;
 
   beforeEach(async () => {
-    await reset();
-    jine = await newJine<$$>('jine', migrations);
+    reset();
+    jine = newJine<$$>('jine');
+    await jine.upgrade(1, async tx => {
+      const $nums = tx.addStore<Num>('$nums');
+      $nums.addIndex<number>('$value', '.value');
+    });
     conn = await jine.newConnection();
   });
 

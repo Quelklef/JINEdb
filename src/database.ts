@@ -1,8 +1,7 @@
 
 import { Storable } from './storable';
-import { some, Dict } from './util';
 import { Transaction } from './transaction';
-import { MigrationSpec, Migrations } from './migration';
+import { some, invoke, Dict } from './util';
 import { StoreStructure, AutonomousStore } from './store';
 import { BoundConnection, AutonomousConnection } from './connection';
 
@@ -85,33 +84,17 @@ export class Database<$$ = {}> {
   /**
    * The structure of the database
    */
-  structure!: DatabaseStructure;
+  structure: DatabaseStructure;
 
-  /**
-   * The database migrations
-   */
-  migrations: Migrations;
-
-  static readonly _allow_construction: symbol = Symbol();
-  constructor(override: any, migrations: Migrations) {
-    if (override !== Database._allow_construction)
-      throw Error(`Do not construct a Database directly; use Database.new.`);
-
-    this.migrations = migrations;
+  constructor(name: string) {
+    this.structure = new DatabaseStructure({
+      name: name,
+      version: 0,
+      store_structures: {},
+    });
   }
 
-  static async new<$$ = {}>(name: string, migration_specs: Array<MigrationSpec>): Promise<Database<$$>> {
-    const migrations = new Migrations(migration_specs);
-    const db = new Database<$$>(Database._allow_construction, migrations);
-
-    const old_version = await getDbVersion(name);
-    db.structure = migrations.calcStructure(name, old_version);
-    await migrations.upgrade(db, old_version);
-
-    return db;
-  }
-
-  async _withShorthand(): Promise<$$ & this> {
+  _withShorthand(): $$ & this {
     const conn = new AutonomousConnection(this.structure);
     for (const store_name of this.structure.store_names) {
       const store_structure = some(this.structure.store_structures[store_name]);
@@ -119,7 +102,6 @@ export class Database<$$ = {}> {
       (this as any)['$' + store_name] = store._withShorthand();
     }
     const $$this = this as any as $$ & this;
-    this._withShorthand = () => Promise.resolve($$this);
     return $$this;
   }
 
@@ -136,7 +118,7 @@ export class Database<$$ = {}> {
    * Creates and returns a new connection to the database.
    *
    * This connection must be manually closed. If this scope is well-defined, it is recommended
-   * to use {@link Database.connect}.
+   * to use [[Database.connect]].
    *
    * @returns A new connection
    */
@@ -164,19 +146,38 @@ export class Database<$$ = {}> {
     return result;
   }
 
-  _versionChange(version: number, new_structure: DatabaseStructure, upgrade: (tx: Transaction) => void): Promise<void> {
+  async upgrade(version: number, callback: (tx: Transaction) => Promise<void>): Promise<void> {
     /* Asynchronously re-open the underlying idb database with the given
     version number, if supplied. If an upgrade function is given, it will be
     attached to the upgradeneeded event of the database open request. */
+
+    const idb_version = await getDbVersion(this.structure.name);
+    const do_dry_run = version < this.structure.version || version < idb_version;
 
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(this.structure.name, version);
       req.onupgradeneeded = _event => {
         const idb_tx = some(req.transaction);
-        new Transaction<$$>(idb_tx, this.structure).wrapSynchronous(tx => upgrade(tx));
+        const tx = new Transaction<$$>(idb_tx, this.structure)
+
+        const run_promise = invoke(async () => {
+          if (do_dry_run)
+            await tx.dry_run(async tx => await callback(tx));
+          else
+            await tx.wrap(async tx => await callback(tx));
+
+          // update structure if stores were added etc
+          this.structure.store_structures = tx.structure.store_structures;
+          this.structure.version = version;
+          // TODO: switch to Proxy-based _withShorthand
+          this._withShorthand();
+        });
+
+        run_promise
+          .then(result => resolve(result),
+                reason => reject(reason));
       };
       req.onsuccess = _event => {
-        this.structure = new_structure;
         const idb_db = req.result;
         idb_db.close();
         resolve();

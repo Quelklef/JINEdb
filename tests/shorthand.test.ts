@@ -1,6 +1,6 @@
 
 import 'fake-indexeddb/auto';
-import { newJine, Jine, addStore, addIndex, Store, Index, BoundConnection, Transaction } from '../src/jine';
+import { newJine, Jine, Store, Index, BoundConnection, Transaction } from '../src/jine';
 import { reset } from './shared';
 
 type Post = {
@@ -16,16 +16,6 @@ interface $$ {
 
 
 describe('shorthand', () => {
-
-  const migrations = [
-    {
-      version: 1,
-      alterations: [
-        addStore<Post>('$posts'),
-        addIndex<Post, string>('$posts.$title', '.title'),
-      ],
-    },
-  ];
 
   const some_post = {
     title: 'On Bananas',
@@ -72,8 +62,12 @@ describe('shorthand', () => {
   let jine!: Jine<$$>;
 
   beforeEach(async () => {
-    await reset();
-    jine = await newJine<$$>('jine', migrations);
+    reset();
+    jine = newJine<$$>('jine');
+    await jine.upgrade(1, async tx => {
+      const $posts = tx.addStore<Post>('$posts');
+      $posts.addIndex<string>('$title', '.title');
+    });
   });
 
   tests('Database', () => jine);

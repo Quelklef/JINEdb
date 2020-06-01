@@ -1,6 +1,6 @@
 
 import 'fake-indexeddb/auto';
-import { newJine, Jine, addStore, addIndex, Store, Index, BoundConnection } from '../src/jine';
+import { newJine, Jine, Store, Index, BoundConnection } from '../src/jine';
 import { reset } from './shared';
 
 type Item = {
@@ -21,25 +21,19 @@ interface $$ {
 
 describe('index', () => {
 
-  const migrations = [
-    {
-      version: 1,
-      alterations: [
-        addStore<Item>('$items'),
-        addIndex<Item, string>('$items.$index', '.attr'),
-        addIndex<Item, string>('$items.$index_unique', '.attr_unique', { unique: true }),
-        addIndex<Item, string>('$items.$index_explode', '.attr_explode', { explode: true }),
-        addIndex<Item, number>('$items.$index_derived', (item: Item) => item.attr.length),
-      ],
-    },
-  ];
-
   let jine!: Jine<$$>;
   let conn!: $$ & BoundConnection<$$>;
 
   beforeEach(async () => {
-    await reset();
-    jine = await newJine<$$>('jine', migrations);
+    reset();
+    jine = newJine<$$>('jine');
+    await jine.upgrade(1, async tx => {
+      const $items = tx.addStore<Item>('$items');
+      $items.addIndex<string>('$index', '.attr');
+      $items.addIndex<string>('$index_unique', '.attr_unique', { unique: true });
+      $items.addIndex<string>('$index_explode', '.attr_explode', { explode: true });
+      $items.addIndex<number>('$index_derived', (item: Item) => item.attr.length);
+    });
     conn = await jine.newConnection();
   });
 
