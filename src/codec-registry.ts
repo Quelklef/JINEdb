@@ -85,5 +85,15 @@ export class CodecRegistry<Encoded, Box extends Encoded> {
     }
   }
 
+  modify(id: string, updates: Partial<Codec<any, Encoded>>): void {
+    Object.assign(this._codecs.get(id), updates);
+  }
+
+  async upgrade(id: string, args: Codec<any, Encoded> & { migrate: () => Promise<void> }): Promise<void> {
+    this.modify(id, { encode: args.encode });
+    await args.migrate;
+    this.modify(id, { decode: args.decode });
+  }
+
 }
 

@@ -38,4 +38,3 @@ export function invoke<T>(iife: () => T): T {
 
   return iife();
 }
-

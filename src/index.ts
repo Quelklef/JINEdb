@@ -1,10 +1,10 @@
 
 import { some } from './util';
-import { Storable } from './storable';
-import { Indexable } from './indexable';
 import { AutonomousStore } from './store';
 import { TransactionMode } from './transaction';
-import { query, queryUnique, QuerySpec, QueryExecutor, UniqueQueryExecutor } from './query';
+import { Storable, StorableRegistry } from './storable';
+import { Indexable, IndexableRegistry } from './indexable';
+import { QuerySpec, QueryExecutor, UniqueQueryExecutor } from './query';
 
 /**
  * Structure of an index
@@ -44,12 +44,16 @@ export class IndexStructure<Item extends Storable, Trait extends Indexable> {
     explode: boolean;
     parent_store_name: string;
     trait_path_or_getter: string | ((item: Item) => Trait);
+    storables: StorableRegistry;
+    indexables: IndexableRegistry;
   }) {
     this.name = args.name;
     this.unique = args.unique;
     this.explode = args.explode;
     this.parent_store_name = args.parent_store_name;
     this.trait_path_or_getter = args.trait_path_or_getter;
+    this.storables = args.storables;
+    this.indexables = args.indexables;
   }
 
   /**
@@ -84,6 +88,9 @@ export class IndexStructure<Item extends Storable, Trait extends Indexable> {
       throw Error('Cannot get .trait_getter on a non-derived index.');
     return this.trait_path_or_getter as (item: Item) => Trait;
   }
+
+  storables: StorableRegistry;
+  indexables: IndexableRegistry;
 
 }
 
@@ -157,12 +164,22 @@ export class BoundIndex<Item extends Storable, Trait extends Indexable> implemen
 
   /** @inheritDoc */
   one(trait: Trait): UniqueQueryExecutor<Item, Trait> {
-    return queryUnique(this, { equals: trait });
+    return new UniqueQueryExecutor({
+      source: this,
+      query_spec: { equals: trait },
+      storables: this.structure.storables,
+      indexables: this.structure.indexables,
+    });
   }
 
   /** @inheritDoc */
   range(query_spec: QuerySpec): QueryExecutor<Item, Trait> {
-    return query(this, query_spec);
+    return new QueryExecutor({
+      source: this,
+      query_spec: query_spec,
+      storables: this.structure.storables,
+      indexables: this.structure.indexables,
+    });
   }
 
   /** @inheritDoc */
@@ -205,12 +222,22 @@ export class AutonomousIndex<Item extends Storable, Trait extends Indexable> imp
 
   /** @inheritDoc */
   one(trait: Trait): UniqueQueryExecutor<Item, Trait> {
-    return queryUnique(this, { equals: trait });
+    return new UniqueQueryExecutor({
+      source: this,
+      query_spec: { equals: trait },
+      storables: this.structure.storables,
+      indexables: this.structure.indexables,
+    });
   }
 
   /** @inheritDoc */
-  range(spec: QuerySpec): QueryExecutor<Item, Trait> {
-    return query(this, spec);
+  range(query_spec: QuerySpec): QueryExecutor<Item, Trait> {
+    return new QueryExecutor({
+      source: this,
+      query_spec: query_spec,
+      storables: this.structure.storables,
+      indexables: this.structure.indexables,
+    });
   }
 
   /** @inheritDoc */

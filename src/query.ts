@@ -1,16 +1,11 @@
 
-import * as storable from './storable';
-import * as indexable from './indexable';
-
-type Storable = storable.Storable;
-type Indexable = indexable.Indexable;
-type NativelyIndexable = indexable.NativelyIndexable;
-
 import { Row } from './row';
+import { some, Dict } from './util';
 import { TransactionMode } from './transaction';
 import { Store, BoundStore } from './store';
 import { Index, BoundIndex } from './index';
-import { some, Dict } from './util';
+import { Storable, StorableRegistry } from './storable';
+import { Indexable, NativelyIndexable, IndexableRegistry } from './indexable';
 
 /**
  * Query spec
@@ -99,20 +94,6 @@ function compileCursorDirection(query_spec: QuerySpec): IDBCursorDirection {
   return result as IDBCursorDirection;
 }
 
-export function query<Item extends Storable, Trait extends Indexable>(
-  source: Store<Item> | Index<Item, Trait>,
-  query_spec: QuerySpec,
-): QueryExecutor<Item, Trait> {
-  return new QueryExecutor<Item, Trait>(source, query_spec);
-}
-
-export function queryUnique<Item extends Storable, Trait extends Indexable>(
-  source: Index<Item, Trait>,
-  query_spec: QuerySpec,
-): UniqueQueryExecutor<Item, Trait> {
-  return new UniqueQueryExecutor<Item, Trait>(source, query_spec);
-}
-
 
 
 export class Cursor<Item extends Storable, Trait extends Indexable> implements Cursor<Item, Trait> {
@@ -123,17 +104,27 @@ export class Cursor<Item extends Storable, Trait extends Indexable> implements C
   // TODO: replicate on other classes.
   my: Dict<string, any> = {};
 
+  readonly storables: StorableRegistry;
+  readonly indexables: IndexableRegistry;
+
   readonly _query_spec: QuerySpec;
 
   readonly _idb_source: IDBIndex | IDBObjectStore;
   _idb_req: IDBRequest | null;
   _idb_cur: IDBCursorWithValue | null;
 
-  constructor(idb_source: IDBIndex | IDBObjectStore, query_spec: QuerySpec) {
-    this._query_spec = query_spec;
-    this._idb_source = idb_source;
+  constructor(args: {
+    idb_source: IDBIndex | IDBObjectStore;
+    query_spec: QuerySpec;
+    storables: StorableRegistry;
+    indexables: IndexableRegistry;
+  }) {
+    this._query_spec = args.query_spec;
+    this._idb_source = args.idb_source;
     this._idb_req = null;
     this._idb_cur = null;
+    this.storables = args.storables;
+    this.indexables = args.indexables;
   }
 
   get initialized(): boolean {
@@ -203,7 +194,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> implements C
     // Get the item at the cursor.
     this._assertActive();
     const row = some(this._idb_cur).value;
-    return storable.decode(row.payload);
+    return this.storables.decode(row.payload);
   }
 
   get _sourceIsExploding(): boolean {
@@ -213,7 +204,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> implements C
   currentTrait(): Trait {
     this._assertActive();
     const encoded = some(this._idb_cur).key as NativelyIndexable;
-    return indexable.decode(encoded, this._sourceIsExploding);
+    return this.indexables.decode(encoded, this._sourceIsExploding) as Trait;
   }
 
   async delete(): Promise<void> {
@@ -239,7 +230,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> implements C
     // Replace the current object with the given object
     this._assertActive();
     const row: any = some(this._idb_cur).value;
-    row.payload = storable.encode(new_item);
+    row.payload = this.storables.encode(new_item);
     return new Promise((resolve, reject) => {
       const req = some(this._idb_cur).update(row);
       req.onsuccess = _event => resolve();
@@ -265,9 +256,19 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
   readonly source: Store<Item> | Index<Item, Trait>;
   readonly query_spec: QuerySpec;
 
-  constructor(source: Store<Item> | Index<Item, Trait>, query_spec: QuerySpec) {
-    this.source = source;
-    this.query_spec = query_spec;
+  readonly storables: StorableRegistry;
+  readonly indexables: IndexableRegistry;
+
+  constructor(args: {
+    source: Store<Item> | Index<Item, Trait>;
+    query_spec: QuerySpec;
+    storables: StorableRegistry;
+    indexables: IndexableRegistry;
+  }) {
+    this.source = args.source;
+    this.query_spec = args.query_spec;
+    this.storables = args.storables;
+    this.indexables = args.indexables;
   }
 
   async _withCursor<T>(mode: TransactionMode, callback: (cursor: Cursor<Item, Trait>) => Promise<T>): Promise<T> {
@@ -282,7 +283,12 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
           ? (bound_source as any)._idb_store
           : (bound_source as any)._idb_index;
 
-      const cursor = new Cursor<Item, Trait>(idb_source, this.query_spec);
+      const cursor = new Cursor<Item, Trait>({
+        idb_source: idb_source,
+        query_spec: this.query_spec,
+        storables: this.storables,
+        indexables: this.indexables,
+      });
       return await callback(cursor);
 
     });
@@ -361,10 +367,15 @@ export class UniqueQueryExecutor<Item extends Storable, Trait extends Indexable>
 
   readonly qe: QueryExecutor<Item, Trait>;
 
-  constructor(source: Index<Item, Trait>, query_spec: QuerySpec) {
-    if (!source.structure.unique)
+  constructor(args: {
+    source: Index<Item, Trait>;
+    query_spec: QuerySpec;
+    storables: StorableRegistry;
+    indexables: IndexableRegistry;
+  }) {
+    if (!args.source.structure.unique)
       throw Error('Cannot create a UniqueQueryExecutor on a non-unique index.');
-    this.qe = new QueryExecutor(source, query_spec);
+    this.qe = new QueryExecutor(args);
   }
 
   /**

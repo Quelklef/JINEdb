@@ -1,9 +1,10 @@
 
-import { Storable } from './storable';
 import { Transaction } from './transaction';
 import { some, invoke, Dict } from './util';
 import { StoreStructure, AutonomousStore } from './store';
 import { BoundConnection, AutonomousConnection } from './connection';
+import { newIndexableRegistry, IndexableRegistry } from './indexable';
+import { newStorableRegistry, StorableRegistry, Storable } from './storable';
 
 async function getDbVersion(db_name: string): Promise<number> {
   /* Return current database version number. Returns an integer greater than or
@@ -60,11 +61,15 @@ export class DatabaseStructure {
   constructor(args: {
     name: string;
     version: number;
+    storables: StorableRegistry;
+    indexables: IndexableRegistry;
     store_structures: Dict<string, StoreStructure<Storable>>;
   }) {
     this.name = args.name;
     this.version = args.version;
     this.store_structures = args.store_structures;
+    this.storables = args.storables;
+    this.indexables = args.indexables;
   }
 
   /**
@@ -73,6 +78,9 @@ export class DatabaseStructure {
   get store_names(): Set<string> {
     return new Set(Object.keys(this.store_structures));
   }
+
+  storables: StorableRegistry;
+  indexables: IndexableRegistry;
 
 }
 
@@ -91,6 +99,8 @@ export class Database<$$ = {}> {
       name: name,
       version: 0,
       store_structures: {},
+      storables: newStorableRegistry(),
+      indexables: newIndexableRegistry(),
     });
   }
 

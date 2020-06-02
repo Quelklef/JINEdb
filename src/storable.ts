@@ -50,20 +50,33 @@ type Box = {
   __JINE_META__: string;
 };
 
-const registry = new CodecRegistry<NativelyStorable, Box>({
-  box_constructor: Object,
-  box: (unboxed: NativelyStorable, metadata: string): Box => {
-    return {
-      __JINE_BOX__: unboxed,
-      __JINE_META__: metadata,
-    };
-  },
-  unbox: (boxed: Box): [NativelyStorable, string] => {
-    return [boxed.__JINE_BOX__, boxed.__JINE_META__];
-  },
-});
+export type StorableRegistry
+  = CodecRegistry<NativelyStorable, Box>
+  & {
+    isStorable(val: any): val is Encodable;
+  };
 
-export const register = registry.register.bind(registry);
-export const encode = registry.encode.bind(registry);
-export const decode = registry.decode.bind(registry);
-export const isStorable = registry.hasCodec.bind(registry);
+export function newStorableRegistry(): StorableRegistry {
+
+  const codec_registry = new CodecRegistry<NativelyStorable, Box>({
+    box_constructor: Object,
+    box: (unboxed: NativelyStorable, metadata: string): Box => {
+      return {
+        __JINE_BOX__: unboxed,
+        __JINE_META__: metadata,
+      };
+    },
+    unbox: (boxed: Box): [NativelyStorable, string] => {
+      return [boxed.__JINE_BOX__, boxed.__JINE_META__];
+    },
+  });
+
+  const result = Object.create(codec_registry);
+  result.isStorable = function(val: any): val is Encodable {
+    return this.hasCodec(val);
+  }
+  return result;
+
+}
+
+

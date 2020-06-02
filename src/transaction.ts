@@ -1,6 +1,7 @@
 
-import { Storable } from './storable';
 import { some, Dict } from './util';
+import { IndexableRegistry } from './indexable';
+import { StorableRegistry, Storable } from './storable';
 import { StoreStructure, BoundStore } from './store';
 
 /**
@@ -40,10 +41,17 @@ export class TransactionStructure {
    */
   store_structures: Dict<string, StoreStructure<Storable>>;
 
+  storables: StorableRegistry;
+  indexables: IndexableRegistry;
+
   constructor(args: {
     store_structures: Dict<string, StoreStructure<Storable>>;
+    storables: StorableRegistry;
+    indexables: IndexableRegistry;
   }) {
     this.store_structures = args.store_structures;
+    this.storables = args.storables;
+    this.indexables = args.indexables;
   }
 
   /**
@@ -193,6 +201,8 @@ export class Transaction<$$ = {}> {
     const store_structure = new StoreStructure({
       name: name,
       index_structures: {},
+      storables: this.structure.storables,
+      indexables: this.structure.indexables,
     });
     const store = new BoundStore<Item>(store_structure, idb_store);
     this.structure.store_structures[name] = store_structure as StoreStructure<Storable>;
