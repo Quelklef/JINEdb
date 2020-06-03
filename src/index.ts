@@ -133,7 +133,7 @@ export interface Index<Item extends Storable, Trait extends Indexable> {
   /**
    * Select several items by a range of traits.
    */
-  range(spec: QuerySpec): QueryExecutor<Item, Trait>;
+  range(spec: QuerySpec<Trait>): QueryExecutor<Item, Trait>;
 
   _transact<T>(mode: TransactionMode, callback: (index: BoundIndex<Item, Trait>) => Promise<T>): Promise<T>;
 
@@ -173,7 +173,7 @@ export class BoundIndex<Item extends Storable, Trait extends Indexable> implemen
   }
 
   /** @inheritDoc */
-  range(query_spec: QuerySpec): QueryExecutor<Item, Trait> {
+  range(query_spec: QuerySpec<Trait>): QueryExecutor<Item, Trait> {
     return new QueryExecutor({
       source: this,
       query_spec: query_spec,
@@ -231,7 +231,7 @@ export class AutonomousIndex<Item extends Storable, Trait extends Indexable> imp
   }
 
   /** @inheritDoc */
-  range(query_spec: QuerySpec): QueryExecutor<Item, Trait> {
+  range(query_spec: QuerySpec<Trait>): QueryExecutor<Item, Trait> {
     return new QueryExecutor({
       source: this,
       query_spec: query_spec,

@@ -75,6 +75,9 @@ export class Transaction<$$ = {}> {
    */
   readonly structure: TransactionStructure;
 
+  get storables(): StorableRegistry { return this.structure.storables; }
+  get indexables(): IndexableRegistry { return this.structure.indexables; }
+
   /**
    * The object stores that the transaction has access to.
    */
@@ -107,6 +110,7 @@ export class Transaction<$$ = {}> {
       this.stores[store_name] = store;
     }
 
+    // TODO: what to do if blocked?
     this.state = 'active';
     this._idb_tx.addEventListener('abort', () => {
       this.state = 'aborted';
@@ -132,15 +136,14 @@ export class Transaction<$$ = {}> {
    * Like [[Transaction.wrap]], but synchronous.
    */
   wrapSynchronous<T>(callback: (tx: $$ & Transaction<$$>, dry: false) => T): T {
-    let result!: T;
     try {
-      result = callback(this._withShorthand(), false);
+      return callback(this._withShorthand(), false);
     } catch (ex) {
       if (this.state === 'active') this.abort();
       throw ex;
+    } finally {
+      if (this.state === 'active') this.commit();
     }
-    if (this.state === 'active') this.commit();
-    return result;
   }
 
   /**
@@ -152,15 +155,14 @@ export class Transaction<$$ = {}> {
    * @returns The return value of the callback
    */
   async wrap<T>(callback: (tx: $$ & Transaction<$$>, dry: false) => Promise<T>): Promise<T> {
-    let result!: T;
     try {
-      result = await callback(this._withShorthand(), false);
+      return await callback(this._withShorthand(), false);
     } catch (ex) {
       if (this.state === 'active') this.abort();
       throw ex;
+    } finally {
+      if (this.state === 'active') this.commit();
     }
-    if (this.state === 'active') this.commit();
-    return result;
   }
 
   /**
@@ -178,13 +180,11 @@ export class Transaction<$$ = {}> {
       }
     });
 
-    let result!: T;
     try {
-      result = await callback(proxy._withShorthand(), true);
+      return await callback(proxy._withShorthand(), true);
     } finally {
       this.abort();
     }
-    return result;
   }
 
   /**

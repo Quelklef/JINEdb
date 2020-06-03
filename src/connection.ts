@@ -117,10 +117,12 @@ export class BoundConnection<$$ = {}> implements Connection {
    * @typeParam the type of the callback result
    * @returns The result of the callback
    */
-  async wrap<T>(callback: (me: Connection) => Promise<T>): Promise<T> {
-    const result = await callback(this);
-    this.close();
-    return result;
+  async wrap<T>(callback: (conn: this) => Promise<T>): Promise<T> {
+    try {
+      return await callback(this);
+    } finally {
+      this.close();
+    }
   }
 
 }
@@ -137,6 +139,7 @@ export class AutonomousConnection implements Connection {
     return new Promise<IDBDatabase>((resolve, reject) => {
       const db_name = this.structure.name;
       const req = indexedDB.open(db_name);
+      // TODO: what to do if blocked?
       req.onupgradeneeded = _event => reject(Error('upgrade needed'));
       req.onsuccess = _event => resolve(req.result);
       req.onerror = _event => reject(req.error);

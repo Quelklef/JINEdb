@@ -1,16 +1,17 @@
 
 import { Row } from './row';
-import { Cursor } from './query';
 import { Storable } from './storable';
 import { Connection } from './connection';
 import { some, Dict } from './util';
 import { TransactionMode } from './transaction';
 import { StorableRegistry } from './storable';
+import { QueryExecutor, Cursor } from './query';
 import { Indexable, IndexableRegistry, NativelyIndexable } from './indexable';
 import { IndexStructure, Index, BoundIndex, AutonomousIndex } from './index';
 
 export { StorableRegistry } from './storable';
 export { IndexableRegistry } from './indexable';
+
 
 /**
  * The structure of an object store
@@ -94,6 +95,8 @@ export interface Store<Item extends Storable> {
    * @returns An array with all items in the store.
    */
   all(): Promise<Array<Item>>;
+
+  qall(): QueryExecutor<Item, never>;
 
   _transact<T>(mode: TransactionMode, callback: (store: BoundStore<Item>) => Promise<T>): Promise<T>;
 
@@ -212,23 +215,30 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     });
   }
 
+  qall(): QueryExecutor<Item, never> {
+    return new QueryExecutor({
+      source: this,
+      query_spec: { everything: true },
+      storables: this.structure.storables,
+      indexables: this.structure.indexables,
+    });
+  }
+
   /**
    * Add an index to the store
+   *
+   * @remark This is an asynchronous operation since derived indexes' values
+   * will be added to existing items in the db.
    */
-  addIndex<Trait extends Indexable>(
+  async addIndex<Trait extends Indexable>(
     $name: string,
     trait: string | ((item: Item) => Trait),
     options?: { unique?: boolean; explode?: boolean },
-  ): void {
+  ): Promise<void> {
+
     if (!$name.startsWith('$'))
       throw Error("Index name must begin with '$'");
     const name = $name.slice(1);
-    const idb_tx = this._idb_store.transaction;
-    const idb_store = idb_tx.objectStore(this.structure.name);
-    const idb_index = idb_store.createIndex(name, `traits.${name}`, {
-      unique: options?.unique ?? false,
-      multiEntry: options?.explode ?? false,
-    });
 
     if (typeof trait === 'string') {
       if (!trait.startsWith('.'))
@@ -236,6 +246,25 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
       trait = trait.slice(1);
     }
 
+    // create idb index
+    const idb_tx = this._idb_store.transaction;
+    const idb_store = idb_tx.objectStore(this.structure.name);
+    const idb_index = idb_store.createIndex(name, `traits.${name}`, {
+      unique: options?.unique ?? false,
+      multiEntry: options?.explode ?? false,
+    });
+
+    // update existing items if needed
+    if (typeof trait !== 'string') {
+      const trait_getter = trait as (item: Item) => Trait;
+      await this.qall()._replaceRows((row: Row) => {
+        const item = this.structure.storables.decode(row.payload);
+        row.traits[name] = this.structure.indexables.encode(trait_getter(item));
+        return row;
+      });
+    }
+
+    // create Index object
     const index_structure = new IndexStructure({
       name: name,
       unique: options?.unique ?? false,
@@ -249,17 +278,35 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     this.structure.index_structures[name] = index_structure;
     this.indexes[name] = index;
     (this as any)[$name] = index;
+
   }
 
   /**
    * Remove an index from the store
+   *
+   * @remark This is an asynchronous operation since derived indexes'
+   * calculated values will be purged from the db.
    */
-  removeIndex($name: string): void {
+  async removeIndex($name: string): Promise<void> {
+
     const name = $name.slice(1);
+
+    // remove idb index
     this._idb_store.deleteIndex(name);
+
+    // update existing rowsif needed
+    if (some(this.indexes[name]).structure.kind === 'derived') {
+      await this.qall()._replaceRows((row: Row) => {
+        delete row.traits[name];
+        return row;
+      });
+    }
+
+    // remove index from this object
     delete this.structure.index_structures[name];
     delete this.indexes[name];
     delete (this as any)[$name];
+
   }
 
   async _transact<T>(mode: TransactionMode, callback: (store: BoundStore<Item>) => Promise<T>): Promise<T> {
@@ -326,6 +373,16 @@ export class AutonomousStore<Item extends Storable> implements Store<Item> {
   /** @inheritDoc */
   async all(): Promise<Array<Item>> {
     return await this._transact('r', async bound_store => await bound_store.all());
+  }
+
+  /** @inheritDoc */
+  qall(): QueryExecutor<Item, never> {
+    return new QueryExecutor({
+      source: this,
+      query_spec: { everything: true },
+      storables: this.structure.storables,
+      indexables: this.structure.indexables,
+    });
   }
 
 }

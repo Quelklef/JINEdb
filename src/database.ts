@@ -119,6 +119,8 @@ export class Database<$$ = {}> {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(this.structure.name, this.structure.version);
       req.onupgradeneeded = _event => reject(Error('Upgrade needed.'));
+      // TODO: what to do if blocked?
+      req.onblocked = _event => reject(Error('blocked'));
       req.onsuccess = _event => resolve(req.result);
       req.onerror = _event => reject(req.error);
     });
@@ -151,9 +153,7 @@ export class Database<$$ = {}> {
    */
   async connect<T>(callback: (conn: $$ & BoundConnection<$$>) => Promise<T>): Promise<T> {
     const conn = await this.newConnection();
-    const result = await callback(conn);
-    conn.close();
-    return result;
+    return await conn.wrap(async conn => await callback(conn));
   }
 
   async upgrade(version: number, callback: (tx: Transaction) => Promise<void>): Promise<void> {
@@ -161,6 +161,7 @@ export class Database<$$ = {}> {
     version number, if supplied. If an upgrade function is given, it will be
     attached to the upgradeneeded event of the database open request. */
 
+    // TODO: following two lines are bad code
     const idb_version = await getDbVersion(this.structure.name);
     const do_dry_run = version < this.structure.version || version < idb_version;
 
@@ -170,7 +171,7 @@ export class Database<$$ = {}> {
         const idb_tx = some(req.transaction);
         const tx = new Transaction<$$>(idb_tx, this.structure)
 
-        const run_promise = invoke(async () => {
+        invoke(async (): Promise<void> => {
           if (do_dry_run)
             await tx.dry_run(async tx => await callback(tx));
           else
@@ -182,19 +183,18 @@ export class Database<$$ = {}> {
           // TODO: switch to Proxy-based _withShorthand
           this._withShorthand();
         });
-
-        run_promise
-          .then(result => resolve(result),
-                reason => reject(reason));
       };
       req.onsuccess = _event => {
         const idb_db = req.result;
         idb_db.close();
         resolve();
       };
-      req.onerror = _event => {
-        reject(req.error);
-      };
+      // TODO: what to do if blocked?
+      req.onblocked = _event => reject(Error('Blocked'));
+      // TODO: globally, better error handling and planning
+      // should a .abort() error?
+      // how do JS errors and iDB errors interact?
+      req.onerror = _event => reject(req.error);
     });
   }
 

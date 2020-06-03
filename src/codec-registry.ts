@@ -32,15 +32,15 @@ export class CodecRegistry<Encoded, Box extends Encoded> {
     this._box_constructor = args.box_constructor;
   }
 
-  isRegistered(con: Constructor): boolean {
-    return this._ids.has(con);
-  }
-
   register<T>(con: Constructor, id: string, codec: Codec<T, Encoded>): void {
     if (this.isRegistered(con))
       throw Error(`Type '${con.name}' is already registered.`);
     this._ids.set(con, id);
     this._codecs.set(id, codec);
+  }
+
+  isRegistered(con: Constructor): boolean {
+    return this._ids.has(con);
   }
 
   hasCodec(val: any): val is Encodable {
@@ -89,9 +89,15 @@ export class CodecRegistry<Encoded, Box extends Encoded> {
     Object.assign(this._codecs.get(id), updates);
   }
 
-  async upgrade(id: string, args: Codec<any, Encoded> & { migrate: () => Promise<void> }): Promise<void> {
+  async upgrade(id: string, args: Codec<any, Encoded> & { constructor?: Constructor; migrate: () => Promise<void> }): Promise<void> {
+    // Replace old constructor with new constructor, if given
+    if (args.constructor) {
+      const [old_constructor,] = some([...this._ids.entries()].find(([_key, val]) => val === id));
+      this._ids.delete(old_constructor);
+      this._ids.set(args.constructor, id);
+    }
     this.modify(id, { encode: args.encode });
-    await args.migrate;
+    await args.migrate();
     this.modify(id, { decode: args.decode });
   }
 

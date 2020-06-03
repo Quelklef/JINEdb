@@ -28,19 +28,19 @@ import { Indexable, NativelyIndexable, IndexableRegistry } from './indexable';
  * the query results should be traversed in reverse order, and `unique` marks that
  * duplicated values should be skipped.
  */
-export interface QuerySpec {  // TODO: should this be parameterized with <Trait>?
+export interface QuerySpec<Trait extends Indexable> {
   /** Select everything */
   everything?: boolean;
   /** Equality */
-  equals?: any;
+  equals?: Trait;
   /** Inclusive lower bound */
-  from?: any;
+  from?: Trait;
   /** Exclusive lower bound */
-  above?: any;
+  above?: Trait;
   /** Inclusive upper bound */
-  through?: any;
+  through?: Trait;
   /** Exclusive upper bound */
-  below?: any;
+  below?: Trait;
   /** Reversed? */
   reversed?: boolean;
   /** Unique? */
@@ -48,8 +48,8 @@ export interface QuerySpec {  // TODO: should this be parameterized with <Trait>
 }
 
 
-function compileTraitRange(spec: QuerySpec): IDBKeyRange | undefined {
-  /* Conpile an IDBKeyRange object from a QuerySpec. */
+function compileTraitRange<Trait extends Indexable>(spec: QuerySpec<Trait>, indexables: IndexableRegistry): IDBKeyRange | undefined {
+  /* Conpile an IDBKeyRange object from a QuerySpec<Trait>. */
 
   // The implementation isn't elegant, but it's easy to understand
 
@@ -57,37 +57,46 @@ function compileTraitRange(spec: QuerySpec): IDBKeyRange | undefined {
     return undefined;
 
   if ('equals' in spec)
-    return IDBKeyRange.only(spec.equals);
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    return IDBKeyRange.only(indexables.encode(spec.equals!));
 
   if ('from' in spec && 'through' in spec)
-    return IDBKeyRange.bound(spec.from, spec.through, false, false);
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    return IDBKeyRange.bound(indexables.encode(spec.from!), indexables.encode(spec.through!), false, false);
 
   if ('from' in spec && 'below' in spec)
-    return IDBKeyRange.bound(spec.from, spec.below, false, true);
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    return IDBKeyRange.bound(indexables.encode(spec.from!), indexables.encode(spec.below!), false, true);
 
   if ('above' in spec && 'through' in spec)
-    return IDBKeyRange.bound(spec.above, spec.through, true, false);
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    return IDBKeyRange.bound(indexables.encode(spec.above!), indexables.encode(spec.through!), true, false);
 
   if ('above' in spec && 'below' in spec)
-    return IDBKeyRange.bound(spec.above, spec.below, true, true);
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    return IDBKeyRange.bound(indexables.encode(spec.above!), indexables.encode(spec.below!), true, true);
 
   if ('from' in spec)
-    return IDBKeyRange.lowerBound(spec.from, false)
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    return IDBKeyRange.lowerBound(indexables.encode(spec.from!), false)
 
   if ('above' in spec)
-    return IDBKeyRange.lowerBound(spec.above, true);
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    return IDBKeyRange.lowerBound(indexables.encode(spec.above!), true);
 
   if ('through' in spec)
-    return IDBKeyRange.upperBound(spec.through, false);
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    return IDBKeyRange.upperBound(indexables.encode(spec.through!), false);
 
   if ('below' in spec)
-    return IDBKeyRange.upperBound(spec.below, true);
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    return IDBKeyRange.upperBound(indexables.encode(spec.below!), true);
 
   throw new Error('uh oh');
 
 }
 
-function compileCursorDirection(query_spec: QuerySpec): IDBCursorDirection {
+function compileCursorDirection<T extends Indexable>(query_spec: QuerySpec<T>): IDBCursorDirection {
   if (query_spec === null) return 'next';
   let result = query_spec.reversed ? 'prev' : 'next';
   if (query_spec.unique) result += 'unique';
@@ -96,7 +105,7 @@ function compileCursorDirection(query_spec: QuerySpec): IDBCursorDirection {
 
 
 
-export class Cursor<Item extends Storable, Trait extends Indexable> implements Cursor<Item, Trait> {
+export class Cursor<Item extends Storable, Trait extends Indexable> {
   /* IDBCursor wrapper */
 
   // For use by the API user to monkeypatch in any
@@ -107,7 +116,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> implements C
   readonly storables: StorableRegistry;
   readonly indexables: IndexableRegistry;
 
-  readonly _query_spec: QuerySpec;
+  readonly _query_spec: QuerySpec<Trait>;
 
   readonly _idb_source: IDBIndex | IDBObjectStore;
   _idb_req: IDBRequest | null;
@@ -115,7 +124,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> implements C
 
   constructor(args: {
     idb_source: IDBIndex | IDBObjectStore;
-    query_spec: QuerySpec;
+    query_spec: QuerySpec<Trait>;
     storables: StorableRegistry;
     indexables: IndexableRegistry;
   }) {
@@ -138,7 +147,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> implements C
 
   init(): Promise<void> {
     const req = this._idb_source.openCursor(
-      compileTraitRange(this._query_spec),
+      compileTraitRange(this._query_spec, this.indexables),
       compileCursorDirection(this._query_spec),
     );
     this._idb_req = req;
@@ -241,6 +250,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> implements C
   async update(updates: Partial<Item>): Promise<void> {
     this._assertActive();
     const item = await this.currentItem();
+    // TODO: following line won't preserve e.g. methods and constructor
     await this.replace(Object.assign({}, item, updates));
   }
 
@@ -254,14 +264,14 @@ export class Cursor<Item extends Storable, Trait extends Indexable> implements C
 export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
 
   readonly source: Store<Item> | Index<Item, Trait>;
-  readonly query_spec: QuerySpec;
+  readonly query_spec: QuerySpec<Trait>;
 
   readonly storables: StorableRegistry;
   readonly indexables: IndexableRegistry;
 
   constructor(args: {
     source: Store<Item> | Index<Item, Trait>;
-    query_spec: QuerySpec;
+    query_spec: QuerySpec<Trait>;
     storables: StorableRegistry;
     indexables: IndexableRegistry;
   }) {
@@ -293,6 +303,16 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
 
     });
 
+  }
+
+  async _replaceRows(mapper: (row: Row) => Row): Promise<void> {
+    await this._withCursor('rw', async cursor => {
+      for (await cursor.init(); cursor.active; await cursor.step()) {
+        const old_row = cursor._currentRow();
+        const new_row = mapper(old_row);
+        await cursor._replaceRow(new_row);
+      }
+    });
   }
 
   /**
@@ -369,7 +389,7 @@ export class UniqueQueryExecutor<Item extends Storable, Trait extends Indexable>
 
   constructor(args: {
     source: Index<Item, Trait>;
-    query_spec: QuerySpec;
+    query_spec: QuerySpec<Trait>;
     storables: StorableRegistry;
     indexables: IndexableRegistry;
   }) {
