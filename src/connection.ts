@@ -1,5 +1,6 @@
 
 import { some } from './util';
+import { Storable } from './storable';
 import { DatabaseStructure } from './database';
 import { Store, AutonomousStore } from './store';
 import { Transaction, TransactionMode, uglifyTransactionMode } from './transaction';
@@ -21,12 +22,7 @@ export interface Connection {
 
   _transact<T>(store_names: Array<string>, mode: TransactionMode, callback: (tx: Transaction) => Promise<T>): Promise<T>;
 
-  // `stores` really has type Array<Store<? extends Storable>>, but TypeScript
-  // doesn't support existential types at the moment :(
-  // Apparently they can be emulated. This would be nice, as a massive amount
-  // of this codebase has existential types hidden around it.
-  // TODO: try emulating existential types.
-  transact<T>(stores: Array<Store<any>>, mode: TransactionMode, callback: (tx: Transaction) => Promise<T>): Promise<T>;
+  transact<T>(stores: Array<Store<Storable>>, mode: TransactionMode, callback: (tx: Transaction) => Promise<T>): Promise<T>;
 
 }
 

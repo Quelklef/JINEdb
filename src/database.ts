@@ -171,6 +171,7 @@ export class Database<$$ = {}> {
         const idb_tx = some(req.transaction);
         const tx = new Transaction<$$>(idb_tx, this.structure)
 
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
         invoke(async (): Promise<void> => {
           if (do_dry_run)
             await tx.dry_run(async tx => await callback(tx));
