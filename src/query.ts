@@ -250,8 +250,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
   async update(updates: Partial<Item>): Promise<void> {
     this._assertActive();
     const item = await this.currentItem();
-    // TODO: following line won't preserve e.g. methods and constructor
-    await this.replace(Object.assign({}, item, updates));
+    await this.replace(Object.assign(item, updates));
   }
 
 }
