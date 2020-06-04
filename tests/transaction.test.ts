@@ -9,14 +9,15 @@ type Person = {
 }
 
 interface $$ {
-  $people: Store<Person>;
+  people: Store<Person>;
+  by: { };
 }
 
 
 describe('transaction', () => {
 
   let jine!: Jine<$$>;
-  let conn!: $$ & BoundConnection<$$> & $$;
+  let conn!: BoundConnection<$$>;
 
   beforeEach(async () => {
     reset();
@@ -42,34 +43,34 @@ describe('transaction', () => {
   };
 
   it("supports multiple operations", async () => {
-    await conn.transact([conn.$people], 'rw', async tx => {
-      await tx.$people.add(catherine);
-      await tx.$people.add(katheryn);
+    await conn.transact([conn.$.people], 'rw', async tx => {
+      await tx.$.people.add(catherine);
+      await tx.$.people.add(katheryn);
     });
-    expect(await conn.$people.count()).toEqual(2);
+    expect(await conn.$.people.count()).toEqual(2);
   });
 
   it("aborts atomically with .abort()", async () => {
-    await conn.transact([conn.$people], 'rw', async tx => {
-      await tx.$people.add(catherine);
-      await tx.$people.add(katheryn);
+    await conn.transact([conn.$.people], 'rw', async tx => {
+      await tx.$.people.add(catherine);
+      await tx.$.people.add(katheryn);
       tx.abort();
     });
-    expect(await conn.$people.count()).toEqual(0);
+    expect(await conn.$.people.count()).toEqual(0);
   });
 
   it("aborts atomically with an error", async () => {
     class MyError extends Error { }
     try {
-      await conn.transact([conn.$people], 'rw', async tx => {
-        await tx.$people.add(catherine);
-        await tx.$people.add(katheryn);
+      await conn.transact([conn.$.people], 'rw', async tx => {
+        await tx.$.people.add(catherine);
+        await tx.$.people.add(katheryn);
         throw new MyError('oh no');
       });
     } catch (e) {
       if (!(e instanceof MyError)) throw e;
     }
-    expect(await conn.$people.count()).toEqual(0);
+    expect(await conn.$.people.count()).toEqual(0);
   });
 
 });

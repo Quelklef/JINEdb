@@ -94,6 +94,8 @@ export class Database<$$ = {}> {
    */
   structure: DatabaseStructure;
 
+  $: $$;
+
   constructor(name: string) {
     this.structure = new DatabaseStructure({
       name: name,
@@ -102,17 +104,19 @@ export class Database<$$ = {}> {
       storables: newStorableRegistry(),
       indexables: newIndexableRegistry(),
     });
-  }
 
-  _withShorthand(): $$ & this {
-    const conn = new AutonomousConnection(this.structure);
-    for (const store_name of this.structure.store_names) {
-      const store_structure = some(this.structure.store_structures[store_name]);
-      const store = new AutonomousStore(store_structure, conn);
-      (this as any)['$' + store_name] = store._withShorthand();
-    }
-    const $$this = this as any as $$ & this;
-    return $$this;
+    const aut_conn = new AutonomousConnection(this.structure);
+    const self = this;
+    this.$ = <$$> new Proxy({}, {
+      get(_target: {}, prop: string | number | symbol) {
+        if (typeof prop === 'string') {
+          const store_name = prop;
+          const store_structure = some(self.structure.store_structures[store_name]);
+          const aut_store = new AutonomousStore(store_structure, aut_conn);
+          return aut_store;
+        }
+      }
+    });
   }
 
   async _newIdbConn(): Promise<IDBDatabase> {
@@ -134,10 +138,9 @@ export class Database<$$ = {}> {
    *
    * @returns A new connection
    */
-  async newConnection(): Promise<$$ & BoundConnection<$$>> {
+  async newConnection(): Promise<BoundConnection<$$>> {
     const idb_conn = await this._newIdbConn();
-    const conn = new BoundConnection<$$>(this.structure, idb_conn);
-    return conn._withShorthand();
+    return new BoundConnection<$$>(this.structure, idb_conn);
   }
 
   /**
@@ -151,7 +154,7 @@ export class Database<$$ = {}> {
    *
    * @returns The callback result
    */
-  async connect<T>(callback: (conn: $$ & BoundConnection<$$>) => Promise<T>): Promise<T> {
+  async connect<T>(callback: (conn: BoundConnection<$$>) => Promise<T>): Promise<T> {
     const conn = await this.newConnection();
     return await conn.wrap(async conn => await callback(conn));
   }
@@ -181,8 +184,6 @@ export class Database<$$ = {}> {
           // update structure if stores were added etc
           this.structure.store_structures = tx.structure.store_structures;
           this.structure.version = version;
-          // TODO: switch to Proxy-based _withShorthand
-          this._withShorthand();
         });
       };
       req.onsuccess = _event => {

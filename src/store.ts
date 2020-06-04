@@ -113,6 +113,9 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
   /** @inheritDoc */
   readonly indexes: Dict<string, BoundIndex<Item, Indexable>>;
 
+  // user-facing dual to .indexes
+  by: Dict<string, Index<Item, Indexable>>;
+
   readonly _idb_store: IDBObjectStore;
 
   constructor(
@@ -129,15 +132,8 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
       const idb_index = this._idb_store.index(index_name);
       this.indexes[index_name] = new BoundIndex(index_structure, idb_index);
     }
-  }
 
-  _withShorthand(): this {
-    for (const index_name of this.structure.index_names) {
-      const index = some(this.indexes[index_name]);
-      (this as any)['$' + index_name] = index;
-    }
-    this._withShorthand = () => this;
-    return this;
+    this.by = this.indexes;
   }
 
   async _mapExistingRows(mapper: (row: Row) => Row): Promise<void> {
@@ -326,6 +322,8 @@ export class AutonomousStore<Item extends Storable> implements Store<Item> {
   /** @inheritDoc */
   readonly indexes: Dict<string, AutonomousIndex<Item, Indexable>>;
 
+  readonly by: Dict<string, Index<Item, Indexable>>;
+
   readonly _conn: Connection;
 
   constructor(structure: StoreStructure<Item>, conn: Connection) {
@@ -335,6 +333,7 @@ export class AutonomousStore<Item extends Storable> implements Store<Item> {
       const index_structure = some(structure.index_structures[index_name]);
       this.indexes[index_name] = new AutonomousIndex(index_structure, this);
     }
+    this.by = this.indexes;
     this._conn = conn;
   }
 

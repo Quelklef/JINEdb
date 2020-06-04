@@ -26,7 +26,6 @@ export type Jine<$$> = $$ & Database<$$>;
  * Create a new database and run migrations on it.
  */
 export function newJine<$$>(name: string): Jine<$$> {
-  const db = new Database<$$>(name);
-  return db._withShorthand();
+  return new Database<$$>(name) as Jine<$$>;
 }
 

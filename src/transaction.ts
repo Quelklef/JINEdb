@@ -97,6 +97,8 @@ export class Transaction<$$ = {}> {
   readonly _idb_tx: IDBTransaction;
   readonly _idb_db: IDBDatabase;
 
+  readonly $: $$;
+
   constructor(idb_tx: IDBTransaction, structure: TransactionStructure) {
     this._idb_tx = idb_tx;
     this._idb_db = this._idb_tx.db;
@@ -109,6 +111,7 @@ export class Transaction<$$ = {}> {
       const store = new BoundStore(store_structure, idb_store);
       this.stores[store_name] = store;
     }
+    this.$ = this.stores as $$;
 
     // TODO: what to do if blocked?
     this.state = 'active';
@@ -123,21 +126,13 @@ export class Transaction<$$ = {}> {
     });
   }
 
-  _withShorthand(): $$ & this {
-    for (const store_name of this.structure.store_names) {
-      (this as any)['$' + store_name] = some(this.stores[store_name])._withShorthand();
-    }
-    const $$this = this as any as $$ & this;
-    this._withShorthand = () => $$this;
-    return $$this;
-  }
-
+  // TODO: dry or not should probably (also?) be an attr of the tx
   /**
    * Like [[Transaction.wrap]], but synchronous.
    */
-  wrapSynchronous<T>(callback: (tx: $$ & Transaction<$$>, dry: false) => T): T {
+  wrapSynchronous<T>(callback: (tx: Transaction<$$>, dry: false) => T): T {
     try {
-      return callback(this._withShorthand(), false);
+      return callback(this, false);
     } catch (ex) {
       if (this.state === 'active') this.abort();
       throw ex;
@@ -154,9 +149,9 @@ export class Transaction<$$ = {}> {
    * @typeParam T The return type of the callback
    * @returns The return value of the callback
    */
-  async wrap<T>(callback: (tx: $$ & Transaction<$$>, dry: false) => Promise<T>): Promise<T> {
+  async wrap<T>(callback: (tx: Transaction<$$>, dry: false) => Promise<T>): Promise<T> {
     try {
-      return await callback(this._withShorthand(), false);
+      return await callback(this, false);
     } catch (ex) {
       if (this.state === 'active') this.abort();
       throw ex;
@@ -169,7 +164,7 @@ export class Transaction<$$ = {}> {
    * Like [[Transaction.wrap]], but the transaction cannot be committed and will
    * be aborted at the end of the callback
    */
-  async dry_run<T>(callback: (tx: $$ & Transaction<$$>, dry: true) => Promise<T>): Promise<T> {
+  async dry_run<T>(callback: (tx: Transaction<$$>, dry: true) => Promise<T>): Promise<T> {
     const proxy = new Proxy(this, {
       get(target: any, prop: any): any {
         if (prop === 'commit') {

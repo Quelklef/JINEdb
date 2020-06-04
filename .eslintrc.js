@@ -50,6 +50,8 @@ module.exports = {
         "@typescript-eslint/no-unused-vars": ["error", { "varsIgnorePattern": "^_", "argsIgnorePattern": "^_" }],
         "@typescript-eslint/no-misused-promises": "error",
         "@typescript-eslint/no-floating-promises" :"error",
+        "@typescript-eslint/no-this-alias" :"off",
+        "@typescript-eslint/consistent-type-assertions" :"off",
       },
 
     },

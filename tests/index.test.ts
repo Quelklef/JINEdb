@@ -10,11 +10,13 @@ type Item = {
 }
 
 interface $$ {
-  $items: Store<Item> & {
-    $index: Index<Item, string>;
-    $index_unique: Index<Item, string>;
-    $index_explode: Index<Item, string>;
-    $index_derived: Index<Item, number>;
+  items: Store<Item> & {
+    by: {
+      index: Index<Item, string>;
+      index_unique: Index<Item, string>;
+      index_explode: Index<Item, string>;
+      index_derived: Index<Item, number>;
+    };
   };
 }
 
@@ -22,7 +24,7 @@ interface $$ {
 describe('index', () => {
 
   let jine!: Jine<$$>;
-  let conn!: $$ & BoundConnection<$$>;
+  let conn!: BoundConnection<$$>;
 
   beforeEach(async () => {
     reset();
@@ -51,8 +53,8 @@ describe('index', () => {
         attr_explode: [],
       }
 
-      await conn.$items.add(item);
-      const got = await conn.$items.$index.find("get me!");
+      await conn.$.items.add(item);
+      const got = await conn.$.items.by.index.find("get me!");
       expect(got).toEqual([item]);
 
     });
@@ -71,12 +73,12 @@ describe('index', () => {
         attr_explode: ['be1', 'be2'],
       }
 
-      await conn.$items.add(item_a);
+      await conn.$.items.add(item_a);
 
-      await expect(conn.$items.add(item_b))
+      await expect(conn.$.items.add(item_b))
         .rejects.toThrow();
 
-      expect(await conn.$items.count()).toEqual(1);
+      expect(await conn.$.items.count()).toEqual(1);
 
     });
 
@@ -88,11 +90,11 @@ describe('index', () => {
         attr_explode: ['a', 'b', 'c'],
       };
 
-      await conn.$items.add(item);
+      await conn.$.items.add(item);
 
-      expect(await conn.$items.$index_explode.find('a')).toEqual([item]);
-      expect(await conn.$items.$index_explode.find('b')).toEqual([item]);
-      expect(await conn.$items.$index_explode.find('c')).toEqual([item]);
+      expect(await conn.$.items.by.index_explode.find('a')).toEqual([item]);
+      expect(await conn.$.items.by.index_explode.find('b')).toEqual([item]);
+      expect(await conn.$.items.by.index_explode.find('c')).toEqual([item]);
 
     });
 
@@ -108,15 +110,15 @@ describe('index', () => {
         attr_explode: [],
       }
 
-      await conn.$items.add(item);
-      const got = await conn.$items.$index_unique.get("get me!");
+      await conn.$.items.add(item);
+      const got = await conn.$.items.by.index_unique.get("get me!");
       expect(got).toEqual(item);
 
     });
 
     it("throws on a failed get()", async () => {
 
-      expect(async () => await conn.$items.$index_unique.get('xxx'))
+      expect(async () => await conn.$.items.by.index_unique.get('xxx'))
         .rejects.toThrow();
 
     });
@@ -133,8 +135,8 @@ describe('index', () => {
         attr_explode: [],
       }
 
-      await conn.$items.add(item);
-      const got = await conn.$items.$index_derived.find(5);
+      await conn.$.items.add(item);
+      const got = await conn.$.items.by.index_derived.find(5);
       expect(got).toEqual([item]);
 
     });

@@ -1,5 +1,4 @@
 
-import { some } from './util';
 import { Storable } from './storable';
 import { DatabaseStructure } from './database';
 import { Store, AutonomousStore } from './store';
@@ -35,34 +34,37 @@ export class BoundConnection<$$ = {}> implements Connection {
 
   readonly _idb_conn: IDBDatabase;
 
+  readonly $: $$;
+
   constructor(
     structure: DatabaseStructure,
     idb_conn: IDBDatabase,
   ) {
     this.structure = structure;
     this._idb_conn = idb_conn;
+
+    const self = this;
+    this.$ = <$$> new Proxy({}, {
+      get(_target: {}, prop: string | number | symbol) {
+        if (typeof prop === 'string') {
+          const store_name = prop;
+          const store_structure = self.structure.store_structures[store_name];
+          if (store_structure === undefined) return undefined;
+          const aut_store = new AutonomousStore(store_structure, self);
+          return aut_store;
+        }
+      }
+    });
   }
 
   getVersion(): Promise<number> {
     return Promise.resolve(this._idb_conn.version);
   }
 
-  _withShorthand(): $$ & this {
-    for (const store_name of this.structure.store_names) {
-      const store_structure = some(this.structure.store_structures[store_name]);
-      const aut_store = new AutonomousStore(store_structure, this);
-      (this as any)['$' + store_name] = aut_store._withShorthand();
-    }
-    const $$this = this as any as $$ & this;
-    this._withShorthand = () => $$this;
-    return $$this;
-  }
-
-  async _newTransaction(store_names: Array<string>, mode: TransactionMode): Promise<$$ & Transaction<$$>> {
+  async _newTransaction(store_names: Array<string>, mode: TransactionMode): Promise<Transaction<$$>> {
     const idb_conn = this._idb_conn;
     const idb_tx = idb_conn.transaction(store_names, uglifyTransactionMode(mode));
-    const tx = await new Transaction<$$>(idb_tx, this.structure)._withShorthand();
-    return tx;
+    return new Transaction<$$>(idb_tx, this.structure);
   }
 
   /**
@@ -71,7 +73,7 @@ export class BoundConnection<$$ = {}> implements Connection {
    * @param mode The transaction mode.
    * @returns A new transaction
    */
-  async newTransaction(stores: Array<Store<any>>, mode: TransactionMode): Promise<$$ & Transaction<$$>> {
+  async newTransaction(stores: Array<Store<any>>, mode: TransactionMode): Promise<Transaction<$$>> {
     const store_names = stores.map(store => store.structure.name);
     return await this._newTransaction(store_names, mode);
   }
@@ -79,7 +81,7 @@ export class BoundConnection<$$ = {}> implements Connection {
   async _transact<T>(
     store_names: Array<string>,
     mode: TransactionMode,
-    callback: (tx: $$ & Transaction<$$>) => Promise<T>,
+    callback: (tx: Transaction<$$>) => Promise<T>,
   ): Promise<T> {
     const tx = await this._newTransaction(store_names, mode);
     return await tx.wrap(async tx => await callback(tx));
@@ -95,7 +97,7 @@ export class BoundConnection<$$ = {}> implements Connection {
   async transact<T>(
     stores: Array<Store<any>>,
     mode: TransactionMode,
-    callback: (tx: $$ & Transaction<$$>) => Promise<T>,
+    callback: (tx: Transaction<$$>) => Promise<T>,
   ): Promise<T> {
     return (await this.newTransaction(stores, mode)).wrap(async tx => await callback(tx));
   }

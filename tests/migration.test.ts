@@ -6,7 +6,7 @@ import { reset } from './shared';
 describe('migration', () => {
 
   let jine!: Jine<any>;  // use any for convenience
-  let conn!: any & BoundConnection<any>;
+  let conn!: BoundConnection<any>;
 
   beforeEach(async () => {
     reset();
@@ -21,16 +21,16 @@ describe('migration', () => {
     });
 
     await jine.connect(async (conn: any) => {
-      await conn.$strings.add('s t r i n g');
-      expect(await conn.$strings.all()).toEqual(['s t r i n g']);
+      await conn.$.strings.add('s t r i n g');
+      expect(await conn.$.strings.all()).toEqual(['s t r i n g']);
     });
 
     await jine.upgrade(3, async (tx: any) => {
       await tx.removeStore('$strings');
     });
-    
+
     await jine.connect(async (conn: any) => {
-      expect(conn.$strings).toBe(undefined);
+      expect(conn.$.strings).toBe(undefined);
     });
 
   });
@@ -43,16 +43,16 @@ describe('migration', () => {
     });
 
     await jine.connect(async (conn: any) => {
-      await conn.$strings.add('me!');
-      expect(await conn.$strings.$self.find('me!')).toEqual(['me!']);
+      await conn.$.strings.add('me!');
+      expect(await conn.$.strings.by.self.find('me!')).toEqual(['me!']);
     });
 
     await jine.upgrade(4, async (tx: any) => {
-      await tx.$strings.removeIndex('$self');
+      await tx.$.strings.removeIndex('$self');
     });
 
     await jine.connect(async (conn: any) => {
-      expect(conn.$strings.$self).toBe(undefined);
+      expect(conn.$.strings.by.self).toBe(undefined);
     });
 
   });
@@ -82,8 +82,8 @@ describe('migration', () => {
 
     await jine.connect(async (conn: any) => {
       const pair = new MyPair_v1('left', 'right');
-      conn.$pairs.add(pair);
-      const got = await conn.$pairs.all();
+      conn.$.pairs.add(pair);
+      const got = await conn.$.pairs.all();
       expect(got).toEqual([pair]);
       expect(got[0].constructor).toBe(MyPair_v1);
     });
@@ -106,7 +106,7 @@ describe('migration', () => {
           return new MyPair_v2(fst, snd);
         },
         async migrate() {
-          await tx.$pairs.qall().replace((old: any) => {
+          await tx.$.pairs.qall().replace((old: any) => {
             const pair_v1 = old as MyPair_v1;
             const pair_v2 = new MyPair_v2(pair_v1.left, pair_v1.right);
             return pair_v2;
@@ -117,8 +117,8 @@ describe('migration', () => {
 
     await jine.connect(async (conn: any) => {
       const new_pair = new MyPair_v2('fst', 'snd');
-      conn.$pairs.add(new_pair);
-      const got = await conn.$pairs.all();
+      conn.$.pairs.add(new_pair);
+      const got = await conn.$.pairs.all();
       const old_pair = new MyPair_v2('left', 'right');
       expect(got).toEqual([old_pair, new_pair]);
       expect(got[0].constructor).toBe(MyPair_v2);
@@ -142,9 +142,9 @@ describe('migration', () => {
     });
 
     await jine.connect(async (conn: any) => {
-      await conn.$people.add({ name: 'me', body: 'reasonable' });
-      await conn.$people.add({ name: 'the guy she tells me not to worry about', body: 'impressive' });
-      expect(await conn.$people.count()).toBe(2);
+      await conn.$.people.add({ name: 'me', body: 'reasonable' });
+      await conn.$.people.add({ name: 'the guy she tells me not to worry about', body: 'impressive' });
+      expect(await conn.$.people.count()).toBe(2);
     });
 
     class BodyTrait {
@@ -163,13 +163,13 @@ describe('migration', () => {
           return new BodyTrait(['pitiful', 'reasonable', 'impressive'][idx] as BodyRating);
         },
       });
-      await tx.$people.addIndex('$body_rating', (person: Person) => new BodyTrait(person.body));
+      await tx.$.people.addIndex('$body_rating', (person: Person) => new BodyTrait(person.body));
     });
 
     await jine.connect(async (conn: any) => {
-      expect(await conn.$people.$body_rating.range({ above: new BodyTrait('pitiful') }).count()).toBe(2);
-      expect(await conn.$people.$body_rating.range({ above: new BodyTrait('reasonable') }).count()).toBe(1);
-      expect(await conn.$people.$body_rating.range({ above: new BodyTrait('impressive') }).count()).toBe(0);
+      expect(await conn.$.people.by.body_rating.range({ above: new BodyTrait('pitiful') }).count()).toBe(2);
+      expect(await conn.$.people.by.body_rating.range({ above: new BodyTrait('reasonable') }).count()).toBe(1);
+      expect(await conn.$.people.by.body_rating.range({ above: new BodyTrait('impressive') }).count()).toBe(0);
     });
 
   });
