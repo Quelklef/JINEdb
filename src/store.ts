@@ -146,9 +146,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
       storables: this.structure.storables,
       indexables: this.structure.indexables,
     });
-    // TODO doesnt step
-    await cursor.init();
-    while (cursor.active) {
+    for (await cursor.init(); cursor.active; await cursor.step()) {
       await cursor._replaceRow(mapper(cursor._currentRow()));
     }
   }
