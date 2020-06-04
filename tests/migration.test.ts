@@ -22,7 +22,7 @@ describe('migration', () => {
 
     await jine.connect(async (conn: any) => {
       await conn.$.strings.add('s t r i n g');
-      expect(await conn.$.strings.all()).toEqual(['s t r i n g']);
+      expect(await conn.$.strings.array()).toEqual(['s t r i n g']);
     });
 
     await jine.upgrade(3, async (tx: any) => {
@@ -83,7 +83,7 @@ describe('migration', () => {
     await jine.connect(async (conn: any) => {
       const pair = new MyPair_v1('left', 'right');
       conn.$.pairs.add(pair);
-      const got = await conn.$.pairs.all();
+      const got = await conn.$.pairs.array();
       expect(got).toEqual([pair]);
       expect(got[0].constructor).toBe(MyPair_v1);
     });
@@ -106,7 +106,7 @@ describe('migration', () => {
           return new MyPair_v2(fst, snd);
         },
         async migrate() {
-          await tx.$.pairs.qall().replace((old: any) => {
+          await tx.$.pairs.all().replace((old: any) => {
             const pair_v1 = old as MyPair_v1;
             const pair_v2 = new MyPair_v2(pair_v1.left, pair_v1.right);
             return pair_v2;
@@ -118,7 +118,7 @@ describe('migration', () => {
     await jine.connect(async (conn: any) => {
       const new_pair = new MyPair_v2('fst', 'snd');
       conn.$.pairs.add(new_pair);
-      const got = await conn.$.pairs.all();
+      const got = await conn.$.pairs.array();
       const old_pair = new MyPair_v2('left', 'right');
       expect(got).toEqual([old_pair, new_pair]);
       expect(got[0].constructor).toBe(MyPair_v2);

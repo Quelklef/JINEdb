@@ -26,10 +26,10 @@ describe('shorthand', () => {
 
   function tests(host_name: string, get_host: () => { $: $$ }): void {
 
-    it(`supports ${host_name}.$store.add and ${host_name}.$store.all`, async () => {
+    it(`supports ${host_name}.$store.add and ${host_name}.$store.array`, async () => {
       const host = get_host();
       await host.$.posts.add(some_post);
-      const posts = await host.$.posts.all();
+      const posts = await host.$.posts.array();
       expect(posts).toEqual([some_post]);
     });
 

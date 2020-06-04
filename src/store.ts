@@ -87,16 +87,19 @@ export interface Store<Item extends Storable> {
   clear(): Promise<void>;
 
   /**
-   * @returns The number of items in the store.
+   * @return The number of items in the store
    */
   count(): Promise<number>;
 
   /**
    * @returns An array with all items in the store.
    */
-  all(): Promise<Array<Item>>;
+  array(): Promise<Array<Item>>;
 
-  qall(): QueryExecutor<Item, never>;
+  /**
+   *
+   */
+  all(): QueryExecutor<Item, never>;
 
   _transact<T>(mode: TransactionMode, callback: (store: BoundStore<Item>) => Promise<T>): Promise<T>;
 
@@ -143,6 +146,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
       storables: this.structure.storables,
       indexables: this.structure.indexables,
     });
+    // TODO doesnt step
     await cursor.init();
     while (cursor.active) {
       await cursor._replaceRow(mapper(cursor._currentRow()));
@@ -199,7 +203,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
   }
 
   /** @inheritDoc */
-  async all(): Promise<Array<Item>> {
+  array(): Promise<Array<Item>> {
     return new Promise((resolve, reject) => {
       const req = this._idb_store.getAll();
       req.onsuccess = (event) => {
@@ -211,7 +215,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     });
   }
 
-  qall(): QueryExecutor<Item, never> {
+  all(): QueryExecutor<Item, never> {
     return new QueryExecutor({
       source: this,
       query_spec: { everything: true },
@@ -249,7 +253,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     // update existing items if needed
     if (typeof trait !== 'string') {
       const trait_getter = trait as (item: Item) => Trait;
-      await this.qall()._replaceRows((row: Row) => {
+      await this.all()._replaceRows((row: Row) => {
         const item = this.structure.storables.decode(row.payload);
         row.traits[name] = this.structure.indexables.encode(trait_getter(item));
         return row;
@@ -285,7 +289,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
 
     // update existing rowsif needed
     if (some(this.indexes[name]).structure.kind === 'derived') {
-      await this.qall()._replaceRows((row: Row) => {
+      await this.all()._replaceRows((row: Row) => {
         delete row.traits[name];
         return row;
       });
@@ -352,12 +356,12 @@ export class AutonomousStore<Item extends Storable> implements Store<Item> {
   }
 
   /** @inheritDoc */
-  async all(): Promise<Array<Item>> {
-    return await this._transact('r', async bound_store => await bound_store.all());
+  async array(): Promise<Array<Item>> {
+    return await this._transact('r', async bound_store => await bound_store.array());
   }
 
   /** @inheritDoc */
-  qall(): QueryExecutor<Item, never> {
+  all(): QueryExecutor<Item, never> {
     return new QueryExecutor({
       source: this,
       query_spec: { everything: true },
