@@ -175,7 +175,15 @@ export class Database<$$ = {}> {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(this.structure.name, version);
       req.onblocked = _event => reject(new JineBlockedError());
-      req.onerror = _event => reject(mapError(req.error));
+      req.onerror = _event => {
+        const idb_error = req.error;
+        // A .abort call in a versionchange tx should not raise an error
+        if (idb_error?.name === 'AbortError') {
+          resolve();
+        } else {
+          reject(mapError(req.error));
+        }
+      };
       req.onupgradeneeded = _event => {
         const idb_tx = some(req.transaction);
         const tx = new Transaction<$$>(idb_tx, this.structure)

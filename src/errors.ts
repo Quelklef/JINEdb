@@ -77,6 +77,7 @@ export function mapError(error: DOMException | null): JineError | DOMException |
   }
 
   const jine_error_type = jine_error_types[error.name];
+  console.log(jine_error_type);
 
   if (jine_error_type === undefined)
     return error;
