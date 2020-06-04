@@ -2,6 +2,7 @@
 import { Storable } from './storable';
 import { DatabaseStructure } from './database';
 import { Store, AutonomousStore } from './store';
+import { JineBlockedError, JineInternalError, mapError } from './errors';
 import { Transaction, TransactionMode, uglifyTransactionMode } from './transaction';
 
 /**
@@ -137,10 +138,11 @@ export class AutonomousConnection implements Connection {
     return new Promise<IDBDatabase>((resolve, reject) => {
       const db_name = this.structure.name;
       const req = indexedDB.open(db_name);
-      req.onupgradeneeded = _event => reject(Error('upgrade needed'));
-      req.onblocked = _event => reject(Error('blocked'));
+      // since we're opening without a version, no upgradeneeded should fire
+      req.onupgradeneeded = _event => reject(new JineInternalError());
+      req.onblocked = _event => reject(new JineBlockedError());
+      req.onerror = _event => reject(mapError(req.error));
       req.onsuccess = _event => resolve(req.result);
-      req.onerror = _event => reject(req.error);
     });
   }
 

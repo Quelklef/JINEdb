@@ -1,6 +1,7 @@
 
 import { Row } from './row';
 import { Storable } from './storable';
+import { mapError } from './errors';
 import { Connection } from './connection';
 import { some, Dict } from './util';
 import { TransactionMode } from './transaction';
@@ -162,7 +163,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
 
       const req = this._idb_store.add(row);
       req.onsuccess = _event => resolve();
-      req.onerror = _event => reject(req.error);
+      req.onerror = _event => reject(mapError(req.error));
     });
   }
 
@@ -184,7 +185,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     return new Promise((resolve, reject) => {
       const req = this._idb_store.clear();
       req.onsuccess = _event => resolve();
-      req.onerror = _event => reject(req.error);
+      req.onerror = _event => reject(mapError(req.error));
     });
   }
 
@@ -196,7 +197,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
         const count = (event.target as any).result as number;
         resolve(count);
       };
-      req.onerror = _event => reject(req.error);
+      req.onerror = _event => reject(mapError(req.error));
     });
   }
 
@@ -209,7 +210,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
         const items = rows.map(row => this.structure.storables.decode(row.payload));
         resolve(items);
       };
-      req.onerror = _event => reject(req.error);
+      req.onerror = _event => reject(mapError(req.error));
     });
   }
 

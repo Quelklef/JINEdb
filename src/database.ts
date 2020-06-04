@@ -4,6 +4,7 @@ import { some, invoke, Dict } from './util';
 import { StoreStructure, AutonomousStore } from './store';
 import { BoundConnection, AutonomousConnection } from './connection';
 import { newIndexableRegistry, IndexableRegistry } from './indexable';
+import { JineBlockedError, JineInternalError, mapError } from './errors';
 import { newStorableRegistry, StorableRegistry, Storable } from './storable';
 
 async function getDbVersion(db_name: string): Promise<number> {
@@ -25,13 +26,14 @@ async function getDbVersion(db_name: string): Promise<number> {
   } else {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(db_name);
-      req.onupgradeneeded = _event => reject(Error('upgrade needed'));
+      req.onupgradeneeded = _event => reject(new JineInternalError());
+      req.onblocked = _event => reject(new JineBlockedError());
       req.onsuccess = _event => {
         const conn = req.result;
         resolve(conn.version);
         conn.close();
       }
-      req.onerror = _event => reject(req.error);
+      req.onerror = _event => reject(mapError(req.error));
     });
   }
 }
@@ -125,13 +127,14 @@ export class Database<$$ = {}> {
     this.structure.version = await getDbVersion(this.structure.name);
   }
 
+  // TODO: there's a better way to wrap requests and handle errors
   async _newIdbConn(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(this.structure.name);
-      req.onupgradeneeded = _event => reject(Error('Upgrade needed.'));
-      req.onblocked = _event => reject(Error('blocked'));
+      req.onupgradeneeded = _event => reject(new JineInternalError());
+      req.onblocked = _event => reject(new JineBlockedError());
+      req.onerror = _event => reject(mapError(req.error));
       req.onsuccess = _event => resolve(req.result);
-      req.onerror = _event => reject(req.error);
     });
   }
 
@@ -171,6 +174,8 @@ export class Database<$$ = {}> {
 
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(this.structure.name, version);
+      req.onblocked = _event => reject(new JineBlockedError());
+      req.onerror = _event => reject(mapError(req.error));
       req.onupgradeneeded = _event => {
         const idb_tx = some(req.transaction);
         const tx = new Transaction<$$>(idb_tx, this.structure)
@@ -192,11 +197,6 @@ export class Database<$$ = {}> {
         idb_db.close();
         resolve();
       };
-      req.onblocked = _event => reject(Error('Blocked'));
-      // TODO: globally, better error handling and planning
-      // should a .abort() error?
-      // how do JS errors and iDB errors interact?
-      req.onerror = _event => reject(req.error);
     });
   }
 
@@ -206,8 +206,8 @@ export class Database<$$ = {}> {
   async destroy(): Promise<void> {
     return new Promise((resolve, reject) => {
       const req = indexedDB.deleteDatabase(this.structure.name);
+      req.onerror = _event => reject(mapError(req.error));
       req.onsuccess = _event => resolve();
-      req.onerror = _event => reject(req.error);
     });
   }
 

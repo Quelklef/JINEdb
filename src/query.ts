@@ -1,5 +1,6 @@
 
 import { Row } from './row';
+import { mapError } from './errors';
 import { some, Dict } from './util';
 import { TransactionMode } from './transaction';
 import { Store, BoundStore } from './store';
@@ -156,7 +157,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
         this._idb_cur = req.result;
         resolve();
       }
-      req.onerror = _event => reject(req.error);
+      req.onerror = _event => reject(mapError(req.error));
     });
   }
 
@@ -181,7 +182,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
           this._idb_cur = req.result;
           resolve();
         };
-        req.onerror = _event => reject(req.error);
+        req.onerror = _event => reject(mapError(req.error));
       });
     }
   }
@@ -222,7 +223,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     return new Promise((resolve, reject) => {
       const req = some(this._idb_cur).delete();
       req.onsuccess = _event => resolve();
-      req.onerror = _event => reject(req.error);
+      req.onerror = _event => reject(mapError(req.error));
     });
   }
 
@@ -231,7 +232,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     return new Promise((resolve, reject) => {
       const req = some(this._idb_cur).update(new_row);
       req.onsuccess = _event => resolve();
-      req.onerror = _event => reject(req.error);
+      req.onerror = _event => reject(mapError(req.error));
     });
   }
 
@@ -243,7 +244,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     return new Promise((resolve, reject) => {
       const req = some(this._idb_cur).update(row);
       req.onsuccess = _event => resolve();
-      req.onerror = _event => reject(req.error);
+      req.onerror = _event => reject(mapError(req.error));
     });
   }
 
