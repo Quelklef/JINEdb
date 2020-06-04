@@ -113,7 +113,6 @@ export class Transaction<$$ = {}> {
     }
     this.$ = this.stores as $$;
 
-    // TODO: what to do if blocked?
     this.state = 'active';
     this._idb_tx.addEventListener('abort', () => {
       this.state = 'aborted';

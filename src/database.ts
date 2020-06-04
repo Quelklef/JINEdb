@@ -129,7 +129,6 @@ export class Database<$$ = {}> {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(this.structure.name);
       req.onupgradeneeded = _event => reject(Error('Upgrade needed.'));
-      // TODO: what to do if blocked?
       req.onblocked = _event => reject(Error('blocked'));
       req.onsuccess = _event => resolve(req.result);
       req.onerror = _event => reject(req.error);
@@ -193,7 +192,6 @@ export class Database<$$ = {}> {
         idb_db.close();
         resolve();
       };
-      // TODO: what to do if blocked?
       req.onblocked = _event => reject(Error('Blocked'));
       // TODO: globally, better error handling and planning
       // should a .abort() error?

@@ -137,8 +137,8 @@ export class AutonomousConnection implements Connection {
     return new Promise<IDBDatabase>((resolve, reject) => {
       const db_name = this.structure.name;
       const req = indexedDB.open(db_name);
-      // TODO: what to do if blocked?
       req.onupgradeneeded = _event => reject(Error('upgrade needed'));
+      req.onblocked = _event => reject(Error('blocked'));
       req.onsuccess = _event => resolve(req.result);
       req.onerror = _event => reject(req.error);
     });
