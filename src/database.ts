@@ -50,8 +50,10 @@ export class DatabaseStructure {
   /**
    * The version of the database.
    * Database versions are integers greater than zero.
+   *
+   * Null if the database has not yet been initialized.
    */
-  version: number;
+  version: number | null;
 
   /**
    * The structures of the stores within this database.
@@ -60,7 +62,7 @@ export class DatabaseStructure {
 
   constructor(args: {
     name: string;
-    version: number;
+    version: number | null;
     storables: StorableRegistry;
     indexables: IndexableRegistry;
     store_structures: Dict<string, StoreStructure<Storable>>;
@@ -99,7 +101,7 @@ export class Database<$$ = {}> {
   constructor(name: string) {
     this.structure = new DatabaseStructure({
       name: name,
-      version: 0,
+      version: null,
       store_structures: {},
       storables: newStorableRegistry(),
       indexables: newIndexableRegistry(),
@@ -119,9 +121,13 @@ export class Database<$$ = {}> {
     });
   }
 
+  async init(): Promise<void> {
+    this.structure.version = await getDbVersion(this.structure.name);
+  }
+
   async _newIdbConn(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(this.structure.name, this.structure.version);
+      const req = indexedDB.open(this.structure.name);
       req.onupgradeneeded = _event => reject(Error('Upgrade needed.'));
       // TODO: what to do if blocked?
       req.onblocked = _event => reject(Error('blocked'));
@@ -164,10 +170,6 @@ export class Database<$$ = {}> {
     version number, if supplied. If an upgrade function is given, it will be
     attached to the upgradeneeded event of the database open request. */
 
-    // TODO: following two lines are bad code
-    const idb_version = await getDbVersion(this.structure.name);
-    const do_dry_run = version < this.structure.version || version < idb_version;
-
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(this.structure.name, version);
       req.onupgradeneeded = _event => {
@@ -176,14 +178,14 @@ export class Database<$$ = {}> {
 
         // eslint-disable-next-line @typescript-eslint/no-floating-promises
         invoke(async (): Promise<void> => {
-          if (do_dry_run)
+          if (version < some(this.structure.version))
             await tx.dry_run(async tx => await callback(tx));
           else
             await tx.wrap(async tx => await callback(tx));
 
           // update structure if stores were added etc
           this.structure.store_structures = tx.structure.store_structures;
-          this.structure.version = version;
+          if (version > some(this.structure.version)) this.structure.version = version;
         });
       };
       req.onsuccess = _event => {

@@ -65,7 +65,7 @@ describe('shorthand', () => {
 
   beforeEach(async () => {
     reset();
-    jine = newJine<$$>('jine');
+    jine = await newJine<$$>('jine');
     await jine.upgrade(1, async tx => {
       const posts = tx.addStore<Post>('posts');
       posts.addIndex<string>('title', '.title');

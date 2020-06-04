@@ -20,12 +20,14 @@ import { Database } from './database';
 /**
  * Top-level helper type
  */
-export type Jine<$$> = $$ & Database<$$>;
+export type Jine<$$> = Database<$$>;
 
 /**
  * Create a new database and run migrations on it.
  */
-export function newJine<$$>(name: string): Jine<$$> {
-  return new Database<$$>(name) as Jine<$$>;
+export async function newJine<$$>(name: string): Promise<Jine<$$>> {
+  const db = new Database<$$>(name);
+  await db.init();
+  return db;
 }
 

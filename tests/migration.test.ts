@@ -10,7 +10,7 @@ describe('migration', () => {
 
   beforeEach(async () => {
     reset();
-    jine = newJine<any>('jine');
+    jine = await newJine<any>('jine');
     await jine.upgrade(1, async (tx: any) => { });
   });
 

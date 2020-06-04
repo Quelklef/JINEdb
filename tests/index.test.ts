@@ -28,7 +28,7 @@ describe('index', () => {
 
   beforeEach(async () => {
     reset();
-    jine = newJine<$$>('jine');
+    jine = await newJine<$$>('jine');
     await jine.upgrade(1, async tx => {
       const items = tx.addStore<Item>('items');
       items.addIndex<string>('index', '.attr');

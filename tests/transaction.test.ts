@@ -21,7 +21,7 @@ describe('transaction', () => {
 
   beforeEach(async () => {
     reset();
-    jine = newJine<$$>('jine');
+    jine = await newJine<$$>('jine');
     await jine.upgrade(1, async tx => {
       tx.addStore<Person>('people');
     });
