@@ -23,7 +23,7 @@ describe('transaction', () => {
     reset();
     jine = newJine<$$>('jine');
     await jine.upgrade(1, async tx => {
-      tx.addStore<Person>('$people');
+      tx.addStore<Person>('people');
     });
     conn = await jine.newConnection();
   });

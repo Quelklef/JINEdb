@@ -185,12 +185,9 @@ export class Transaction<$$ = {}> {
   /**
    * Add a store.
    *
-   * Store name must be preceeded with a `'$'`.
-   *
-   * @param $name `'$' +` store name
+   * @param name store name
    */
-  addStore<Item extends Storable>($name: string): BoundStore<Item> {
-    const name = $name.slice(1);
+  addStore<Item extends Storable>(name: string): BoundStore<Item> {
     this._idb_db.createObjectStore(name, { keyPath: 'id', autoIncrement: true });
     const idb_store = this._idb_tx.objectStore(name);
     const store_structure = new StoreStructure({
@@ -202,23 +199,18 @@ export class Transaction<$$ = {}> {
     const store = new BoundStore<Item>(store_structure, idb_store);
     this.structure.store_structures[name] = store_structure as StoreStructure<Storable>;
     this.stores[name] = store as any as BoundStore<Storable>;
-    (this as any)[$name] = store;
     return store;
   }
 
   /**
    * Remove a store
    *
-   * Store name must be preceeded with a `'$'`.
-   *
-   * @param $name `'$' +` store name
+   * @param name store name
    */
-  removeStore($name: string): void {
-    const name = $name.slice(1);
+  removeStore(name: string): void {
     this._idb_db.deleteObjectStore(name);
     delete this.structure.store_structures[name];
     delete this.stores[name];
-    delete (this as any)[$name];
   }
 
   /**

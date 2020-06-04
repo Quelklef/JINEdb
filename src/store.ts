@@ -227,14 +227,10 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
    * will be added to existing items in the db.
    */
   async addIndex<Trait extends Indexable>(
-    $name: string,
+    name: string,
     trait: string | ((item: Item) => Trait),
     options?: { unique?: boolean; explode?: boolean },
   ): Promise<void> {
-
-    if (!$name.startsWith('$'))
-      throw Error("Index name must begin with '$'");
-    const name = $name.slice(1);
 
     if (typeof trait === 'string') {
       if (!trait.startsWith('.'))
@@ -273,7 +269,6 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     const index = new BoundIndex(index_structure, idb_index);
     this.structure.index_structures[name] = index_structure;
     this.indexes[name] = index;
-    (this as any)[$name] = index;
 
   }
 
@@ -283,9 +278,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
    * @remark This is an asynchronous operation since derived indexes'
    * calculated values will be purged from the db.
    */
-  async removeIndex($name: string): Promise<void> {
-
-    const name = $name.slice(1);
+  async removeIndex(name: string): Promise<void> {
 
     // remove idb index
     this._idb_store.deleteIndex(name);
@@ -301,7 +294,6 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     // remove index from this object
     delete this.structure.index_structures[name];
     delete this.indexes[name];
-    delete (this as any)[$name];
 
   }
 
@@ -335,16 +327,6 @@ export class AutonomousStore<Item extends Storable> implements Store<Item> {
     }
     this.by = this.indexes;
     this._conn = conn;
-  }
-
-  _withShorthand(): this {
-    for (const index_name of this.structure.index_names) {
-      const index_structure = some(this.structure.index_structures[index_name]);
-      const index = new AutonomousIndex(index_structure, this);
-      (this as any)['$' + index_name] = index;
-    }
-    this._withShorthand = () => this;
-    return this;
   }
 
   async _transact<T>(mode: TransactionMode, callback: (bound_store: BoundStore<Item>) => Promise<T>): Promise<T> {

@@ -17,7 +17,7 @@ describe('migration', () => {
   it('allows for adding and removing stores', async () => {
 
     await jine.upgrade(2, async (tx: any) => {
-      await tx.addStore('$strings');
+      await tx.addStore('strings');
     });
 
     await jine.connect(async (conn: any) => {
@@ -26,7 +26,7 @@ describe('migration', () => {
     });
 
     await jine.upgrade(3, async (tx: any) => {
-      await tx.removeStore('$strings');
+      await tx.removeStore('strings');
     });
 
     await jine.connect(async (conn: any) => {
@@ -38,8 +38,8 @@ describe('migration', () => {
   it('allows for adding and removing indexes', async () => {
 
     await jine.upgrade(2, async (tx: any) => {
-      const $strings = await tx.addStore('$strings');
-      await $strings.addIndex('$self', (x: any) => x);
+      const strings = await tx.addStore('strings');
+      await strings.addIndex('self', (x: any) => x);
     });
 
     await jine.connect(async (conn: any) => {
@@ -48,7 +48,7 @@ describe('migration', () => {
     });
 
     await jine.upgrade(4, async (tx: any) => {
-      await tx.$.strings.removeIndex('$self');
+      await tx.$.strings.removeIndex('self');
     });
 
     await jine.connect(async (conn: any) => {
@@ -67,7 +67,7 @@ describe('migration', () => {
     }
 
     await jine.upgrade(2, async (tx: any) => {
-      const $pairs = await tx.addStore('$pairs');
+      const pairs = await tx.addStore('pairs');
 
       tx.storables.register(MyPair_v1, 'MyPair', {
         encode(pair: MyPair_v1): NativelyStorable {
@@ -137,8 +137,8 @@ describe('migration', () => {
     }
 
     await jine.upgrade(2, async (tx: any) => {
-      const $people = tx.addStore('$people');
-      await $people.addIndex('$name', '.name');
+      const people = tx.addStore('people');
+      await people.addIndex('name', '.name');
     });
 
     await jine.connect(async (conn: any) => {
@@ -163,7 +163,7 @@ describe('migration', () => {
           return new BodyTrait(['pitiful', 'reasonable', 'impressive'][idx] as BodyRating);
         },
       });
-      await tx.$.people.addIndex('$body_rating', (person: Person) => new BodyTrait(person.body));
+      await tx.$.people.addIndex('body_rating', (person: Person) => new BodyTrait(person.body));
     });
 
     await jine.connect(async (conn: any) => {

@@ -25,8 +25,8 @@ describe('query', () => {
     reset();
     jine = newJine<$$>('jine');
     await jine.upgrade(1, async tx => {
-      const $nums = tx.addStore<Num>('$nums');
-      $nums.addIndex<number>('$value', '.value');
+      const nums = tx.addStore<Num>('nums');
+      nums.addIndex<number>('value', '.value');
     });
     conn = await jine.newConnection();
   });

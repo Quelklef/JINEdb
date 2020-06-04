@@ -30,11 +30,11 @@ describe('index', () => {
     reset();
     jine = newJine<$$>('jine');
     await jine.upgrade(1, async tx => {
-      const $items = tx.addStore<Item>('$items');
-      $items.addIndex<string>('$index', '.attr');
-      $items.addIndex<string>('$index_unique', '.attr_unique', { unique: true });
-      $items.addIndex<string>('$index_explode', '.attr_explode', { explode: true });
-      $items.addIndex<number>('$index_derived', (item: Item) => item.attr.length);
+      const items = tx.addStore<Item>('items');
+      items.addIndex<string>('index', '.attr');
+      items.addIndex<string>('index_unique', '.attr_unique', { unique: true });
+      items.addIndex<string>('index_explode', '.attr_explode', { explode: true });
+      items.addIndex<number>('index_derived', (item: Item) => item.attr.length);
     });
     conn = await jine.newConnection();
   });

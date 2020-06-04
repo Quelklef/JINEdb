@@ -426,7 +426,7 @@ export class UniqueQueryExecutor<Item extends Storable, Trait extends Indexable>
    *
    * Example:
    * ```ts
-   * await my_jine.$my_store.$my_index.one(trait_val).get()
+   * await my_host.$.my_store.by.my_index.one(trait_val).get()
    * ```
    *
    * @returns The item
