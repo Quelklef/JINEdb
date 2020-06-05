@@ -58,7 +58,7 @@ export type StorableRegistry
 
 export function newStorableRegistry(): StorableRegistry {
 
-  const codec_registry = new CodecRegistry<NativelyStorable, Box>({
+  const result = <StorableRegistry> new CodecRegistry<NativelyStorable, Box>({
     box_constructor: Object,
     box: (unboxed: NativelyStorable, metadata: string): Box => {
       return {
@@ -71,7 +71,6 @@ export function newStorableRegistry(): StorableRegistry {
     },
   });
 
-  const result = Object.create(codec_registry);
   result.isStorable = function(val: any): val is Encodable {
     return this.hasCodec(val);
   }

@@ -59,39 +59,39 @@ function compileTraitRange<Trait extends Indexable>(spec: QuerySpec<Trait>, inde
 
   if ('equals' in spec)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.only(indexables.encode(spec.equals!));
+    return IDBKeyRange.only(indexables.encode(spec.equals!, false));
 
   if ('from' in spec && 'through' in spec)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.bound(indexables.encode(spec.from!), indexables.encode(spec.through!), false, false);
+    return IDBKeyRange.bound(indexables.encode(spec.from!, false), indexables.encode(spec.through!, false), false, false);
 
   if ('from' in spec && 'below' in spec)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.bound(indexables.encode(spec.from!), indexables.encode(spec.below!), false, true);
+    return IDBKeyRange.bound(indexables.encode(spec.from!, false), indexables.encode(spec.below!, false), false, true);
 
   if ('above' in spec && 'through' in spec)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.bound(indexables.encode(spec.above!), indexables.encode(spec.through!), true, false);
+    return IDBKeyRange.bound(indexables.encode(spec.above!, false), indexables.encode(spec.through!, false), true, false);
 
   if ('above' in spec && 'below' in spec)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.bound(indexables.encode(spec.above!), indexables.encode(spec.below!), true, true);
+    return IDBKeyRange.bound(indexables.encode(spec.above!, false), indexables.encode(spec.below!, false), true, true);
 
   if ('from' in spec)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.lowerBound(indexables.encode(spec.from!), false)
+    return IDBKeyRange.lowerBound(indexables.encode(spec.from!, false), false)
 
   if ('above' in spec)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.lowerBound(indexables.encode(spec.above!), true);
+    return IDBKeyRange.lowerBound(indexables.encode(spec.above!, false), true);
 
   if ('through' in spec)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.upperBound(indexables.encode(spec.through!), false);
+    return IDBKeyRange.upperBound(indexables.encode(spec.through!, false), false);
 
   if ('below' in spec)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.upperBound(indexables.encode(spec.below!), true);
+    return IDBKeyRange.upperBound(indexables.encode(spec.below!, false), true);
 
   throw new Error('uh oh');
 

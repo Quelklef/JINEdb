@@ -1,4 +1,5 @@
 
+import { clone } from 'true-clone';
 import { some, Dict } from './util';
 import { IndexableRegistry } from './indexable';
 import { StorableRegistry, Storable } from './storable';
@@ -102,12 +103,13 @@ export class Transaction<$$ = {}> {
   constructor(idb_tx: IDBTransaction, structure: TransactionStructure) {
     this._idb_tx = idb_tx;
     this._idb_db = this._idb_tx.db;
-    this.structure = structure;
+    // Clone structure so that changes are sandboxed in case of e.g. .abort()
+    this.structure = clone(structure);
 
     this.stores = {};
     for (const store_name of structure.store_names) {
       const idb_store = this._idb_tx.objectStore(store_name);
-      const store_structure = some(structure.store_structures[store_name]);
+      const store_structure = some(this.structure.store_structures[store_name]);
       const store = new BoundStore(store_structure, idb_store);
       this.stores[store_name] = store;
     }

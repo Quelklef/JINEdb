@@ -47,12 +47,12 @@ describe('migration', () => {
       expect(await conn.$.strings.by.self.find('me!')).toEqual(['me!']);
     });
 
-    await jine.upgrade(4, async (tx: any) => {
+    await jine.upgrade(3, async (tx: any) => {
       await tx.$.strings.removeIndex('self');
     });
 
     await jine.connect(async (conn: any) => {
-      expect(conn.$.strings.by.self).toBe(undefined);
+      expect(Object.is(conn.$.strings.by.self, undefined)).toBe(true);
     });
 
   });
@@ -174,24 +174,17 @@ describe('migration', () => {
 
   });
 
+  it("doesn't throw on .abort()", async () => {
+    await jine.upgrade(2, async (tx: any) => {
+      tx.abort();
+    });
+  });
 
-  // The following test is failing
-  // I've decided to disable it until error handling is designed and implemented correctly
-
-  // The issue seems to be that the .abort() causes the versionchange upgrade to end
-  // with an 'error' event with an AbortError; however, the DB connection doesn't get
-  // closed.
-  // Thus, the next connection gets blocked.
-
-  // Note that codec registry rollbacks is not yet implemented
-
-  /*
-  it('is atomic', async () => {
+  it("is atomic", async () => {
 
     class SomeClass { }
 
     await jine.upgrade(2, async (tx: any) => {
-
       tx.storables.register(SomeClass, 'SomeClass', {
         encode: (sc: SomeClass): NativelyStorable => null,
         decode: (ns: NativelyStorable): SomeClass => new SomeClass(),
@@ -202,17 +195,13 @@ describe('migration', () => {
       });
 
       tx.abort();
-
     });
 
     await jine.connect(async (conn: any) => {
-
-      expect(conn.storables.isRegistered(SomeClass)).toBe(false);
-      expect(conn.indexables.isRegistered(SomeClass)).toBe(false);
-
+      expect(conn.structure.storables.isRegistered(SomeClass)).toBe(false);
+      expect(conn.structure.indexables.isRegistered(SomeClass)).toBe(false);
     });
 
   });
-  */
 
 });

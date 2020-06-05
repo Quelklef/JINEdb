@@ -196,8 +196,12 @@ export class Database<$$ = {}> {
             await tx.wrap(async tx => await callback(tx));
 
           // update structure if stores were added etc
-          this.structure.store_structures = tx.structure.store_structures;
-          if (version > some(this.structure.version)) this.structure.version = version;
+          if (tx.state !== 'aborted') {
+            this.structure.store_structures = tx.structure.store_structures;
+            this.structure.storables = tx.structure.storables;
+            this.structure.indexables = tx.structure.indexables;
+            if (version > some(this.structure.version)) this.structure.version = version;
+          }
         });
       };
       req.onsuccess = _event => {

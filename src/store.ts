@@ -244,9 +244,11 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     // create idb index
     const idb_tx = this._idb_store.transaction;
     const idb_store = idb_tx.objectStore(this.structure.name);
+    const unique = options?.unique ?? false;
+    const explode = options?.explode ?? false;
     const idb_index = idb_store.createIndex(name, `traits.${name}`, {
-      unique: options?.unique ?? false,
-      multiEntry: options?.explode ?? false,
+      unique: unique,
+      multiEntry: explode,
     });
 
     // update existing items if needed
@@ -254,7 +256,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
       const trait_getter = trait as (item: Item) => Trait;
       await this.all()._replaceRows((row: Row) => {
         const item = this.structure.storables.decode(row.payload);
-        row.traits[name] = this.structure.indexables.encode(trait_getter(item));
+        row.traits[name] = this.structure.indexables.encode(trait_getter(item), explode);
         return row;
       });
     }

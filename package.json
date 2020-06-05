@@ -33,6 +33,7 @@
   "dependencies": {
     "node": "^14.2.0",
     "nodemon": "^2.0.4",
-    "npm": "^6.14.5"
+    "npm": "^6.14.5",
+    "true-clone": "^0.5.2"
   }
 }
