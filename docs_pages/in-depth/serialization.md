@@ -3,10 +3,11 @@ Out-of-the-box, Jine is only natively able to store a certain set of types (see 
 
 If you want to be able to store or index by a non-native type, you will have to register it.
 Registering item types (to store) and trait types (to index) are different processes with different requirements.
+However, they are similar.
 
 ### Registering a Type as [[Storable]] (for items)
 
-If you want to be able to store a type besides what is [[NativelyStorable]], you may register a type as storable with [[registerStorable]].
+If you want to be able to store a type besides what is [[NativelyStorable]], you may register a type as storable..
 
 This requires supplying Jine with your type constructor, functions for encoding and decoding, as well as an arbitrary globally-unique string id.
 
@@ -35,32 +36,34 @@ class BookSeries {
   }
 }
 
-// Register the type
-jine.registerStorable<BookSeries>(
-  BookSeries,  // requires the constructor
-  'BookSeries',  // and a globally-unique string id
-  {  // as well as the encode and decode functions:
-    encode(series: BookSeries): NativelyStorable {
-      return {
-        name: series.name,
-        titles: series.titles,
+// Upgrade the db and register the type
+await jine.upgrade(2, (genuine: boolean, tx: Transaction<$$>) => {
+  tx.storables.register<BookSeries>(
+    BookSeries,  // requires the constructor
+    'BookSeries',  // and a globally-unique string id
+    {  // as well as the encode and decode functions:
+      encode(series: BookSeries): NativelyStorable {
+        return {
+          name: series.name,
+          titles: series.titles,
+        };
       };
-    };
-    decode(encoded: NativelyStorable): User {
-      const { name, titles } = encoded as any;
-      return new BookSeries(name, titles);
-    };
-  },
-);
+      decode(encoded: NativelyStorable): User {
+        const { name, titles } = encoded as any;
+        return new BookSeries(name, titles);
+      };
+    },
+  );
+})
 
 // Add an object!
 const some_series: BookSeries = ...;
-await jcon.$series.add(some_series);
+await jine.$series.add(some_series);
 // Type error on previous line, oh no!
 // Unfortunately, at this point TypeScript has no way of knowing that you've
 // registered BookSeries to be Storable.
 // There are two solutions:
-await jcon.$series.add(some_series as BookSeries & jine.Storable);
+await jine.$series.add(some_series as BookSeries & jine.Storable);
 // or
 if (jine.isStorable(some_series)) await jcon.$series.$add(some_series);
 // TODO: there must be a better way, right?
@@ -77,7 +80,7 @@ A user who loads up our app after not logging on for a while will still have `Bo
 
 There are two good solutions to this.
 
-#### Solution 1: Database Versioning
+#### Solution 1: Eager Upgrade
 
 The first solution is to keep everything up-to-date via the versioning system.
 When we change our `BookSeries` definition and encodings, we *also* push a database migration.
@@ -86,8 +89,11 @@ In this migration, we update all existing `BookSeries` objects to inlcude an `au
 This would look something like the following:
 
 ```ts
-// TODO: is there a better way to do this?
+// Version where BookSeries has no .author attribute
+await jine.upgrade(1, ...);
+
 // We've updated our BookSeries type
+// Now it has an `.author` attribute
 class BookSeries {
   name: string;
   author: string;
@@ -104,52 +110,41 @@ class BookSeries {
   }
 }
 
-const migrations = [
-
-  {
-    // Version where BookSeries has no .author attribute
-    version: 1,
-    ...
-  },
+await jine.upgrade(2, (genuine: boolean, tx: Transaction<$$>) => {
   
-  {
-    // Migrating to BookSeries having a .author attribute
-    verison: 2,
-    after: async () => {
+  // Upgrade our BookSeries registration
+  await tx.storables.upgrade('BookSeries', {
+  
+    // New encoder function
+    encode(series: BookSeries): NativelyStorable {
+      return {
+        name: series.name,
+        author: series.author,
+        titles: series.titles,
+      };
+    },
     
-      // Update existing BookSeries
-      // Note that our mapper function cannot accpet a `series: BookSeries`
-      // and must instead accept a `series: any`.
-      // This is because BookSeries now has a .author attribute, which
-      // the decoded values won't have---since they're decoding to an old
-      // version of the BookSeries type.
-      // TODO: make Store#all return a QueryExecutor
-      await jcon.$book_series.range({ everything: true }).replace((series: any) => {
+    // New decoder function
+    decode(encoded: NativelyStorable): BookSeries {
+      const { name, author, titles } = encoded as any;
+      return new BookSeries(name, author, titles);
+    },
+    
+    // Function to migrate existing BookSeries items
+    // This will decode with the old encoder but encode with the new encoder
+    async migrate() {
+      await tx.$book_series.all().replace((series: any) => {
         // Find the author
         const author = findAuthor(series);
         // Return the updated BookSeries
         return { ...series, author };
       });
-      
-      // Now re-register BookSeries with the new encoding 
-      // TODO: this will error since encodings cannot currently be overwritten
-      jine.registerStorable<BookSeries>(BookSeries, 'BookSeries', {
-        encode(series: BookSeries): NativelyStorable {
-          return {
-            name: series.name,
-            author: series.author,
-            titles: series.titles,
-          };
-        },
-        decode(encoded: NativelyStorable): BookSeries {
-          const { name, author, titles } = encoded as any;
-          return new BookSeries(name, author, titles);
-        },
-      });
-      
     },
-  },
-];
+    
+  });
+
+});
+     
 ```
 
 #### Solution 2: Type Versioning
@@ -161,20 +156,23 @@ This could involve either calculating the new `.author` attribute, or putting in
 When we first register the `BookSeries` type with Jine, instead of
 
 ```ts
-jine.registerStorable(BookSeries, 'BookSeries', ...);
+tx.storables.register(BookSeries, 'BookSeries', ...);
 ```
 
 we will write
 
 ```ts
-jine.registerStorable(BookSeries, 'BookSeries:v1', ...);
+tx.storables.register(BookSeries, 'BookSeries:v1', ...);
 ```
 
 Now let's skip forward in time to when we want to add our `.author` attribute to `BookSeries` objects.
 We would do something like this:
 
 ```ts
-// We've updated our BookSeries type
+// Version where BookSeries has no .author attribute
+await jine.upgrade(1, ...);
+
+// Updated BookSeries type
 class BookSeries {
   name: string;
   author: string;
@@ -191,30 +189,33 @@ class BookSeries {
   }
 }
 
-// Update the decoding for v1 to find the author on-demand
-jine.registerStorable(BookSeries, 'BookSeries:v1', {
-  encode: ...,  // same as before
-  // Note that the decode function may NOT be async
-  decode: (encoded: NativelyStorable): BookSeries {
-    const { name, titles } = encoded as any;
-    const author = authorLookup(name);
-    reutrn new BookSeries(name, author, titles);
-  },
-});
+await jine.upgrade(2, (genuine: boolean, tx: Transaction<$$>) => {
 
-// Register v2 for BookSeries with .author attributes
-jine.registerStorable(BookSeries, 'BookSeries:v2', {
-  encode(series: BookSeries): NativelyStorable {
-    return {
-      name: series.name,
-      author: series.author,
-      titles: series.titles,
-    };
-  },
-  decode(encoded: NativelyStorable): BookSeries {
-    const { name, author, titles } = encoded as any;
-    return new BookSeries(name, author, titles);
-  },
+  // Update the decoding for v1 to find the author on-demand
+  tx.storables.modify('BookSeries:v1', {
+    // Note that the decode function may NOT be async
+    decode: (encoded: NativelyStorable): BookSeries {
+      const { name, titles } = encoded as any;
+      const author = authorLookup(name);
+      reutrn new BookSeries(name, author, titles);
+    },
+  });
+
+  // Register v2 for BookSeries with .author attributes
+  tx.storables.register(BookSeries, 'BookSeries:v2', {
+    encode(series: BookSeries): NativelyStorable {
+      return {
+        name: series.name,
+        author: series.author,
+        titles: series.titles,
+      };
+    },
+    decode(encoded: NativelyStorable): BookSeries {
+      const { name, author, titles } = encoded as any;
+      return new BookSeries(name, author, titles);
+    },
+  });
+
 });
 ```
 
@@ -229,7 +230,7 @@ Registering a type for use in indexes is highly analogous to registering a type 
 As such, this description of the former will rely heavily on the description of the latter: if you haven't already read about registering Storable types, do so now.
 
 The important differences between the two processes are as follows:
-1. Use [[registerIndexable]] instead of [[registerStorable]]
+1. Use [[Transaction.indexables]] instead of [[Transaction.storables]]
 2. Different types are natively supported: [[NativelyIndexable]] vs [[NativelyStorable]]
 3. Cast to `Indexable` or use `isIndexable` instead of `Storable`/`isStorable`
 4. One must preserve ordering when registering [[Indexable]] types
@@ -246,33 +247,40 @@ Here is an example of custom trait serialization:
 // The custom trait
 type Mood = "exuberant" | "happy" | "neutral" | "sad" | "devastated";
 
-jine.registerIndexable(Mood, 'mood', {
-  encode(mood: Mood): NativelyIndexable {
-    const mapping = {
-      exuberant : 5,
-      happy     : 4,
-      neutral   : 3,
-      sad       : 2,
-      devastated: 1,
-    };
-    return mapping[mood];
-  },
-  decode(encoded: NativelyStorable): Mood {
-    const mapping = {
-      5: "exuberant",
-      4: "happy",
-      3: "neutral",
-      2: "sad",
-      1: "devastated",
-    };
-    const num = encoded as number;
-    return mapping[num];
-  },
+await jine.upgrade(2, (genuine: boolean, tx: Tranasction<$$>) => {
+  tx.indexables.register(Mood, 'mood', {
+  
+    encode(mood: Mood): NativelyIndexable {
+      const mapping = {
+        exuberant : 5,
+        happy     : 4,
+        neutral   : 3,
+        sad       : 2,
+        devastated: 1,
+      };
+      return mapping[mood];
+    },
+    
+    decode(encoded: NativelyStorable): Mood {
+      const mapping = {
+        5: "exuberant",
+        4: "happy",
+        3: "neutral",
+        2: "sad",
+        1: "devastated",
+      };
+      const num = encoded as number;
+      return mapping[num];
+    },
+    
+  });
 });
 
-// Find happy people
-await jcon.$people.$mood.range({ above: "neutral" });
 
-// Find unhappy people
-await jcon.$people.$mood.range({ below: "neutral" });
+await jine.connect(conn => {
+  // Find happy people
+  await conn.$.people.by.mood.range({ above: "neutral" }).array();
+  // Find unhappy people
+  await conn.$.people.by.mood.range({ below: "neutral" }).array();
+});
 ```

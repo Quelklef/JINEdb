@@ -7,9 +7,6 @@ import { StoreStructure } from './structure';
 import { JineBlockedError, JineInternalError, mapError } from './errors';
 import { Transaction, TransactionMode, uglifyTransactionMode } from './transaction';
 
-/**
- * Generic interface for connections to databases
- */
 export interface Connection {
 
   _transact<T>(store_names: Array<string>, mode: TransactionMode, callback: (tx: Transaction) => Promise<T>): Promise<T>;
@@ -23,9 +20,9 @@ export interface Connection {
  */
 export class BoundConnection<$$ = {}> implements Connection {
 
-  db_name: string;
-
   _idb_conn: IDBDatabase;
+
+  db_name: string;
 
   _substructures: Dict<StoreStructure>;
   _storables: StorableRegistry;
@@ -109,7 +106,8 @@ export class BoundConnection<$$ = {}> implements Connection {
     mode: TransactionMode,
     callback: (tx: Transaction<$$>) => Promise<T>,
   ): Promise<T> {
-    return (await this.newTransaction(stores, mode)).wrap(async tx => await callback(tx));
+    const tx = await this.newTransaction(stores, mode);
+    return await tx.wrap(async tx => await callback(tx));
   }
 
   /**
@@ -125,7 +123,7 @@ export class BoundConnection<$$ = {}> implements Connection {
    * @typeParam the type of the callback result
    * @returns The result of the callback
    */
-  async wrap<T>(callback: (conn: this) => Promise<T>): Promise<T> {
+  async wrap<Ret>(callback: (conn: this) => Promise<Ret>): Promise<Ret> {
     try {
       return await callback(this);
     } finally {
@@ -159,7 +157,7 @@ export class AutonomousConnection implements Connection {
     return new Promise<IDBDatabase>((resolve, reject) => {
       const db_name = this.db_name;
       const req = indexedDB.open(db_name);
-      // since we're opening without a version, no upgradeneeded should fire
+      // vvv Since we're opening without a version, no upgradeneeded should fire
       req.onupgradeneeded = _event => reject(new JineInternalError());
       req.onblocked = _event => reject(new JineBlockedError());
       req.onerror = _event => reject(mapError(req.error));

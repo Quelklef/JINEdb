@@ -23,11 +23,31 @@ export interface Index<Item extends Storable, Trait extends Indexable> {
    */
   name: string;
 
+  /**
+   * Are the values in this index required to be unique?
+   */
   unique: boolean;
+
+  /**
+   * If `explode` is `true`, then items' values for this index are expected to be arrays.
+   * Each value in an array will be added to the index, instead of the array being added as a whole.
+   */
   explode: boolean;
 
+  /**
+   * A path index is an index on an attribute of stored items.
+   * A derived index is an index that tracks computed values on items.
+   */
   kind: 'path' | 'derived';
+
+  /**
+   * If `this.kind === 'path'`, return the path.
+   */
   trait_path?: string;
+
+  /**
+   * If `this.kind === 'derived'`, return the computing function.
+   */
   trait_getter?: (item: Item) => Trait;
 
   /**

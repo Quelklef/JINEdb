@@ -27,10 +27,18 @@ export { IndexableRegistry } from './indexable';
 export interface Store<Item extends Storable> {
 
   /**
-   * Store indexes
+   * Store indexes.
    */
   indexes: Dict<Index<Item, Indexable>>;
 
+  /**
+   * Shorthand for [[Store.indexes]], but where values are asserted to not be `undefined`.
+   */
+  by: Record<string, Index<Item, Indexable>>;
+
+  /**
+   * Store name
+   */
   name: string;
 
   /**
@@ -54,7 +62,8 @@ export interface Store<Item extends Storable> {
   array(): Promise<Array<Item>>;
 
   /**
-   *
+   * Begin a query with all the items in the store
+   * @returns The query executor.
    */
   all(): QueryExecutor<Item, never>;
 
@@ -67,16 +76,14 @@ export interface Store<Item extends Storable> {
  */
 export class BoundStore<Item extends Storable> implements Store<Item> {
 
-  /**
-   * The name of the store
-   */
+  /** @inheritDoc */
   name: string;
 
   /** @inheritDoc */
   indexes: Dict<BoundIndex<Item, Indexable>>;
 
-  // user-facing dual to .indexes
-  by: Dict<Index<Item, Indexable>>;
+  /** @inheritDoc */
+  by: Record<string, Index<Item, Indexable>>;
 
   _idb_store: IDBObjectStore;
   _substructures: Dict<IndexStructure<Item>>;
@@ -107,7 +114,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
       });
     }
 
-    this.by = this.indexes;
+    this.by = this.indexes as Record<string, Index<Item, Indexable>>;
   }
 
   async _mapExistingRows(mapper: (row: Row) => Row): Promise<void> {
@@ -305,7 +312,7 @@ export class AutonomousStore<Item extends Storable> implements Store<Item> {
 
   indexes: Dict<AutonomousIndex<Item, Indexable>>;
 
-  by: Dict<Index<Item, Indexable>>;
+  by: Record<string, Index<Item, Indexable>>;
 
   _conn: Connection;
 
@@ -332,7 +339,7 @@ export class AutonomousStore<Item extends Storable> implements Store<Item> {
         indexables: this._indexables,
       });
     }
-    this.by = this.indexes;
+    this.by = this.indexes as Record<string, Index<Item, Indexable>>;
   }
 
   async _transact<T>(mode: TransactionMode, callback: (bound_store: BoundStore<Item>) => Promise<T>): Promise<T> {

@@ -1,5 +1,5 @@
 
-import { Dict } from './util';
+import { Dict, Constructor, Codec } from './util';
 import { CodecRegistry, Encodable } from './codec-registry';
 
 // List is according to https://stackoverflow.com/a/22550288/4608364
@@ -50,15 +50,68 @@ type Box = {
   __JINE_META__: string;
 };
 
-export type StorableRegistry
-  = CodecRegistry<NativelyStorable, Box>
-  & {
-    isStorable(val: any): val is Encodable;
-  };
+/**
+ * Registry of custom [[Storable]] types.
+ */
+export interface StorableRegistry {
+
+  /**
+   * Register a type as [[Storable]].
+   *
+   * See {@page Serilization and Custom Types}.
+   *
+   * @param con The type constructor
+   * @param id An arbitrary unique string id
+   * @param codec The type encoder and decoder functions
+   */
+  register<T>(con: Constructor, id: string, codec: Codec<T, Storable>): void;
+
+  /**
+   * Modify a type registration
+   *
+   * See {@page Serilization and Custom Types}.
+   *
+   * @param id The id of the type
+   * @param updates Type codec modifications
+   */
+  modify(id: string, updates: Partial<Codec<any, Storable>>): void;
+
+  /**
+   * Modify a type registration, updating existing items in the process.
+   *
+   * Only use within a database migration.
+   *
+   * See {@page Serilization and Custom Types}.
+   *
+   * @param id The id of the type
+   * @param args: the new `encode` and `decode` functions, new type constructor (if there is a new one),
+   * and function to migrate existing items.
+   */
+  upgrade(id: string, args: Codec<any, Storable> & { constructor?: Constructor; migrate: () => Promise<void> }): Promise<void>;
+
+  // --
+
+  /**
+   * Check if a constructor is registered as [[Storable]].
+   */
+  isRegistered(con: Constructor): boolean;
+
+  /**
+   * Check if a value is [[Storable]].
+   */
+  isStorable(val: any): val is Encodable;
+
+  // --
+
+  hasCodec(val: any): val is Encodable;
+  encode(val: Encodable | Storable): Storable;
+  decode(val: Storable): any;
+
+}
 
 export function newStorableRegistry(): StorableRegistry {
 
-  const result = <StorableRegistry> new CodecRegistry<NativelyStorable, Box>({
+  const result = <StorableRegistry> <any> new CodecRegistry<NativelyStorable, Box>({
     box_constructor: Object,
     box: (unboxed: NativelyStorable, metadata: string): Box => {
       return {
@@ -77,5 +130,4 @@ export function newStorableRegistry(): StorableRegistry {
   return result;
 
 }
-
 

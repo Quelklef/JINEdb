@@ -38,12 +38,17 @@ export function uglifyTransactionMode(tx_mode: TransactionMode): IDBTransactionM
  */
 export class Transaction<$$ = {}> {
 
-  _substructures: Dict<StoreStructure>;
-  _storables: StorableRegistry;
-  _indexables: IndexableRegistry;
+  /**
+   * The object stores that the transaction has access to.
+   *
+   * For non-programmatic code, [[Transaction.$]] is nicer to use.
+   */
+  stores: Dict<BoundStore<Storable>>;
 
-  get storables(): StorableRegistry { return this._storables; }
-  get indexables(): IndexableRegistry { return this._indexables; }
+  /**
+   * Shorthand for object stores.
+   */
+  readonly $: $$;
 
   /**
    * A non-genuine transaction will not allow `.commit()` and will not
@@ -51,26 +56,40 @@ export class Transaction<$$ = {}> {
    */
   genuine: boolean;
 
+  _substructures: Dict<StoreStructure>;
+  _storables: StorableRegistry;
+  _indexables: IndexableRegistry;
+
+  // TODO: I think these can be modified in non-versionchange transactions, which is not desirable
   /**
-   * The object stores that the transaction has access to.
+   * Registry of custom [[Storable]] objects.
+   *
+   * Also see {@page Serialization and Custom Types}.
    */
-  stores: Dict<BoundStore<Storable>>;
+  get storables(): StorableRegistry {
+    return this._storables;
+  }
+
+  /**
+   * Registry of custom [[Indexable]] types.
+   *
+   * Also see {@page Serialization and Custom Types}.
+   */
+  get indexables(): IndexableRegistry {
+    return this._indexables;
+  }
 
   /**
    * Current transaction state.
    *
    * `active` - In progress.
-   *
    * `committed` - Successfully complete.
-   *
    * `aborted` - Unsuccessful.
    */
   state: 'active' | 'committed' | 'aborted';
 
-  readonly _idb_tx: IDBTransaction;
-  readonly _idb_db: IDBDatabase;
-
-  readonly $: $$;
+  _idb_tx: IDBTransaction;
+  _idb_db: IDBDatabase;
 
   constructor(args: {
     idb_tx: IDBTransaction;
@@ -79,10 +98,12 @@ export class Transaction<$$ = {}> {
     storables: StorableRegistry;
     indexables: IndexableRegistry;
   }) {
+
     this.genuine = args.genuine;
 
     this._idb_tx = args.idb_tx;
     this._idb_db = this._idb_tx.db;
+
     // Clone structure so that changes are sandboxed in case of e.g. .abort()
     this._substructures = clone(args.substructures);
     this._storables = clone(args.storables);
@@ -111,6 +132,7 @@ export class Transaction<$$ = {}> {
     this._idb_tx.addEventListener('complete', () => {
       this.state = 'committed';
     });
+
   }
 
   /**
@@ -150,8 +172,8 @@ export class Transaction<$$ = {}> {
 
   /**
    * Add a store.
-   *
    * @param name store name
+   * @returns The new store
    */
   addStore<Item extends Storable>(store_name: string): BoundStore<Item> {
 
@@ -178,7 +200,6 @@ export class Transaction<$$ = {}> {
 
   /**
    * Remove a store
-   *
    * @param name store name
    */
   removeStore(name: string): void {
@@ -192,10 +213,10 @@ export class Transaction<$$ = {}> {
    */
   commit(): void {
     /* Commit and end the transaction */
-    // [2020-05-16] For some reason the types don't have IDBTransaction.commit(),
-    // but it's in the online docs: https://developer.mozilla.org/en-US/docs/Web/API/IDBTransaction/commit
     if (!this.genuine)
       throw Error('Cannot commit an ingeuine transaction.');
+    // [2020-05-16] For some reason the types don't have IDBTransaction.commit(),
+    // but it's in the online docs: https://developer.mozilla.org/en-US/docs/Web/API/IDBTransaction/commit
     (this._idb_tx as any).commit();
     this.state = 'committed';
   }

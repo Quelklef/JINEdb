@@ -1,4 +1,5 @@
 
+import { Constructor, Codec } from './util';
 import { CodecRegistry, Encodable } from './codec-registry';
 
 // What types are indexable in IndexedDB?
@@ -27,14 +28,64 @@ export type Indexable = NativelyIndexable | Encodable;
 
 type Box = [NativelyIndexable, string];
 
-export type IndexableRegistry
-  = Omit<CodecRegistry<NativelyIndexable, Box>, 'encode' | 'decode'>
-  & {
-    isIndexable(val: any): val is Encodable;
-    encode(val: Indexable, exploding: boolean): NativelyIndexable;
-    decode(encoded: NativelyIndexable, exploding: boolean): Indexable;
-  };
+/**
+ * Registry of custom [[Indexable]] types.
+ */
+export interface IndexableRegistry {
 
+  /**
+   * Register a type as [[Indexable]].
+   *
+   * See {@page Serilization and Custom Types}.
+   *
+   * @param con The type constructor
+   * @param id An arbitrary unique string id
+   * @param codec The type encoder and decoder functions
+   */
+  register<T>(con: Constructor, id: string, codec: Codec<T, Indexable>): void;
+
+  /**
+   * Modify a type registration
+   *
+   * See {@page Serilization and Custom Types}.
+   *
+   * @param id The id of the type
+   * @param updates Type codec modifications
+   */
+  modify(id: string, updates: Partial<Codec<any, Indexable>>): void;
+
+  /**
+   * Modify a type registration, updating existing items in the process.
+   *
+   * Only use within a database migration.
+   *
+   * See {@page Serilization and Custom Types}.
+   *
+   * @param id The id of the type
+   * @param args: the new `encode` and `decode` functions, new type constructor (if there is a new one),
+   * and function to migrate existing items.
+   */
+  upgrade(id: string, args: Codec<any, Indexable> & { constructor?: Constructor; migrate: () => Promise<void> }): Promise<void>;
+
+  // --
+
+  /**
+   * Check if a constructor is registered as [[Indexable]].
+   */
+  isRegistered(con: Constructor): boolean;
+
+  /**
+   * Check if a value is [[Indexable]].
+   */
+  isIndexable(val: any): val is Encodable;
+
+  // --
+
+  hasCodec(val: any): val is Encodable;
+  encode(val: Indexable, exploding: boolean): NativelyIndexable;
+  decode(encoded: NativelyIndexable, exploding: boolean): Indexable;
+
+}
 export function newIndexableRegistry(): IndexableRegistry {
 
   const result = <IndexableRegistry> <any> new CodecRegistry<NativelyIndexable, Box>({

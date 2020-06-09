@@ -118,8 +118,8 @@ export class Database<$$ = {}> {
   /**
    * Creates and returns a new connection to the database.
    *
-   * This connection must be manually closed. If this scope is well-defined, it is recommended
-   * to use [[Database.connect]].
+   * Connections created with this method must be manually closed.
+   * It's recommended to use [[Database.connect]] instead, which will close the connection for you.
    *
    * @returns A new connection
    */
@@ -141,7 +141,6 @@ export class Database<$$ = {}> {
    *
    * @param callback The function to run with the database connection.
    * @typeParam T The return type of the callback.
-   *
    * @returns The callback result
    */
   async connect<T>(callback: (conn: BoundConnection<$$>) => Promise<T>): Promise<T> {
@@ -149,16 +148,28 @@ export class Database<$$ = {}> {
     return await conn.wrap(async conn => await callback(conn));
   }
 
-  // vvv We add `tx.genuine` as an argument--and as the FIRST argument--to bring it to the
-  //     attention of the API user.
-  async upgrade(version: number, callback: (genuine: boolean, tx: Transaction<$$>) => Promise<void>): Promise<void> {
-    /* Asynchronously re-open the underlying idb database with the given
-    version number, if supplied. If an upgrade function is given, it will be
-    attached to the upgradeneeded event of the database open request. */
+  /**
+   * Upgrade the database to a new version.
+   *
+   * This is like [[Database.connect]], except that you are able to update the format of the database,
+   * for instance with [[Transaction.addStore]] and [[Store.addIndex]].
+   *
+   * Also see {@page Versioning and Migrations}.
+   *
+   * @param version The version to open the database with
+   * @param callback The upgrade function
+   * @returns The return value of the callback.
+   */
+  async upgrade<Ret>(version: number, callback: (genuine: boolean, tx: Transaction<$$>) => Promise<Ret>): Promise<Ret> {
+    // ^^^ We add `tx.genuine` as an argument (the FIRST argument) to the callback
+    //     in order to call it to the attention of the API user
 
     return new Promise((resolve, reject) => {
+
       const req = indexedDB.open(this.name, version);
+
       req.onblocked = _event => reject(new JineBlockedError());
+
       req.onerror = _event => {
         const idb_error = req.error;
         // A .abort call in a versionchange tx should not raise an error
@@ -168,6 +179,8 @@ export class Database<$$ = {}> {
           reject(mapError(req.error));
         }
       };
+
+      let result: Ret;
       req.onupgradeneeded = _event => {
         const idb_tx = some(req.transaction);
         const tx = new Transaction<$$>({
@@ -178,11 +191,14 @@ export class Database<$$ = {}> {
           indexables: this._indexables,
         });
 
+        // vvv The below looks concerning due to the fact that we don't await the promise.
+        //     In fact, it's fine; floating callback are natural when working with idb.
+        //     The 'after' code doesn't come after awaiting the promise, it comes in onsuccess.
         // eslint-disable-next-line @typescript-eslint/no-floating-promises
         invoke(async (): Promise<void> => {
-          await tx.wrap(async tx => await callback(tx.genuine, tx));
+          result = await tx.wrap(async tx => await callback(tx.genuine, tx));
 
-          // update structure if stores were added etc
+          // vvv Update structure if stores were added etc
           if (tx.state !== 'aborted') {
             this._substructures = tx._substructures;
             this._storables = tx._storables;
@@ -191,11 +207,13 @@ export class Database<$$ = {}> {
           }
         });
       };
+
       req.onsuccess = _event => {
         const idb_db = req.result;
         idb_db.close();
-        resolve();
+        resolve(result);
       };
+
     });
   }
 

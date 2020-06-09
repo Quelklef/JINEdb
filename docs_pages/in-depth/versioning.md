@@ -22,37 +22,23 @@ type Post = {
   content: string,
 };
 
-const migrations = [
-  {
-    // Initial database setup
-    version: 1,
-    // We add a store and that's it
-    alterations: [
-      addStore<User>('$users'),
-    ],
-  },
-  
-  {
-    // Next version
-    version: 2,
-    // Add an index to the existing store
-    alterations: [
-      addIndex<User, string>('$users.$name', '.username', { unique: true }),
-    ],
-  },
-  
-  {
-    // Next version
-    version: 3,
-    // Add a post store and index by author
-    alterations: [
-      addStore<Post>('$posts'),
-      addIndex<Post, string>('$posts.$author', '.author'),
-    ],
-  },
-];
+const jine = awit newJine('myjine');
 
-const jine = newJine('myjine', migrations);
+await jine.upgrade(1, (genuine: boolean, tx: Transaction<$$>) => {
+  // We add a store and that's it
+  tx.addStore<User>('users');
+});
+
+await jine.upgrade(2, (genuine: boolean, tx: Transaction<$$>) => {
+  // Add an index to the existing store
+  tx.$.users.addIndex<string>('name', '.username', { unique: true });
+});
+
+await jine.upgrade(3, (genuine: boolean, tx: Transaction<$$>) => {
+  // Add a post store and index by author
+  const posts = tx.addStore<Post>('posts')
+  posts.addIndex<string>('author', '.author');
+});
 ```
 
 This example is particularly straight-forward.
@@ -66,17 +52,13 @@ type Book = {
   title: string;
 };
 
-const migrations = [
-  {
-    version: 1,
-    alterations: [
-      addStore<Book>('$books'),
-      addIndex<Book, number>('$books.$id', '.id', { unique: true }),
-    ],
-  }
-];
+const jine = await newJine('books');
 
-const jine = newJine('books', migrations);
+await jine.upgrade(1, (genuine: boolean, tx: Transaction<$$>) => {
+  const books = tx.addStore<Book>('books');
+  books.addIndex<number>('id', '.id', { unique: true });
+  books.addIndex<string>('title', '.title', { unique: true });
+});
 ```
 
 All is fine and dandy.
@@ -88,25 +70,17 @@ type Book = {
   title: string;
 };
 
-const migrations = [
-  {
-    version: 1,
-    alterations: [
-      addStore<Book>('$books'),
-      addIndex<Book, number>('$books.$id', '.id', { unique: true }),
-      addIndex<Book, string>('$books.$title', '.title'),
-    ],
-  },
-  {
-    version: 2,
-    alterations: [
-      removeIndex('$books.$id'),
-    ],
-  }
-];
+const jine = await newJine('books');
 
-interface $$ { ... }
-const jine = newJine('books', migrations);
+await jine.upgrade(1, (genuine: boolean, tx: Transaction<$$>) => {
+  const books = tx.addStore<Book>('books');
+  books.addIndex<number>('id', '.id', { unique: true });
+  books.addIndex<string>('title', '.title', { unique: true });
+});
+
+await jine.upgrade(1, (genuine: boolean, tx: Transaction<$$>) => {
+  tx.$.books.removeIndex('id');
+});
 ```
 
 ...but this presents two problems:
@@ -122,52 +96,32 @@ These problems are not too difficult to overcome.
 The first is an easy fix: replace `Book` with `any` for pre-version-2 alterations.
 If you want, you can keep a type for each version, but using `any` is probably easier.
 
-The second is fixed with the help of jine.
-Migrations may have `.before` and `.after` attributes, which are async functions that run before and after the migrations' database alterations get processed.
+For the second, just update the books in the migraiton.
 This means that we can just include a `.after` hook to remove `.id` values from existing items.
-
-The correct code is as follows:
 
 ```ts
 type Book = {
   title: string;
 };
 
-const migrations = [
-  {
-    version: 1,
-    alterations: [
-      addStore<any>('$books'),
-      addIndex<any, number>('$books.$id', '.id', { unique: true }),
-      addIndex<any, string>('$books.$title', '.title'),
-    ],
-  },
-  {
-    version: 2,
-    alterations: [
-      removeIndex('$books.$id'),
-    ],
-    // TODO: .before and .after hooks should be supplied transactions
-    // I mean, look---this questionable use of closures
-    // the migration .after comes before the jcon definition
-    after: async () => {
-      // Remove .id from existing bookds
-      // TODO: make Store#all return a QueryExecutor
-      await jcon.$books.range({ everything: true }).replace((book: any) => {
-        delete book.id;
-        return book;
-      });
-    },
-  }
-];
+const jine = await newJine('books');
 
-interface $$ { ... }
-const jine = newJine<$$>('books', migrations);
-const jcon = jine.newConnection();
+await jine.upgrade(1, (genuine: boolean, tx: Transaction<$$>) => {
+  const books = tx.addStore<any>('books');
+  books.addIndex<number>('id', '.id', { unique: true });
+  books.addIndex<string>('title', '.title', { unique: true });
+});
+
+await jine.upgrade(1, (genuine: boolean, tx: Transaction<$$>) => {
+  tx.$.books.removeIndex('id');
+  await tx.$.books.all().replace((book: any) => {
+    delete book.id;
+    return book;
+  });
+});
 ```
 
 (If you don't want to reprocess the whole database at once, read through {@page Serialization and Custom Types})
 
 // TODO: that update-on-demand idea perhaps deserves its own page? Or maybe to be inlined here?
-
 // TODO: is there a way to streamline and canonicize the update-on-demand?

@@ -1,8 +1,7 @@
 
 // see https://fnune.com/typescript/2019/01/30/typescript-series-1-record-is-usually-not-the-best-choice/
 /**
- * Like `Record<K, V>`, but does not assume that a value exists for each key.
- * @typeParam K Type of keys
+ * Like `Record<string, V>`, but does not assume that a value exists for each key.
  * @typeParam V Type of values
  */
 export type Dict<V> = Partial<Record<string, V>>;

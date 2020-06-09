@@ -367,6 +367,7 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
 
   /**
    * Return all selected items as an array.
+   * @returns The items
    */
   async array(): Promise<Array<Item>> {
     return await this._withCursor('r', async cursor => {
