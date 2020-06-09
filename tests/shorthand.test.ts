@@ -26,14 +26,14 @@ describe('shorthand', () => {
 
   function tests(host_name: string, get_host: () => { $: $$ }): void {
 
-    it(`supports ${host_name}.$store.add and ${host_name}.$store.array`, async () => {
+    it(`supports ${host_name}.$.{store}.add and ${host_name}.$.{store}.array`, async () => {
       const host = get_host();
       await host.$.posts.add(some_post);
       const posts = await host.$.posts.array();
       expect(posts).toEqual([some_post]);
     });
 
-    it(`supports ${host_name}.$store.add and ${host_name}.$store.count`, async () => {
+    it(`supports ${host_name}.$.{store}.add and ${host_name}.$.{store}.count`, async () => {
       const host = get_host();
       await host.$.posts.add(some_post);
       await host.$.posts.add(some_post);
@@ -41,7 +41,7 @@ describe('shorthand', () => {
       expect(count).toEqual(2);
     });
 
-    it(`supports ${host_name}.$store.add and ${host_name}.$store.clear`, async () => {
+    it(`supports ${host_name}.$.{store}.add and ${host_name}.$.{store}.clear`, async () => {
       const host = get_host();
       await host.$.posts.add(some_post);
       await host.$.posts.add(some_post);
@@ -50,7 +50,7 @@ describe('shorthand', () => {
       expect(count).toEqual(0);
     });
 
-    it(`supports ${host_name}.$store.add and ${host_name}.$store.$index.find`, async () => {
+    it(`supports ${host_name}.$.{store}.add and ${host_name}.$.{store}.by.{index}.find`, async () => {
       const host = get_host();
       await host.$.posts.add(some_post);
       const got = await host.$.posts.by.title.find('On Bananas');
