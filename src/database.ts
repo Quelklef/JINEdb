@@ -60,7 +60,7 @@ export class Database<$$ = {}> {
    */
   version: number | null;
 
-  _substructures: Dict<string, StoreStructure>;
+  _substructures: Dict<StoreStructure>;
   _storables: StorableRegistry;
   _indexables: IndexableRegistry;
 

@@ -68,7 +68,7 @@ export function mapError(error: DOMException | null): JineError | DOMException |
   if (error === null)
     return error;
 
-  const jine_error_types: Dict<string, typeof JineError> = {
+  const jine_error_types: Dict<typeof JineError> = {
     'AbortError'        : JineAbortError,
     'ConstraintError'   : JineConstraintError,
     'QuotaExceededError': JineQuotaError,

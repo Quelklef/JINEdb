@@ -112,7 +112,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
   // For use by the API user to monkeypatch in any
   // methods that are missing from this class.
   // TODO: replicate on other classes.
-  my: Dict<string, any> = {};
+  my: Dict<any> = {};
 
   readonly storables: StorableRegistry;
   readonly indexables: IndexableRegistry;

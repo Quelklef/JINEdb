@@ -32,7 +32,7 @@ export class BoundConnection<$$ = {}> implements Connection {
 
   _idb_conn: IDBDatabase;
 
-  _substructures: Dict<string, StoreStructure>;
+  _substructures: Dict<StoreStructure>;
   _storables: StorableRegistry;
   _indexables: IndexableRegistry;
 
@@ -41,7 +41,7 @@ export class BoundConnection<$$ = {}> implements Connection {
   constructor(args: {
     db_name: string;
     idb_conn: IDBDatabase;
-    substructures: Dict<string, StoreStructure>;
+    substructures: Dict<StoreStructure>;
     storables: StorableRegistry;
     indexables: IndexableRegistry;
   }) {
@@ -147,13 +147,13 @@ export class AutonomousConnection implements Connection {
 
   db_name: string;
 
-  _substructures: Dict<string, StoreStructure>;
+  _substructures: Dict<StoreStructure>;
   _storables: StorableRegistry;
   _indexables: IndexableRegistry;
 
   constructor(args: {
     db_name: string;
-    substructures: Dict<string, StoreStructure>;
+    substructures: Dict<StoreStructure>;
     storables: StorableRegistry;
     indexables: IndexableRegistry;
   }) {

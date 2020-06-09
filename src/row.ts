@@ -6,6 +6,6 @@ import { NativelyIndexable } from './indexable';
 export interface Row {
   id: number;
   payload: NativelyStorable;
-  traits: Dict<string, NativelyIndexable>;
+  traits: Dict<NativelyIndexable>;
 }
 

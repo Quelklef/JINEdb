@@ -29,7 +29,7 @@ export interface Store<Item extends Storable> {
   /**
    * Store indexes
    */
-  indexes: Dict<string, Index<Item, Indexable>>;
+  indexes: Dict<Index<Item, Indexable>>;
 
   name: string;
 
@@ -73,13 +73,13 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
   name: string;
 
   /** @inheritDoc */
-  indexes: Dict<string, BoundIndex<Item, Indexable>>;
+  indexes: Dict<BoundIndex<Item, Indexable>>;
 
   // user-facing dual to .indexes
-  by: Dict<string, Index<Item, Indexable>>;
+  by: Dict<Index<Item, Indexable>>;
 
   _idb_store: IDBObjectStore;
-  _substructures: Dict<string, IndexStructure<Item>>;
+  _substructures: Dict<IndexStructure<Item>>;
   _storables: StorableRegistry;
   _indexables: IndexableRegistry;
 
@@ -137,9 +137,9 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     });
   }
 
-  _calcTraits(item: Item): Dict<string, NativelyIndexable> {
+  _calcTraits(item: Item): Dict<NativelyIndexable> {
     /* Calculate all indexed traits for an item */
-    const traits: Dict<string, NativelyIndexable> = {};
+    const traits: Dict<NativelyIndexable> = {};
     for (const index_name of Object.keys(this._substructures)) {
       const index = some(this.indexes[index_name]);
       const trait_name = index_name;
@@ -299,13 +299,13 @@ export class AutonomousStore<Item extends Storable> implements Store<Item> {
 
   name: string;
 
-  _substructures: Dict<string, IndexStructure>;
+  _substructures: Dict<IndexStructure>;
   _storables: StorableRegistry;
   _indexables: IndexableRegistry;
 
-  indexes: Dict<string, AutonomousIndex<Item, Indexable>>;
+  indexes: Dict<AutonomousIndex<Item, Indexable>>;
 
-  by: Dict<string, Index<Item, Indexable>>;
+  by: Dict<Index<Item, Indexable>>;
 
   _conn: Connection;
 

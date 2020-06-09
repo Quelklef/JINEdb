@@ -33,7 +33,7 @@ export type NativelyStorable
 /**
  * An object with string keys and [[NativelyStorable]] values.
  */
-interface PlainObject extends Dict<string, NativelyStorable> { } // eslint-disable-line @typescript-eslint/no-empty-interface
+interface PlainObject extends Dict<NativelyStorable> { } // eslint-disable-line @typescript-eslint/no-empty-interface
 
 // --
 

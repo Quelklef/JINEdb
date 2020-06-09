@@ -38,7 +38,7 @@ export function uglifyTransactionMode(tx_mode: TransactionMode): IDBTransactionM
  */
 export class Transaction<$$ = {}> {
 
-  _substructures: Dict<string, StoreStructure>;
+  _substructures: Dict<StoreStructure>;
   _storables: StorableRegistry;
   _indexables: IndexableRegistry;
 
@@ -48,7 +48,7 @@ export class Transaction<$$ = {}> {
   /**
    * The object stores that the transaction has access to.
    */
-  stores: Dict<string, BoundStore<Storable>>;
+  stores: Dict<BoundStore<Storable>>;
 
   /**
    * Current transaction state.
@@ -68,7 +68,7 @@ export class Transaction<$$ = {}> {
 
   constructor(args: {
     idb_tx: IDBTransaction;
-    substructures: Dict<string, StoreStructure>;
+    substructures: Dict<StoreStructure>;
     storables: StorableRegistry;
     indexables: IndexableRegistry;
   }) {
