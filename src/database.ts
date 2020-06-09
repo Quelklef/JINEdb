@@ -149,7 +149,9 @@ export class Database<$$ = {}> {
     return await conn.wrap(async conn => await callback(conn));
   }
 
-  async upgrade(version: number, callback: (tx: Transaction) => Promise<void>): Promise<void> {
+  // vvv We add `tx.genuine` as an argument--and as the FIRST argument--to bring it to the
+  //     attention of the API user.
+  async upgrade(version: number, callback: (genuine: boolean, tx: Transaction<$$>) => Promise<void>): Promise<void> {
     /* Asynchronously re-open the underlying idb database with the given
     version number, if supplied. If an upgrade function is given, it will be
     attached to the upgradeneeded event of the database open request. */
@@ -170,6 +172,7 @@ export class Database<$$ = {}> {
         const idb_tx = some(req.transaction);
         const tx = new Transaction<$$>({
           idb_tx: idb_tx,
+          genuine: version > some(this.version),
           substructures: this._substructures,
           storables: this._storables,
           indexables: this._indexables,
@@ -177,10 +180,7 @@ export class Database<$$ = {}> {
 
         // eslint-disable-next-line @typescript-eslint/no-floating-promises
         invoke(async (): Promise<void> => {
-          if (version < some(this.version))
-            await tx.dry_run(async tx => await callback(tx));
-          else
-            await tx.wrap(async tx => await callback(tx));
+          await tx.wrap(async tx => await callback(tx.genuine, tx));
 
           // update structure if stores were added etc
           if (tx.state !== 'aborted') {

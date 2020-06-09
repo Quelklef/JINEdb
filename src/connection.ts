@@ -70,6 +70,7 @@ export class BoundConnection<$$ = {}> implements Connection {
   async _newTransaction(store_names: Array<string>, mode: TransactionMode): Promise<Transaction<$$>> {
     return new Transaction<$$>({
       idb_tx: this._idb_conn.transaction(store_names, uglifyTransactionMode(mode)),
+      genuine: true,
       substructures: this._substructures,
       storables: this._storables,
       indexables: this._indexables,

@@ -22,7 +22,7 @@ describe('transaction', () => {
   beforeEach(async () => {
     reset();
     jine = await newJine<$$>('jine');
-    await jine.upgrade(1, async tx => {
+    await jine.upgrade(1, async (genuine: boolean, tx) => {
       tx.addStore<Person>('people');
     });
     conn = await jine.newConnection();

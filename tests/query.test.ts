@@ -24,7 +24,7 @@ describe('query', () => {
   beforeEach(async () => {
     reset();
     jine = await newJine<$$>('jine');
-    await jine.upgrade(1, async tx => {
+    await jine.upgrade(1, async (genuine: boolean, tx) => {
       const nums = tx.addStore<Num>('nums');
       nums.addIndex<number>('value', '.value');
     });

@@ -46,6 +46,12 @@ export class Transaction<$$ = {}> {
   get indexables(): IndexableRegistry { return this._indexables; }
 
   /**
+   * A non-genuine transaction will not allow `.commit()` and will not
+   * propagate staged changes to the databse.
+   */
+  genuine: boolean;
+
+  /**
    * The object stores that the transaction has access to.
    */
   stores: Dict<BoundStore<Storable>>;
@@ -68,10 +74,13 @@ export class Transaction<$$ = {}> {
 
   constructor(args: {
     idb_tx: IDBTransaction;
+    genuine: boolean;
     substructures: Dict<StoreStructure>;
     storables: StorableRegistry;
     indexables: IndexableRegistry;
   }) {
+    this.genuine = args.genuine;
+
     this._idb_tx = args.idb_tx;
     this._idb_db = this._idb_tx.db;
     // Clone structure so that changes are sandboxed in case of e.g. .abort()
@@ -104,18 +113,18 @@ export class Transaction<$$ = {}> {
     });
   }
 
-  // TODO: dry or not should probably (also?) be an attr of the tx
   /**
    * Like [[Transaction.wrap]], but synchronous.
    */
- wrapSynchronous<T>(callback: (tx: Transaction<$$>, dry: false) => T): T {
+ wrapSynchronous<T>(callback: (tx: Transaction<$$>) => T): T {
     try {
-      return callback(this, false);
+      return callback(this);
     } catch (ex) {
       if (this.state === 'active') this.abort();
       throw ex;
     } finally {
-      if (this.state === 'active') this.commit();
+      if (this.state === 'active' && !this.genuine) this.abort();
+      if (this.state === 'active' && this.genuine) this.commit();
     }
   }
 
@@ -127,36 +136,15 @@ export class Transaction<$$ = {}> {
    * @typeParam T The return type of the callback
    * @returns The return value of the callback
    */
-  async wrap<T>(callback: (tx: Transaction<$$>, dry: false) => Promise<T>): Promise<T> {
+  async wrap<T>(callback: (tx: Transaction<$$>) => Promise<T>): Promise<T> {
     try {
-      return await callback(this, false);
+      return await callback(this);
     } catch (ex) {
       if (this.state === 'active') this.abort();
       throw ex;
     } finally {
-      if (this.state === 'active') this.commit();
-    }
-  }
-
-  /**
-   * Like [[Transaction.wrap]], but the transaction cannot be committed and will
-   * be aborted at the end of the callback
-   */
-  async dry_run<T>(callback: (tx: Transaction<$$>, dry: true) => Promise<T>): Promise<T> {
-    const proxy = new Proxy(this, {
-      get(target: any, prop: any): any {
-        if (prop === 'commit') {
-          return () => { throw Error('Cannot commit in a dry run!'); };
-        } else {
-          return target[prop];
-        }
-      }
-    });
-
-    try {
-      return await callback(proxy._withShorthand(), true);
-    } finally {
-      this.abort();
+      if (this.state === 'active' && !this.genuine) this.abort();
+      if (this.state === 'active' && this.genuine) this.commit();
     }
   }
 
@@ -206,6 +194,8 @@ export class Transaction<$$ = {}> {
     /* Commit and end the transaction */
     // [2020-05-16] For some reason the types don't have IDBTransaction.commit(),
     // but it's in the online docs: https://developer.mozilla.org/en-US/docs/Web/API/IDBTransaction/commit
+    if (!this.genuine)
+      throw Error('Cannot commit an ingeuine transaction.');
     (this._idb_tx as any).commit();
     this.state = 'committed';
   }

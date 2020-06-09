@@ -16,7 +16,7 @@ describe('migration', () => {
 
   it('allows for adding and removing stores', async () => {
 
-    await jine.upgrade(2, async (tx: any) => {
+    await jine.upgrade(2, async (genuine: boolean, tx: any) => {
       await tx.addStore('strings');
     });
 
@@ -25,7 +25,7 @@ describe('migration', () => {
       expect(await conn.$.strings.array()).toEqual(['s t r i n g']);
     });
 
-    await jine.upgrade(3, async (tx: any) => {
+    await jine.upgrade(3, async (genuine: boolean, tx: any) => {
       await tx.removeStore('strings');
     });
 
@@ -37,7 +37,7 @@ describe('migration', () => {
 
   it('allows for adding and removing indexes', async () => {
 
-    await jine.upgrade(2, async (tx: any) => {
+    await jine.upgrade(2, async (genuine: boolean, tx: any) => {
       const strings = await tx.addStore('strings');
       await strings.addIndex('self', (x: any) => x);
     });
@@ -47,7 +47,7 @@ describe('migration', () => {
       expect(await conn.$.strings.by.self.find('me!')).toEqual(['me!']);
     });
 
-    await jine.upgrade(3, async (tx: any) => {
+    await jine.upgrade(3, async (genuine: boolean, tx: any) => {
       await tx.$.strings.removeIndex('self');
     });
 
@@ -66,7 +66,7 @@ describe('migration', () => {
       ) { }
     }
 
-    await jine.upgrade(2, async (tx: any) => {
+    await jine.upgrade(2, async (genuine: boolean, tx: any) => {
       const pairs = await tx.addStore('pairs');
 
       tx.storables.register(MyPair_v1, 'MyPair', {
@@ -95,7 +95,7 @@ describe('migration', () => {
       ) { }
     }
 
-    await jine.upgrade(3, async (tx: any) => {
+    await jine.upgrade(3, async (genuine: boolean, tx: any) => {
       await tx.storables.upgrade('MyPair', {
         constructor: MyPair_v2,
         encode(pair: MyPair_v2): NativelyStorable {
@@ -136,7 +136,7 @@ describe('migration', () => {
       body: BodyRating;
     }
 
-    await jine.upgrade(2, async (tx: any) => {
+    await jine.upgrade(2, async (genuine: boolean, tx: any) => {
       const people = tx.addStore('people');
       await people.addIndex('name', '.name');
     });
@@ -153,7 +153,7 @@ describe('migration', () => {
       ) { }
     }
 
-    await jine.upgrade(3, async (tx: any) => {
+    await jine.upgrade(3, async (genuine: boolean, tx: any) => {
       tx.indexables.register(BodyTrait, 'BodyTrait', {
         encode(body_trait: BodyTrait): number {
           return ['pitiful', 'reasonable', 'impressive'].indexOf(body_trait.body_rating);
@@ -175,7 +175,7 @@ describe('migration', () => {
   });
 
   it("doesn't throw on .abort()", async () => {
-    await jine.upgrade(2, async (tx: any) => {
+    await jine.upgrade(2, async (genuine: boolean, tx: any) => {
       tx.abort();
     });
   });
@@ -184,7 +184,7 @@ describe('migration', () => {
 
     class SomeClass { }
 
-    await jine.upgrade(2, async (tx: any) => {
+    await jine.upgrade(2, async (genuine: boolean, tx: any) => {
       tx.storables.register(SomeClass, 'SomeClass', {
         encode: (sc: SomeClass): NativelyStorable => null,
         decode: (ns: NativelyStorable): SomeClass => new SomeClass(),

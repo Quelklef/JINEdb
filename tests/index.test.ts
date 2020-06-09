@@ -29,7 +29,7 @@ describe('index', () => {
   beforeEach(async () => {
     reset();
     jine = await newJine<$$>('jine');
-    await jine.upgrade(1, async tx => {
+    await jine.upgrade(1, async (genuine: boolean, tx) => {
       const items = tx.addStore<Item>('items');
       items.addIndex<string>('index', '.attr');
       items.addIndex<string>('index_unique', '.attr_unique', { unique: true });
