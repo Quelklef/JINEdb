@@ -3,7 +3,6 @@ import { Dict } from './util';
 import { Storable } from './storable';
 import { Indexable } from './indexable';
 
-// TODO: let Dict<T> = Dict<T>
 export type IndexStructure<Item extends Storable = Storable, Trait extends Indexable = Indexable> = {
   name: string;
   trait_info: string | ((item: Item) => Trait);

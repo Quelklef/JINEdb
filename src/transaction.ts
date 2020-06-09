@@ -80,7 +80,6 @@ export class Transaction<$$ = {}> {
     this._indexables = clone(args.indexables);
 
     this.stores = {};
-    // TODO: below line is ugly
     for (const store_name of Object.keys(this._substructures)) {
       const idb_store = this._idb_tx.objectStore(store_name);
       const store = new BoundStore({
