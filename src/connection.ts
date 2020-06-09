@@ -12,11 +12,6 @@ import { Transaction, TransactionMode, uglifyTransactionMode } from './transacti
  */
 export interface Connection {
 
-  // TODO: will anything break if we implement
-  //       getVersion() as `return this.structure.version`?
-  //       If so, is that a code smell?
-  getVersion(): Promise<number>;
-
   _transact<T>(store_names: Array<string>, mode: TransactionMode, callback: (tx: Transaction) => Promise<T>): Promise<T>;
 
   transact<T>(stores: Array<Store<Storable>>, mode: TransactionMode, callback: (tx: Transaction) => Promise<T>): Promise<T>;
@@ -70,10 +65,6 @@ export class BoundConnection<$$ = {}> implements Connection {
         }
       }
     });
-  }
-
-  getVersion(): Promise<number> {
-    return Promise.resolve(this._idb_conn.version);
   }
 
   async _newTransaction(store_names: Array<string>, mode: TransactionMode): Promise<Transaction<$$>> {
@@ -184,13 +175,6 @@ export class AutonomousConnection implements Connection {
       storables: this._storables,
       indexables: this._indexables,
     });
-  }
-
-  async getVersion(): Promise<number> {
-    const conn = await this._new_bound_conn();
-    const result = await conn.getVersion();
-    conn.close();
-    return result;
   }
 
   async _transact<T>(
