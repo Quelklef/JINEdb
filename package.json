@@ -8,7 +8,8 @@
     "dev": "nodemon --watch src -x \"npm run dev-one\"",
     "dev-one": "tsc --incremental && npm run lint",
     "lint": "eslint --cache --ext .ts src/",
-    "test": "npx jest --clearCache && jest --watch",
+    "test": "npx jest --clearCache && npx jest --watch",
+    "test-one": "npx jest --clearCache && npx jest",
     "update-docs": "git checkout gh-pages && git pull origin master --no-edit && npx typedoc && git add . && git add -f docs/ && git commit -m 'update docs' && git push && git checkout master"
   },
   "prepublish": "tsc",
