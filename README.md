@@ -1,4 +1,4 @@
-# JINEdb 0.3.0
+# JINEdb 0.3.1
 
 A client-side database for when **J**SON **i**s **n**ot **e**nough!
 

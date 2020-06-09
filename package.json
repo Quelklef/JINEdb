@@ -1,6 +1,6 @@
 {
   "name": "jinedb",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "For when Json Is Not Enough",
   "main": "dist/jine.js",
   "types": "dist/jine.d.ts",
