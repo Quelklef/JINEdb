@@ -1,11 +1,12 @@
 
 import { Transaction } from './transaction';
+import { StoreStructure } from './structure';
+import { AutonomousStore } from './store';
 import { some, invoke, Dict } from './util';
-import { StoreStructure, AutonomousStore } from './store';
+import { newStorableRegistry, StorableRegistry } from './storable';
 import { BoundConnection, AutonomousConnection } from './connection';
-import { newIndexableRegistry, IndexableRegistry } from './indexable';
+import { IndexableRegistry, newIndexableRegistry } from './indexable';
 import { JineBlockedError, JineInternalError, mapError } from './errors';
-import { newStorableRegistry, StorableRegistry, Storable } from './storable';
 
 async function getDbVersion(db_name: string): Promise<number> {
   /* Return current database version number. Returns an integer greater than or
@@ -38,10 +39,12 @@ async function getDbVersion(db_name: string): Promise<number> {
   }
 }
 
+
+
 /**
- * Represents the structure of a database
+ * A database
  */
-export class DatabaseStructure {
+export class Database<$$ = {}> {
 
   /**
    * The name of the database.
@@ -57,66 +60,39 @@ export class DatabaseStructure {
    */
   version: number | null;
 
-  /**
-   * The structures of the stores within this database.
-   */
-  store_structures: Dict<string, StoreStructure<Storable>>;
-
-  constructor(args: {
-    name: string;
-    version: number | null;
-    storables: StorableRegistry;
-    indexables: IndexableRegistry;
-    store_structures: Dict<string, StoreStructure<Storable>>;
-  }) {
-    this.name = args.name;
-    this.version = args.version;
-    this.store_structures = args.store_structures;
-    this.storables = args.storables;
-    this.indexables = args.indexables;
-  }
-
-  /**
-   * The store names. Equivalent to `Object.keys(this.store_structures)`.
-   */
-  get store_names(): Set<string> {
-    return new Set(Object.keys(this.store_structures));
-  }
-
-  storables: StorableRegistry;
-  indexables: IndexableRegistry;
-
-}
-
-/**
- * A database
- */
-export class Database<$$ = {}> {
-
-  /**
-   * The structure of the database
-   */
-  structure: DatabaseStructure;
+  _substructures: Dict<string, StoreStructure>;
+  _storables: StorableRegistry;
+  _indexables: IndexableRegistry;
 
   $: $$;
 
   constructor(name: string) {
-    this.structure = new DatabaseStructure({
-      name: name,
-      version: null,
-      store_structures: {},
-      storables: newStorableRegistry(),
-      indexables: newIndexableRegistry(),
-    });
+    this.name = name;
+    this.version = null;
 
-    const aut_conn = new AutonomousConnection(this.structure);
+    this._substructures = {};
+    this._storables = newStorableRegistry();
+    this._indexables = newIndexableRegistry();
+
     const self = this;
     this.$ = <$$> new Proxy({}, {
       get(_target: {}, prop: string | number | symbol) {
         if (typeof prop === 'string') {
           const store_name = prop;
-          const store_structure = some(self.structure.store_structures[store_name]);
-          const aut_store = new AutonomousStore(store_structure, aut_conn);
+          // vvv Mimic missing key returning undefined
+          if (!(store_name in self._substructures)) return undefined;
+          const aut_store = new AutonomousStore({
+            name: store_name,
+            conn: new AutonomousConnection({
+              db_name: self.name,
+              substructures: self._substructures,
+              storables: self._storables,
+              indexables: self._indexables,
+            }),
+            structure: some(self._substructures[store_name]),
+            storables: self._storables,
+            indexables: self._indexables,
+          });
           return aut_store;
         }
       }
@@ -124,13 +100,14 @@ export class Database<$$ = {}> {
   }
 
   async init(): Promise<void> {
-    this.structure.version = await getDbVersion(this.structure.name);
+    this.version = await getDbVersion(this.name);
   }
 
   // TODO: there's a better way to wrap requests and handle errors
+  // TODO: this should maybe be moved onto BoundConnection
   async _newIdbConn(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(this.structure.name);
+      const req = indexedDB.open(this.name);
       req.onupgradeneeded = _event => reject(new JineInternalError());
       req.onblocked = _event => reject(new JineBlockedError());
       req.onerror = _event => reject(mapError(req.error));
@@ -147,8 +124,13 @@ export class Database<$$ = {}> {
    * @returns A new connection
    */
   async newConnection(): Promise<BoundConnection<$$>> {
-    const idb_conn = await this._newIdbConn();
-    return new BoundConnection<$$>(this.structure, idb_conn);
+    return new BoundConnection<$$>({
+      db_name: this.name,
+      idb_conn: await this._newIdbConn(),
+      substructures: this._substructures,
+      storables: this._storables,
+      indexables: this._indexables,
+    });
   }
 
   /**
@@ -173,7 +155,7 @@ export class Database<$$ = {}> {
     attached to the upgradeneeded event of the database open request. */
 
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(this.structure.name, version);
+      const req = indexedDB.open(this.name, version);
       req.onblocked = _event => reject(new JineBlockedError());
       req.onerror = _event => {
         const idb_error = req.error;
@@ -186,21 +168,26 @@ export class Database<$$ = {}> {
       };
       req.onupgradeneeded = _event => {
         const idb_tx = some(req.transaction);
-        const tx = new Transaction<$$>(idb_tx, this.structure)
+        const tx = new Transaction<$$>({
+          idb_tx: idb_tx,
+          substructures: this._substructures,
+          storables: this._storables,
+          indexables: this._indexables,
+        });
 
         // eslint-disable-next-line @typescript-eslint/no-floating-promises
         invoke(async (): Promise<void> => {
-          if (version < some(this.structure.version))
+          if (version < some(this.version))
             await tx.dry_run(async tx => await callback(tx));
           else
             await tx.wrap(async tx => await callback(tx));
 
           // update structure if stores were added etc
           if (tx.state !== 'aborted') {
-            this.structure.store_structures = tx.structure.store_structures;
-            this.structure.storables = tx.structure.storables;
-            this.structure.indexables = tx.structure.indexables;
-            if (version > some(this.structure.version)) this.structure.version = version;
+            this._substructures = tx._substructures;
+            this._storables = tx._storables;
+            this._indexables = tx._indexables;
+            if (version > some(this.version)) this.version = version;
           }
         });
       };
@@ -217,7 +204,7 @@ export class Database<$$ = {}> {
    */
   async destroy(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.deleteDatabase(this.structure.name);
+      const req = indexedDB.deleteDatabase(this.name);
       req.onerror = _event => reject(mapError(req.error));
       req.onsuccess = _event => resolve();
     });

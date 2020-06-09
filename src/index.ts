@@ -1,98 +1,11 @@
 
 import { some } from './util';
+import { IndexStructure } from './structure';
 import { AutonomousStore } from './store';
 import { TransactionMode } from './transaction';
 import { Storable, StorableRegistry } from './storable';
 import { Indexable, IndexableRegistry } from './indexable';
 import { QuerySpec, QueryExecutor, UniqueQueryExecutor } from './query';
-
-/**
- * Structure of an index
- * @typeParam Item The type of objects stored in the [[Store]] that this index exists on.
- * @typeParam Trait The type of traits that this index tracks.
- */
-export class IndexStructure<Item extends Storable, Trait extends Indexable> {
-
-  /**
-   * Name of the index. Index names are unique for a particular store.
-   */
-  name: string;
-
-  /**
-   * Can two stored objects have the same value for this index?
-   */
-  unique: boolean;
-
-  /**
-   * If `explode` is true, then this index can have multiple values for each item.
-   * An index that `explode`s expects an array as its value.
-   * Each item in this array will be added to the index for the particular object.
-   *
-   * For example, a blog might store posts. Posts may have tags. If there is an index
-   * for tags and it `explode`s, then a post will get several entries in the tag index:
-   * one for each tag. So a post with tags `"programming"` and `"javascript"` will show
-   * up for a query for `"programming"` and a query for `"javascript"`.
-   */
-  explode: boolean;
-
-  parent_store_name: string;
-  trait_path_or_getter: string | ((item: Item) => Trait);
-
-  constructor(args: {
-    name: string;
-    unique: boolean;
-    explode: boolean;
-    parent_store_name: string;
-    trait_path_or_getter: string | ((item: Item) => Trait);
-    storables: StorableRegistry;
-    indexables: IndexableRegistry;
-  }) {
-    this.name = args.name;
-    this.unique = args.unique;
-    this.explode = args.explode;
-    this.parent_store_name = args.parent_store_name;
-    this.trait_path_or_getter = args.trait_path_or_getter;
-    this.storables = args.storables;
-    this.indexables = args.indexables;
-  }
-
-  /**
-   * The kind of the index.
-   *
-   * Indexes can either be 'path' indexes or 'derived' indexes.
-   * A 'path' index indexes attributes of stored objects.
-   * A 'derived' index indexes functions of stored objects.
-   */
-  get kind(): 'path' | 'derived' {
-    if (typeof this.trait_path_or_getter === 'string')
-      return 'path';
-    return 'derived';
-  }
-
-  /**
-   * If this index is a path index, returns the attribute path.
-   * Otherwise, throws.
-   */
-  get trait_path(): string {
-    if (this.kind !== 'path')
-      throw Error('Cannot get .path on a non-path index.');
-    return this.trait_path_or_getter as string;
-  }
-
-  /**
-   * If this index is a derived index, returns the trait getter.
-   * Otherwise, throws.
-   */
-  get trait_getter(): (item: Item) => Trait {
-    if (this.kind !== 'derived')
-      throw Error('Cannot get .trait_getter on a non-derived index.');
-    return this.trait_path_or_getter as (item: Item) => Trait;
-  }
-
-  storables: StorableRegistry;
-  indexables: IndexableRegistry;
-
-}
 
 /**
  * Generic interface for indexes.
@@ -106,9 +19,16 @@ export class IndexStructure<Item extends Storable, Trait extends Indexable> {
 export interface Index<Item extends Storable, Trait extends Indexable> {
 
   /**
-   * Index structure
+   * Name of the index. Index names are unique for a particular store.
    */
-  readonly structure: IndexStructure<Item, Trait>;
+  name: string;
+
+  unique: boolean;
+  explode: boolean;
+
+  kind: 'path' | 'derived';
+  trait_path?: string;
+  trait_getter?: (item: Item) => Trait;
 
   /**
    * Get an item by trait.
@@ -144,21 +64,50 @@ export interface Index<Item extends Storable, Trait extends Indexable> {
  */
 export class BoundIndex<Item extends Storable, Trait extends Indexable> implements Index<Item, Trait> {
 
-  /** @inheritDoc */
-  readonly structure: IndexStructure<Item, Trait>
+  _structure: IndexStructure<Item, Trait>;
 
-  readonly _idb_index: IDBIndex;
+  name: string;
+  unique: boolean;
+  explode: boolean;
 
-  constructor(structure: IndexStructure<Item, Trait>, idb_index: IDBIndex) {
-    this.structure = structure;
-    this._idb_index = idb_index;
+  kind: 'path' | 'derived';
+  trait_path?: string;
+  trait_getter?: (item: Item) => Trait;
+
+  _idb_index: IDBIndex;
+  _storables: StorableRegistry;
+  _indexables: IndexableRegistry;
+
+  constructor(args: {
+    idb_index: IDBIndex;
+    name: string;
+    structure: IndexStructure<Item, Trait>;
+    storables: StorableRegistry;
+    indexables: IndexableRegistry;
+  }) {
+    this.name = args.name;
+    this.unique = args.structure.unique;
+    this.explode = args.structure.explode;
+
+    if (typeof args.structure.trait_info === 'string') {
+      this.kind = 'path';
+      this.trait_path = args.structure.trait_info;
+    } else {
+      this.kind = 'derived';
+      this.trait_getter = args.structure.trait_info;
+    }
+
+    this._idb_index = args.idb_index;
+    this._structure = args.structure;
+    this._storables = args.storables;
+    this._indexables = args.indexables;
   }
 
   _get_trait(item: Item): Trait {
-    if (this.structure.kind === 'path') {
-      return (item as any)[this.structure.trait_path];
+    if (this.kind === 'path') {
+      return (item as any)[some(this.trait_path)];
     } else {
-      return this.structure.trait_getter(item);
+      return some(this.trait_getter)(item);
     }
   }
 
@@ -167,8 +116,8 @@ export class BoundIndex<Item extends Storable, Trait extends Indexable> implemen
     return new UniqueQueryExecutor({
       source: this,
       query_spec: { equals: trait },
-      storables: this.structure.storables,
-      indexables: this.structure.indexables,
+      storables: this._storables,
+      indexables: this._indexables,
     });
   }
 
@@ -177,8 +126,8 @@ export class BoundIndex<Item extends Storable, Trait extends Indexable> implemen
     return new QueryExecutor({
       source: this,
       query_spec: query_spec,
-      storables: this.structure.storables,
-      indexables: this.structure.indexables,
+      storables: this._storables,
+      indexables: this._indexables,
     });
   }
 
@@ -203,19 +152,45 @@ export class BoundIndex<Item extends Storable, Trait extends Indexable> implemen
  */
 export class AutonomousIndex<Item extends Storable, Trait extends Indexable> implements Index<Item, Trait> {
 
-  /** @inheritDoc */
-  readonly structure: IndexStructure<Item, Trait>
+  name: string;
+  unique: boolean;
+  explode: boolean;
 
-  readonly _parent: AutonomousStore<Item>;
+  kind: 'path' | 'derived';
+  trait_path?: string;
+  trait_getter?: (item: Item) => Trait;
 
-  constructor(structure: IndexStructure<Item, Trait>, parent: AutonomousStore<Item>) {
-    this.structure = structure;
-    this._parent = parent;
+  _parent: AutonomousStore<Item>;
+  _storables: StorableRegistry;
+  _indexables: IndexableRegistry;
+
+  constructor(args: {
+    parent: AutonomousStore<Item>;
+    name: string;
+    structure: IndexStructure<Item, Trait>;
+    storables: StorableRegistry;
+    indexables: IndexableRegistry;
+  }) {
+    this.name = args.name;
+    this.unique = args.structure.unique;
+    this.explode = args.structure.explode;
+
+    this._parent = args.parent;
+    this._storables = args.storables;
+    this._indexables = args.indexables;
+
+    if (typeof args.structure.trait_info === 'string') {
+      this.kind = 'path';
+      this.trait_path = args.structure.trait_info;
+    } else {
+      this.kind = 'derived';
+      this.trait_getter = args.structure.trait_info;
+    }
   }
 
   async _transact<T>(mode: TransactionMode, callback: (bound_index: BoundIndex<Item, Trait>) => Promise<T>): Promise<T> {
     return this._parent._transact(mode, async bound_store => {
-      const bound_index = some(bound_store.indexes[this.structure.name]) as BoundIndex<Item, Trait>;
+      const bound_index = some(bound_store.indexes[this.name]) as BoundIndex<Item, Trait>;
       return await callback(bound_index);
     });
   }
@@ -225,8 +200,8 @@ export class AutonomousIndex<Item extends Storable, Trait extends Indexable> imp
     return new UniqueQueryExecutor({
       source: this,
       query_spec: { equals: trait },
-      storables: this.structure.storables,
-      indexables: this.structure.indexables,
+      storables: this._storables,
+      indexables: this._indexables,
     });
   }
 
@@ -235,8 +210,8 @@ export class AutonomousIndex<Item extends Storable, Trait extends Indexable> imp
     return new QueryExecutor({
       source: this,
       query_spec: query_spec,
-      storables: this.structure.storables,
-      indexables: this.structure.indexables,
+      storables: this._storables,
+      indexables: this._indexables,
     });
   }
 

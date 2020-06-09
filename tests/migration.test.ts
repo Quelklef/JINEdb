@@ -198,8 +198,8 @@ describe('migration', () => {
     });
 
     await jine.connect(async (conn: any) => {
-      expect(conn.structure.storables.isRegistered(SomeClass)).toBe(false);
-      expect(conn.structure.indexables.isRegistered(SomeClass)).toBe(false);
+      expect(conn._storables.isRegistered(SomeClass)).toBe(false);
+      expect(conn._indexables.isRegistered(SomeClass)).toBe(false);
     });
 
   });

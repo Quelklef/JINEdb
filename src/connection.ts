@@ -1,7 +1,9 @@
 
-import { Storable } from './storable';
-import { DatabaseStructure } from './database';
+import { some, Dict } from './util';
+import { IndexableRegistry } from './indexable';
 import { Store, AutonomousStore } from './store';
+import { Storable, StorableRegistry } from './storable';
+import { StoreStructure } from './structure';
 import { JineBlockedError, JineInternalError, mapError } from './errors';
 import { Transaction, TransactionMode, uglifyTransactionMode } from './transaction';
 
@@ -9,11 +11,6 @@ import { Transaction, TransactionMode, uglifyTransactionMode } from './transacti
  * Generic interface for connections to databases
  */
 export interface Connection {
-
-  /**
-   * Structure of the database
-   */
-  readonly structure: DatabaseStructure;
 
   // TODO: will anything break if we implement
   //       getVersion() as `return this.structure.version`?
@@ -31,27 +28,44 @@ export interface Connection {
  */
 export class BoundConnection<$$ = {}> implements Connection {
 
-  readonly structure: DatabaseStructure;
+  db_name: string;
 
-  readonly _idb_conn: IDBDatabase;
+  _idb_conn: IDBDatabase;
 
-  readonly $: $$;
+  _substructures: Dict<string, StoreStructure>;
+  _storables: StorableRegistry;
+  _indexables: IndexableRegistry;
 
-  constructor(
-    structure: DatabaseStructure,
-    idb_conn: IDBDatabase,
-  ) {
-    this.structure = structure;
-    this._idb_conn = idb_conn;
+  $: $$;
+
+  constructor(args: {
+    db_name: string;
+    idb_conn: IDBDatabase;
+    substructures: Dict<string, StoreStructure>;
+    storables: StorableRegistry;
+    indexables: IndexableRegistry;
+  }) {
+    this.db_name = args.db_name;
+
+    this._idb_conn = args.idb_conn;
+    this._substructures = args.substructures;
+    this._storables = args.storables;
+    this._indexables = args.indexables;
 
     const self = this;
     this.$ = <$$> new Proxy({}, {
       get(_target: {}, prop: string | number | symbol) {
         if (typeof prop === 'string') {
           const store_name = prop;
-          const store_structure = self.structure.store_structures[store_name];
-          if (store_structure === undefined) return undefined;
-          const aut_store = new AutonomousStore(store_structure, self);
+          // vvv Mimic missing key returning undefined
+          if (!(store_name in self._substructures)) return undefined;
+          const aut_store = new AutonomousStore({
+            name: store_name,
+            conn: self,
+            structure: some(self._substructures[store_name]),
+            storables: self._storables,
+            indexables: self._indexables,
+          });
           return aut_store;
         }
       }
@@ -63,9 +77,12 @@ export class BoundConnection<$$ = {}> implements Connection {
   }
 
   async _newTransaction(store_names: Array<string>, mode: TransactionMode): Promise<Transaction<$$>> {
-    const idb_conn = this._idb_conn;
-    const idb_tx = idb_conn.transaction(store_names, uglifyTransactionMode(mode));
-    return new Transaction<$$>(idb_tx, this.structure);
+    return new Transaction<$$>({
+      idb_tx: this._idb_conn.transaction(store_names, uglifyTransactionMode(mode)),
+      substructures: this._substructures,
+      storables: this._storables,
+      indexables: this._indexables,
+    });
   }
 
   /**
@@ -75,7 +92,7 @@ export class BoundConnection<$$ = {}> implements Connection {
    * @returns A new transaction
    */
   async newTransaction(stores: Array<Store<any>>, mode: TransactionMode): Promise<Transaction<$$>> {
-    const store_names = stores.map(store => store.structure.name);
+    const store_names = stores.map(store => store.name);
     return await this._newTransaction(store_names, mode);
   }
 
@@ -128,15 +145,27 @@ export class BoundConnection<$$ = {}> implements Connection {
 
 export class AutonomousConnection implements Connection {
 
-  readonly structure: DatabaseStructure;
+  db_name: string;
 
-  constructor(structure: DatabaseStructure) {
-    this.structure = structure;
+  _substructures: Dict<string, StoreStructure>;
+  _storables: StorableRegistry;
+  _indexables: IndexableRegistry;
+
+  constructor(args: {
+    db_name: string;
+    substructures: Dict<string, StoreStructure>;
+    storables: StorableRegistry;
+    indexables: IndexableRegistry;
+  }) {
+    this.db_name = args.db_name;
+    this._substructures = args.substructures;
+    this._storables = args.storables;
+    this._indexables = args.indexables;
   }
 
   _new_idb_conn(): Promise<IDBDatabase> {
     return new Promise<IDBDatabase>((resolve, reject) => {
-      const db_name = this.structure.name;
+      const db_name = this.db_name;
       const req = indexedDB.open(db_name);
       // since we're opening without a version, no upgradeneeded should fire
       req.onupgradeneeded = _event => reject(new JineInternalError());
@@ -148,7 +177,13 @@ export class AutonomousConnection implements Connection {
 
   async _new_bound_conn(): Promise<BoundConnection> {
     const idb_conn = await this._new_idb_conn();
-    return new BoundConnection(this.structure, idb_conn);
+    return new BoundConnection({
+      db_name: this.db_name,
+      idb_conn: idb_conn,
+      substructures: this._substructures,
+      storables: this._storables,
+      indexables: this._indexables,
+    });
   }
 
   async getVersion(): Promise<number> {

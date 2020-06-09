@@ -7,54 +7,13 @@ import { some, Dict } from './util';
 import { TransactionMode } from './transaction';
 import { StorableRegistry } from './storable';
 import { QueryExecutor, Cursor } from './query';
+import { StoreStructure, IndexStructure } from './structure';
+import { Index, BoundIndex, AutonomousIndex } from './index';
 import { Indexable, IndexableRegistry, NativelyIndexable } from './indexable';
-import { IndexStructure, Index, BoundIndex, AutonomousIndex } from './index';
 
 export { StorableRegistry } from './storable';
 export { IndexableRegistry } from './indexable';
 
-
-/**
- * The structure of an object store
- * @typeParam Item The type of objects contained in this store.
- */
-export class StoreStructure<Item extends Storable> {
-
-  /**
-   * The name of the store
-   */
-  name: string;
-
-  /**
-   * The structure of the store's indexes
-   */
-  index_structures: Dict<string, IndexStructure<Item, Indexable>>;
-
-  constructor(args: {
-    name: string;
-    index_structures: Dict<string, IndexStructure<Item, Indexable>>;
-    storables: StorableRegistry;
-    indexables: IndexableRegistry;
-  }) {
-    this.name = args.name;
-    this.index_structures = args.index_structures;
-    this.storables = args.storables;
-    this.indexables = args.indexables;
-  }
-
-  /**
-   * The names of the store's indexes.
-   * Equivalent to `Object.keys(this.index_structures)`
-   * @returns The store names
-   */
-  get index_names(): Set<string> {
-    return new Set(Object.keys(this.index_structures));
-  }
-
-  storables: StorableRegistry;
-  indexables: IndexableRegistry;
-
-}
 
 /**
  * Generic interface for Jine stores.
@@ -68,14 +27,11 @@ export class StoreStructure<Item extends Storable> {
 export interface Store<Item extends Storable> {
 
   /**
-   * Store structure
-   */
-  readonly structure: StoreStructure<Item>;
-
-  /**
    * Store indexes
    */
-  readonly indexes: Dict<string, Index<Item, Indexable>>;
+  indexes: Dict<string, Index<Item, Indexable>>;
+
+  name: string;
 
   /**
    * Add an item to the store.
@@ -111,30 +67,44 @@ export interface Store<Item extends Storable> {
  */
 export class BoundStore<Item extends Storable> implements Store<Item> {
 
-  /** @inheritDoc */
-  readonly structure: StoreStructure<Item>;
+  /**
+   * The name of the store
+   */
+  name: string;
 
   /** @inheritDoc */
-  readonly indexes: Dict<string, BoundIndex<Item, Indexable>>;
+  indexes: Dict<string, BoundIndex<Item, Indexable>>;
 
   // user-facing dual to .indexes
   by: Dict<string, Index<Item, Indexable>>;
 
-  readonly _idb_store: IDBObjectStore;
+  _idb_store: IDBObjectStore;
+  _substructures: Dict<string, IndexStructure<Item>>;
+  _storables: StorableRegistry;
+  _indexables: IndexableRegistry;
 
-  constructor(
-    structure: StoreStructure<Item>,
-    idb_store: IDBObjectStore,
-  ) {
-    this.structure = structure;
+  constructor(args: {
+    idb_store: IDBObjectStore;
+    structure: StoreStructure;
+    storables: StorableRegistry;
+    indexables: IndexableRegistry;
+  }) {
+    this.name = args.idb_store.name;
 
-    this._idb_store = idb_store;
+    this._idb_store = args.idb_store;
+    this._substructures = args.structure.indexes;
+    this._storables = args.storables;
+    this._indexables = args.indexables;
 
     this.indexes = {};
-    for (const index_name of structure.index_names) {
-      const index_structure = some(structure.index_structures[index_name]);
-      const idb_index = this._idb_store.index(index_name);
-      this.indexes[index_name] = new BoundIndex(index_structure, idb_index);
+    for (const index_name of Object.keys(this._substructures)) {
+      this.indexes[index_name] = new BoundIndex({
+        idb_index: this._idb_store.index(index_name),
+        name: index_name,
+        structure: some(this._substructures[index_name]),
+        storables: this._storables,
+        indexables: this._indexables,
+      });
     }
 
     this.by = this.indexes;
@@ -144,8 +114,8 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     const cursor = new Cursor({
       idb_source: this._idb_store,
       query_spec: { everything: true },
-      storables: this.structure.storables,
-      indexables: this.structure.indexables,
+      storables: this._storables,
+      indexables: this._indexables,
     });
     for (await cursor.init(); cursor.active; await cursor.step()) {
       await cursor._replaceRow(mapper(cursor._currentRow()));
@@ -157,7 +127,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     return new Promise((resolve, reject) => {
       // Don't include the id since it's autoincrement'd
       const row: Omit<Row, 'id'> = {
-        payload: this.structure.storables.encode(item),
+        payload: this._storables.encode(item),
         traits: this._calcTraits(item),
       };
 
@@ -170,11 +140,11 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
   _calcTraits(item: Item): Dict<string, NativelyIndexable> {
     /* Calculate all indexed traits for an item */
     const traits: Dict<string, NativelyIndexable> = {};
-    for (const index_name of this.structure.index_names) {
+    for (const index_name of Object.keys(this._substructures)) {
       const index = some(this.indexes[index_name]);
       const trait_name = index_name;
       const trait = index._get_trait(item);
-      const encoded = this.structure.indexables.encode(trait, index.structure.explode);
+      const encoded = this._indexables.encode(trait, index._structure.explode);
       traits[trait_name] = encoded;
     }
     return traits;
@@ -207,7 +177,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
       const req = this._idb_store.getAll();
       req.onsuccess = (event) => {
         const rows = (event.target as any).result as Array<Row>;
-        const items = rows.map(row => this.structure.storables.decode(row.payload));
+        const items = rows.map(row => this._storables.decode(row.payload));
         resolve(items);
       };
       req.onerror = _event => reject(mapError(req.error));
@@ -218,8 +188,8 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     return new QueryExecutor({
       source: this,
       query_spec: { everything: true },
-      storables: this.structure.storables,
-      indexables: this.structure.indexables,
+      storables: this._storables,
+      indexables: this._indexables,
     });
   }
 
@@ -230,50 +200,64 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
    * will be added to existing items in the db.
    */
   async addIndex<Trait extends Indexable>(
-    name: string,
+    index_name: string,
     trait: string | ((item: Item) => Trait),
     options?: { unique?: boolean; explode?: boolean },
-  ): Promise<void> {
+  ): Promise<Index<Item, Trait>> {
 
-    if (typeof trait === 'string') {
-      if (!trait.startsWith('.'))
+    let trait_path_or_getter = trait;
+
+    if (typeof trait_path_or_getter === 'string') {
+      const trait_path = trait_path_or_getter;
+      if (!trait_path.startsWith('.'))
         throw Error("Index path must start with '.'");
-      trait = trait.slice(1);
+      trait_path_or_getter = trait_path.slice(1);
     }
+
+    const unique = options?.unique ?? false;
+    const explode = options?.explode ?? false;
 
     // create idb index
     const idb_tx = this._idb_store.transaction;
-    const idb_store = idb_tx.objectStore(this.structure.name);
-    const unique = options?.unique ?? false;
-    const explode = options?.explode ?? false;
-    const idb_index = idb_store.createIndex(name, `traits.${name}`, {
-      unique: unique,
-      multiEntry: explode,
-    });
+    const idb_store = idb_tx.objectStore(this.name);
+    const idb_index = idb_store.createIndex(
+      index_name,
+      `traits.${index_name}`,
+      {
+        unique: unique,
+        multiEntry: explode,
+      },
+    );
 
     // update existing items if needed
-    if (typeof trait !== 'string') {
-      const trait_getter = trait as (item: Item) => Trait;
+    if (trait_path_or_getter instanceof Function) {
+      const trait_getter = trait_path_or_getter as (item: Item) => Trait;
       await this.all()._replaceRows((row: Row) => {
-        const item = this.structure.storables.decode(row.payload);
-        row.traits[name] = this.structure.indexables.encode(trait_getter(item), explode);
+        const item = this._storables.decode(row.payload);
+        row.traits[index_name] = this._indexables.encode(trait_getter(item), explode);
         return row;
       });
     }
 
-    // create Index object
-    const index_structure = new IndexStructure({
-      name: name,
-      unique: options?.unique ?? false,
-      explode: options?.explode ?? false,
-      parent_store_name: this.structure.name,
-      trait_path_or_getter: trait,
-      storables: this.structure.storables,
-      indexables: this.structure.indexables,
+    const index_structure = {
+      name: index_name,
+      trait_info: trait_path_or_getter,
+      unique: unique,
+      explode: explode,
+    };
+
+    const index = new BoundIndex<Item, Trait>({
+      idb_index: idb_index,
+      name: index_name,
+      structure: index_structure,
+      storables: this._storables,
+      indexables: this._indexables,
     });
-    const index = new BoundIndex(index_structure, idb_index);
-    this.structure.index_structures[name] = index_structure;
-    this.indexes[name] = index;
+
+    this._substructures[index_name] = index_structure;
+    this.indexes[index_name] = index;
+
+    return index;
 
   }
 
@@ -288,8 +272,8 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     // remove idb index
     this._idb_store.deleteIndex(name);
 
-    // update existing rowsif needed
-    if (some(this.indexes[name]).structure.kind === 'derived') {
+    // update existing rows if needed
+    if (some(this.indexes[name]).kind === 'derived') {
       await this.all()._replaceRows((row: Row) => {
         delete row.traits[name];
         return row;
@@ -297,7 +281,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     }
 
     // remove index from this object
-    delete this.structure.index_structures[name];
+    delete this._substructures[name];
     delete this.indexes[name];
 
   }
@@ -313,30 +297,47 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
  */
 export class AutonomousStore<Item extends Storable> implements Store<Item> {
 
-  /** @inheritDoc */
-  readonly structure: StoreStructure<Item>;
+  name: string;
 
-  /** @inheritDoc */
-  readonly indexes: Dict<string, AutonomousIndex<Item, Indexable>>;
+  _substructures: Dict<string, IndexStructure>;
+  _storables: StorableRegistry;
+  _indexables: IndexableRegistry;
 
-  readonly by: Dict<string, Index<Item, Indexable>>;
+  indexes: Dict<string, AutonomousIndex<Item, Indexable>>;
 
-  readonly _conn: Connection;
+  by: Dict<string, Index<Item, Indexable>>;
 
-  constructor(structure: StoreStructure<Item>, conn: Connection) {
-    this.structure = structure;
+  _conn: Connection;
+
+  constructor(args: {
+    name: string;
+    conn: Connection;
+    structure: StoreStructure;
+    storables: StorableRegistry;
+    indexables: IndexableRegistry;
+  }) {
+    this.name = args.name;
+    this._conn = args.conn;
+    this._substructures = args.structure.indexes;
+    this._storables = args.storables;
+    this._indexables = args.indexables;
+
     this.indexes = {};
-    for (const index_name of structure.index_names) {
-      const index_structure = some(structure.index_structures[index_name]);
-      this.indexes[index_name] = new AutonomousIndex(index_structure, this);
+    for (const index_name of Object.keys(this._substructures)) {
+      this.indexes[index_name] = new AutonomousIndex({
+        parent: this,
+        name: index_name,
+        structure: some(this._substructures[index_name]),
+        storables: this._storables,
+        indexables: this._indexables,
+      });
     }
     this.by = this.indexes;
-    this._conn = conn;
   }
 
   async _transact<T>(mode: TransactionMode, callback: (bound_store: BoundStore<Item>) => Promise<T>): Promise<T> {
-    return await this._conn._transact([this.structure.name], mode, async tx => {
-      const bound_store = some(tx.stores[this.structure.name]) as any as BoundStore<Item>;
+    return await this._conn._transact([this.name], mode, async tx => {
+      const bound_store = some(tx.stores[this.name]) as any as BoundStore<Item>;
       return await callback(bound_store);
     });
   }
@@ -366,8 +367,8 @@ export class AutonomousStore<Item extends Storable> implements Store<Item> {
     return new QueryExecutor({
       source: this,
       query_spec: { everything: true },
-      storables: this.structure.storables,
-      indexables: this.structure.indexables,
+      storables: this._storables,
+      indexables: this._indexables,
     });
   }
 

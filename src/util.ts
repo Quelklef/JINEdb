@@ -6,6 +6,8 @@
  * @typeParam V Type of values
  */
 export type Dict<K extends keyof any, V> = Partial<Record<K, V>>;
+// TODO: uncomment next line
+//export type Dict<V> = { [key: string]: V | undefined };
 
 /**
  * An encoder and decoter for a particular type.

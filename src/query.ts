@@ -393,7 +393,7 @@ export class UniqueQueryExecutor<Item extends Storable, Trait extends Indexable>
     storables: StorableRegistry;
     indexables: IndexableRegistry;
   }) {
-    if (!args.source.structure.unique)
+    if (!args.source.unique)
       throw Error('Cannot create a UniqueQueryExecutor on a non-unique index.');
     this.qe = new QueryExecutor(args);
   }

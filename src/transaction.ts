@@ -1,9 +1,10 @@
 
 import { clone } from 'true-clone';
 import { some, Dict } from './util';
+import { BoundStore } from './store';
+import { StoreStructure } from './structure';
 import { IndexableRegistry } from './indexable';
-import { StorableRegistry, Storable } from './storable';
-import { StoreStructure, BoundStore } from './store';
+import { Storable, StorableRegistry } from './storable';
 
 /**
  * Modes that a transaction can take.
@@ -33,56 +34,21 @@ export function uglifyTransactionMode(tx_mode: TransactionMode): IDBTransactionM
 }
 
 /**
- * Represents the structure of a transaction
- */
-export class TransactionStructure {
-
-  /**
-   * The structure of the stores on the database that this transaction is bound to
-   */
-  store_structures: Dict<string, StoreStructure<Storable>>;
-
-  storables: StorableRegistry;
-  indexables: IndexableRegistry;
-
-  constructor(args: {
-    store_structures: Dict<string, StoreStructure<Storable>>;
-    storables: StorableRegistry;
-    indexables: IndexableRegistry;
-  }) {
-    this.store_structures = args.store_structures;
-    this.storables = args.storables;
-    this.indexables = args.indexables;
-  }
-
-  /**
-   * The names of the object stores of the database this transaction is bound to.
-   * Equivalent to `Object.keys(this.store_structures)`.
-   * @returns The store names
-   */
-  get store_names(): Set<string> {
-    return new Set(Object.keys(this.store_structures));
-  }
-
-}
-
-/**
  * A transaction with a particular database.
  */
 export class Transaction<$$ = {}> {
 
-  /**
-   * Structure of the transaction
-   */
-  readonly structure: TransactionStructure;
+  _substructures: Dict<string, StoreStructure>;
+  _storables: StorableRegistry;
+  _indexables: IndexableRegistry;
 
-  get storables(): StorableRegistry { return this.structure.storables; }
-  get indexables(): IndexableRegistry { return this.structure.indexables; }
+  get storables(): StorableRegistry { return this._storables; }
+  get indexables(): IndexableRegistry { return this._indexables; }
 
   /**
    * The object stores that the transaction has access to.
    */
-  readonly stores: Dict<string, BoundStore<Storable>>;
+  stores: Dict<string, BoundStore<Storable>>;
 
   /**
    * Current transaction state.
@@ -100,17 +66,29 @@ export class Transaction<$$ = {}> {
 
   readonly $: $$;
 
-  constructor(idb_tx: IDBTransaction, structure: TransactionStructure) {
-    this._idb_tx = idb_tx;
+  constructor(args: {
+    idb_tx: IDBTransaction;
+    substructures: Dict<string, StoreStructure>;
+    storables: StorableRegistry;
+    indexables: IndexableRegistry;
+  }) {
+    this._idb_tx = args.idb_tx;
     this._idb_db = this._idb_tx.db;
     // Clone structure so that changes are sandboxed in case of e.g. .abort()
-    this.structure = clone(structure);
+    this._substructures = clone(args.substructures);
+    this._storables = clone(args.storables);
+    this._indexables = clone(args.indexables);
 
     this.stores = {};
-    for (const store_name of structure.store_names) {
+    // TODO: below line is ugly
+    for (const store_name of Object.keys(this._substructures)) {
       const idb_store = this._idb_tx.objectStore(store_name);
-      const store_structure = some(this.structure.store_structures[store_name]);
-      const store = new BoundStore(store_structure, idb_store);
+      const store = new BoundStore({
+        idb_store: idb_store,
+        structure: some(this._substructures[store_name]),
+        storables: this._storables,
+        indexables: this._indexables,
+      });
       this.stores[store_name] = store;
     }
     this.$ = this.stores as $$;
@@ -131,7 +109,7 @@ export class Transaction<$$ = {}> {
   /**
    * Like [[Transaction.wrap]], but synchronous.
    */
-  wrapSynchronous<T>(callback: (tx: Transaction<$$>, dry: false) => T): T {
+ wrapSynchronous<T>(callback: (tx: Transaction<$$>, dry: false) => T): T {
     try {
       return callback(this, false);
     } catch (ex) {
@@ -188,19 +166,27 @@ export class Transaction<$$ = {}> {
    *
    * @param name store name
    */
-  addStore<Item extends Storable>(name: string): BoundStore<Item> {
-    this._idb_db.createObjectStore(name, { keyPath: 'id', autoIncrement: true });
-    const idb_store = this._idb_tx.objectStore(name);
-    const store_structure = new StoreStructure({
-      name: name,
-      index_structures: {},
-      storables: this.structure.storables,
-      indexables: this.structure.indexables,
+  addStore<Item extends Storable>(store_name: string): BoundStore<Item> {
+
+    this._idb_db.createObjectStore(store_name, { keyPath: 'id', autoIncrement: true });
+
+    const store_structure = {
+      name: store_name,
+      indexes: { },
+    };
+
+    const store = new BoundStore<Item>({
+      idb_store: this._idb_tx.objectStore(store_name),
+      structure: store_structure,
+      storables: this._storables,
+      indexables: this._indexables,
     });
-    const store = new BoundStore<Item>(store_structure, idb_store);
-    this.structure.store_structures[name] = store_structure as StoreStructure<Storable>;
-    this.stores[name] = store as any as BoundStore<Storable>;
+
+    this._substructures[store_name] = store_structure;
+    this.stores[store_name] = store as any as BoundStore<Storable>;
+
     return store;
+
   }
 
   /**
@@ -210,7 +196,7 @@ export class Transaction<$$ = {}> {
    */
   removeStore(name: string): void {
     this._idb_db.deleteObjectStore(name);
-    delete this.structure.store_structures[name];
+    delete this._substructures[name];
     delete this.stores[name];
   }
 
