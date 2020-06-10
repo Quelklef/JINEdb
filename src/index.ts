@@ -94,8 +94,6 @@ export class BoundIndex<Item extends Storable, Trait extends Indexable> implemen
   trait_path?: string;
   trait_getter?: (item: Item) => Trait;
 
-  // TODO: remove?
-  _structure: IndexStructure<Item, Trait>;
   _sibling_structures: Dict<IndexStructure<Item>>;
   _idb_index: IDBIndex;
   _storables: StorableRegistry;
@@ -118,7 +116,6 @@ export class BoundIndex<Item extends Storable, Trait extends Indexable> implemen
     this.trait_getter = args.structure.getter;
 
     this._idb_index = args.idb_index;
-    this._structure = args.structure;
     this._sibling_structures = args.sibling_structures;
     this._storables = args.storables;
     this._indexables = args.indexables;
