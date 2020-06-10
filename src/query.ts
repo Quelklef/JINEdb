@@ -2,6 +2,7 @@
 import { Row } from './row';
 import { mapError } from './errors';
 import { some, Dict } from './util';
+import { IndexStructure } from './structure';
 import { TransactionMode } from './transaction';
 import { Store, BoundStore } from './store';
 import { Index, BoundIndex } from './index';
@@ -114,6 +115,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
   // TODO: replicate on other classes.
   my: Dict<any> = {};
 
+  readonly index_structures: Dict<IndexStructure<Item>>;
   readonly storables: StorableRegistry;
   readonly indexables: IndexableRegistry;
 
@@ -126,6 +128,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
   constructor(args: {
     idb_source: IDBIndex | IDBObjectStore;
     query_spec: QuerySpec<Trait>;
+    index_structures: Dict<IndexStructure<Item>>;
     storables: StorableRegistry;
     indexables: IndexableRegistry;
   }) {
@@ -133,6 +136,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     this._idb_source = args.idb_source;
     this._idb_req = null;
     this._idb_cur = null;
+    this.index_structures = args.index_structures;
     this.storables = args.storables;
     this.indexables = args.indexables;
   }
@@ -237,16 +241,29 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
   }
 
   async replace(new_item: Item): Promise<void> {
+
     // Replace the current object with the given object
     this._assertActive();
     const row: any = some(this._idb_cur).value;
-    // TODO: update indexes
+
+    // update payload
     row.payload = this.storables.encode(new_item);
+
+    // update traits
+    for (const index_name of Object.keys(this.index_structures)) {
+      const index_structure = some(this.index_structures[index_name]);
+      const trait = index_structure.calc_trait(new_item);
+      const encoded = this.indexables.encode(trait, index_structure.explode);
+      const trait_name = index_name;
+      row.traits[trait_name] = encoded;
+    }
+
     return new Promise((resolve, reject) => {
       const req = some(this._idb_cur).update(row);
       req.onsuccess = _event => resolve();
       req.onerror = _event => reject(mapError(req.error));
     });
+
   }
 
   async update(updates: Partial<Item>): Promise<void> {
@@ -267,17 +284,20 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
   readonly source: Store<Item> | Index<Item, Trait>;
   readonly query_spec: QuerySpec<Trait>;
 
+  readonly index_structures: Dict<IndexStructure<Item>>;
   readonly storables: StorableRegistry;
   readonly indexables: IndexableRegistry;
 
   constructor(args: {
     source: Store<Item> | Index<Item, Trait>;
     query_spec: QuerySpec<Trait>;
+    index_structures: Dict<IndexStructure<Item>>;
     storables: StorableRegistry;
     indexables: IndexableRegistry;
   }) {
     this.source = args.source;
     this.query_spec = args.query_spec;
+    this.index_structures = args.index_structures;
     this.storables = args.storables;
     this.indexables = args.indexables;
   }
@@ -297,6 +317,7 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
       const cursor = new Cursor<Item, Trait>({
         idb_source: idb_source,
         query_spec: this.query_spec,
+        index_structures: this.index_structures,
         storables: this.storables,
         indexables: this.indexables,
       });
@@ -392,6 +413,7 @@ export class UniqueQueryExecutor<Item extends Storable, Trait extends Indexable>
   constructor(args: {
     source: Index<Item, Trait>;
     query_spec: QuerySpec<Trait>;
+    index_structures: Dict<IndexStructure<Item>>;
     storables: StorableRegistry;
     indexables: IndexableRegistry;
   }) {

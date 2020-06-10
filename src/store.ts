@@ -109,6 +109,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
         idb_index: this._idb_store.index(index_name),
         name: index_name,
         structure: some(this._substructures[index_name]),
+        sibling_structures: this._substructures,
         storables: this._storables,
         indexables: this._indexables,
       });
@@ -120,6 +121,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
   async _mapExistingRows(mapper: (row: Row) => Row): Promise<void> {
     const cursor = new Cursor({
       idb_source: this._idb_store,
+      index_structures: this._substructures,
       query_spec: { everything: true },
       storables: this._storables,
       indexables: this._indexables,
@@ -148,10 +150,10 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     /* Calculate all indexed traits for an item */
     const traits: Dict<NativelyIndexable> = {};
     for (const index_name of Object.keys(this._substructures)) {
-      const index = some(this.indexes[index_name]);
+      const index_structure = some(this._substructures[index_name]);
+      const trait = index_structure.calc_trait(item);
+      const encoded = this._indexables.encode(trait, index_structure.explode);
       const trait_name = index_name;
-      const trait = index._get_trait(item);
-      const encoded = this._indexables.encode(trait, index._structure.explode);
       traits[trait_name] = encoded;
     }
     return traits;
@@ -195,6 +197,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
     return new QueryExecutor({
       source: this,
       query_spec: { everything: true },
+      index_structures: this._substructures,
       storables: this._storables,
       indexables: this._indexables,
     });
@@ -236,9 +239,16 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
       },
     );
 
+    const index_structure = new IndexStructure({
+      name: index_name,
+      trait_path_or_getter: trait_path_or_getter,
+      unique: unique,
+      explode: explode,
+    });
+
     // update existing items if needed
-    if (trait_path_or_getter instanceof Function) {
-      const trait_getter = trait_path_or_getter as (item: Item) => Trait;
+    if (index_structure.kind === 'derived') {
+      const trait_getter = some(index_structure.getter);
       await this.all()._replaceRows((row: Row) => {
         const item = this._storables.decode(row.payload);
         row.traits[index_name] = this._indexables.encode(trait_getter(item), explode);
@@ -246,17 +256,11 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
       });
     }
 
-    const index_structure = {
-      name: index_name,
-      trait_info: trait_path_or_getter,
-      unique: unique,
-      explode: explode,
-    };
-
     const index = new BoundIndex<Item, Trait>({
       idb_index: idb_index,
       name: index_name,
       structure: index_structure,
+      sibling_structures: this._substructures,
       storables: this._storables,
       indexables: this._indexables,
     });
@@ -374,6 +378,7 @@ export class AutonomousStore<Item extends Storable> implements Store<Item> {
     return new QueryExecutor({
       source: this,
       query_spec: { everything: true },
+      index_structures: this._substructures,
       storables: this._storables,
       indexables: this._indexables,
     });

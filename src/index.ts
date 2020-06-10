@@ -1,5 +1,5 @@
 
-import { some } from './util';
+import { some, Dict } from './util';
 import { IndexStructure } from './structure';
 import { AutonomousStore } from './store';
 import { TransactionMode } from './transaction';
@@ -79,12 +79,12 @@ export interface Index<Item extends Storable, Trait extends Indexable> {
 
 }
 
+
 /**
  * An index that is bound to a particular transaction
  */
 export class BoundIndex<Item extends Storable, Trait extends Indexable> implements Index<Item, Trait> {
 
-  _structure: IndexStructure<Item, Trait>;
 
   name: string;
   unique: boolean;
@@ -94,6 +94,9 @@ export class BoundIndex<Item extends Storable, Trait extends Indexable> implemen
   trait_path?: string;
   trait_getter?: (item: Item) => Trait;
 
+  // TODO: remove?
+  _structure: IndexStructure<Item, Trait>;
+  _sibling_structures: Dict<IndexStructure<Item>>;
   _idb_index: IDBIndex;
   _storables: StorableRegistry;
   _indexables: IndexableRegistry;
@@ -102,33 +105,23 @@ export class BoundIndex<Item extends Storable, Trait extends Indexable> implemen
     idb_index: IDBIndex;
     name: string;
     structure: IndexStructure<Item, Trait>;
+    // vvv Should include the structure for this as well
+    sibling_structures: Dict<IndexStructure<Item>>;
     storables: StorableRegistry;
     indexables: IndexableRegistry;
   }) {
     this.name = args.name;
     this.unique = args.structure.unique;
     this.explode = args.structure.explode;
-
-    if (typeof args.structure.trait_info === 'string') {
-      this.kind = 'path';
-      this.trait_path = args.structure.trait_info;
-    } else {
-      this.kind = 'derived';
-      this.trait_getter = args.structure.trait_info;
-    }
+    this.kind = args.structure.kind;
+    this.trait_path = args.structure.path;
+    this.trait_getter = args.structure.getter;
 
     this._idb_index = args.idb_index;
     this._structure = args.structure;
+    this._sibling_structures = args.sibling_structures;
     this._storables = args.storables;
     this._indexables = args.indexables;
-  }
-
-  _get_trait(item: Item): Trait {
-    if (this.kind === 'path') {
-      return (item as any)[some(this.trait_path)];
-    } else {
-      return some(this.trait_getter)(item);
-    }
   }
 
   /** @inheritDoc */
@@ -136,6 +129,7 @@ export class BoundIndex<Item extends Storable, Trait extends Indexable> implemen
     return new UniqueQueryExecutor({
       source: this,
       query_spec: { equals: trait },
+      index_structures: this._sibling_structures,
       storables: this._storables,
       indexables: this._indexables,
     });
@@ -146,6 +140,7 @@ export class BoundIndex<Item extends Storable, Trait extends Indexable> implemen
     return new QueryExecutor({
       source: this,
       query_spec: query_spec,
+      index_structures: this._sibling_structures,
       storables: this._storables,
       indexables: this._indexables,
     });
@@ -194,18 +189,13 @@ export class AutonomousIndex<Item extends Storable, Trait extends Indexable> imp
     this.name = args.name;
     this.unique = args.structure.unique;
     this.explode = args.structure.explode;
+    this.kind = args.structure.kind;
+    this.trait_path = args.structure.path;
+    this.trait_getter = args.structure.getter;
 
     this._parent = args.parent;
     this._storables = args.storables;
     this._indexables = args.indexables;
-
-    if (typeof args.structure.trait_info === 'string') {
-      this.kind = 'path';
-      this.trait_path = args.structure.trait_info;
-    } else {
-      this.kind = 'derived';
-      this.trait_getter = args.structure.trait_info;
-    }
   }
 
   async _transact<T>(mode: TransactionMode, callback: (bound_index: BoundIndex<Item, Trait>) => Promise<T>): Promise<T> {
@@ -219,6 +209,7 @@ export class AutonomousIndex<Item extends Storable, Trait extends Indexable> imp
   one(trait: Trait): UniqueQueryExecutor<Item, Trait> {
     return new UniqueQueryExecutor({
       source: this,
+      index_structures: this._parent._substructures,
       query_spec: { equals: trait },
       storables: this._storables,
       indexables: this._indexables,
@@ -230,6 +221,7 @@ export class AutonomousIndex<Item extends Storable, Trait extends Indexable> imp
     return new QueryExecutor({
       source: this,
       query_spec: query_spec,
+      index_structures: this._parent._substructures,
       storables: this._storables,
       indexables: this._indexables,
     });
