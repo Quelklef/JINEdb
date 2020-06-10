@@ -125,7 +125,6 @@ export class Database<$$ = {}> {
    */
   async newConnection(): Promise<BoundConnection<$$>> {
     return new BoundConnection<$$>({
-      db_name: this.name,
       idb_conn: await this._newIdbConn(),
       substructures: this._substructures,
       storables: this._storables,

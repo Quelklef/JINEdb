@@ -22,8 +22,6 @@ export class BoundConnection<$$ = {}> implements Connection {
 
   _idb_conn: IDBDatabase;
 
-  db_name: string;
-
   _substructures: Dict<StoreStructure>;
   _storables: StorableRegistry;
   _indexables: IndexableRegistry;
@@ -31,14 +29,11 @@ export class BoundConnection<$$ = {}> implements Connection {
   $: $$;
 
   constructor(args: {
-    db_name: string;
     idb_conn: IDBDatabase;
     substructures: Dict<StoreStructure>;
     storables: StorableRegistry;
     indexables: IndexableRegistry;
   }) {
-    this.db_name = args.db_name;
-
     this._idb_conn = args.idb_conn;
     this._substructures = args.substructures;
     this._storables = args.storables;
@@ -135,8 +130,7 @@ export class BoundConnection<$$ = {}> implements Connection {
 
 export class AutonomousConnection implements Connection {
 
-  db_name: string;
-
+  _db_name: string;
   _substructures: Dict<StoreStructure>;
   _storables: StorableRegistry;
   _indexables: IndexableRegistry;
@@ -147,7 +141,7 @@ export class AutonomousConnection implements Connection {
     storables: StorableRegistry;
     indexables: IndexableRegistry;
   }) {
-    this.db_name = args.db_name;
+    this._db_name = args.db_name;
     this._substructures = args.substructures;
     this._storables = args.storables;
     this._indexables = args.indexables;
@@ -155,7 +149,7 @@ export class AutonomousConnection implements Connection {
 
   _new_idb_conn(): Promise<IDBDatabase> {
     return new Promise<IDBDatabase>((resolve, reject) => {
-      const db_name = this.db_name;
+      const db_name = this._db_name;
       const req = indexedDB.open(db_name);
       // vvv Since we're opening without a version, no upgradeneeded should fire
       req.onupgradeneeded = _event => reject(new JineInternalError());
@@ -168,7 +162,6 @@ export class AutonomousConnection implements Connection {
   async _new_bound_conn(): Promise<BoundConnection> {
     const idb_conn = await this._new_idb_conn();
     return new BoundConnection({
-      db_name: this.db_name,
       idb_conn: idb_conn,
       substructures: this._substructures,
       storables: this._storables,
