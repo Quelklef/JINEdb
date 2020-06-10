@@ -57,6 +57,18 @@ describe('query', () => {
       await conn.$.nums.clear();
     });
 
+    it('supports .update', async () => {
+      // TODO: range({ equals }) is dumb
+      await conn.$.nums.by.value.range({ equals: 3 }).update({ value: 10 });
+
+      const items = await conn.$.nums.all().array();
+      const vals = new Set(items.map(row => row.value));
+      expect(vals).toEqual(new Set([1, 2, 4, 5, 10]));
+
+      const specific = await conn.$.nums.by.value.range({ equals: 10 }).array();
+      expect(specific.length).toBe(1);
+    });
+
     it("supports * queries", async () => {
       const result = await conn.$.nums.by.value.range({ everything: true }).array();
       expect(result).toEqual([one, two, three, four, five]);

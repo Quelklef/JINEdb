@@ -12,7 +12,7 @@
     "test-one": "npx jest --clearCache && npx jest",
     "update-docs": "git checkout gh-pages && git pull origin master --no-edit && npx typedoc && git add . && git add -f docs/ && git commit -m 'update docs' && git push && git checkout master"
   },
-  "prepublish": "tsc",
+  "prepublish": "rm -rf ./dist && tsc",
   "keywords": [],
   "author": "Quelklef",
   "license": "ISC",

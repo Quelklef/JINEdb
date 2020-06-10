@@ -240,6 +240,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     // Replace the current object with the given object
     this._assertActive();
     const row: any = some(this._idb_cur).value;
+    // TODO: update indexes
     row.payload = this.storables.encode(new_item);
     return new Promise((resolve, reject) => {
       const req = some(this._idb_cur).update(row);
