@@ -10,7 +10,7 @@
     "lint": "eslint --cache --ext .ts src/",
     "test": "npx jest --clearCache && npx jest --watch",
     "test-one": "npx jest --clearCache && npx jest",
-    "update-docs": "git checkout gh-pages && git reset --hard master && npx typedoc && git add -f docs/ && git commit -m 'update docs' && git push --force && git checkout master"
+    "update-docs": "rm -rf docs/ && git checkout gh-pages && git reset --hard master && npx typedoc && git add -f docs/ && git commit -m 'update docs' && git push --force && git checkout master"
   },
   "prepublish": "rm -rf ./dist && tsc",
   "keywords": [],
