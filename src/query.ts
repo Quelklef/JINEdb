@@ -295,10 +295,10 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
 
   }
 
-  async update(updates: Partial<Item>): Promise<void> {
+  async update(delta: Partial<Item>): Promise<void> {
     this._assertActive();
     const item = await this.currentItem();
-    await this.replace(Object.assign(item, updates));
+    await this.replace(Object.assign(item, delta));
   }
 
 }
@@ -400,10 +400,10 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
    *
    * @param updates The delta
    */
-  async update(updates: Partial<Item>): Promise<void> {
+  async update(delta: Partial<Item>): Promise<void> {
     await this._withCursor('rw', async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
-        await cursor.update(updates);
+        await cursor.update(delta);
       }
     });
   }
@@ -454,41 +454,49 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
  */
 export class SelectionUnique<Item extends Storable, Trait extends Indexable> {
 
-  readonly qe: Selection<Item, Trait>;
+  readonly selection: Selection<Item, Trait>;
 
   constructor(args: {
     source: Index<Item, Trait>;
-    query: Query<Trait>;
+    selected_trait: Trait;
     index_structures: Dict<IndexStructure<Item>>;
     storables: StorableRegistry;
     indexables: IndexableRegistry;
   }) {
     if (!args.source.unique)
       throw Error('Cannot create a SelectionUnique on a non-unique index.');
-    this.qe = new Selection(args);
+    this.selection = new Selection({
+      source: args.source,
+      query: { equals: args.selected_trait },
+      index_structures: args.index_structures,
+      storables: args.storables,
+      indexables: args.indexables,
+    });
   }
 
   /**
    * Replace the item with a new item.
-   * @param new_item The new item
+   *
+   * @param mapper A function that accepts the old item and returns the new item
    */
-  async replace(new_item: Item): Promise<void> {
-    await this.qe.replace(_old_item => new_item);
+  async replace(mapper: (old_item: Item) => Item): Promise<void> {
+    await this.selection.replace(mapper);
   }
-
+  
   /**
    * Update the item with a delta
+   *
    * @param updates The delta
    */
-  async update(updates: Partial<Item>): Promise<void> {
-    await this.qe.update(updates);
+  async update(delta: Partial<Item>): Promise<void> {
+    await this.selection.update(delta);
   }
 
   /**
    * Delete the item from the database.
    */
   async delete(): Promise<void> {
-    await this.qe.delete();
+    await this.selection.delete();
   }
 
   /**
@@ -497,9 +505,20 @@ export class SelectionUnique<Item extends Storable, Trait extends Indexable> {
    * @returns The item
    */
   async get(): Promise<Item> {
-    const got = (await this.qe.array())[0];
+    const got = (await this.selection.array())[0];
     if (got === undefined)
       throw Error('No item found');
+    return got;
+  }
+  
+  /**
+   * Get the item from the database, or an alternative value if the item isn't found.
+   *
+   * @returns The item
+   */
+  async getOr<T = undefined>(alternative: T): Promise<Item | T> {
+    const got = (await this.selection.array())[0];
+    if (got === undefined) return alternative;
     return got;
   }
 

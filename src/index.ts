@@ -70,30 +70,40 @@ export interface Index<Item extends Storable, Trait extends Indexable> {
   explode: boolean;
 
   /**
-   * Get an item by trait.
-   * Usable on unique indexes only.
-   * Throws if no item is found.
-   * @returns The found item.
-   */
-  get(trait: Trait): Promise<Item>;
-
-  /**
    * Find all items matching a given trait.
+   * @param trait The trait to look for
    * @returns The found items.
    */
   find(trait: Trait): Promise<Array<Item>>;
 
-  // TODO: perhaps all selection methods should become just .select
+  /**
+   * Get an item by trait.
+   * Usable on unique indexes only.
+   * Throws if no item is found.
+   * @param trait The trait to look for
+   * @returns The found item.
+   */
+  findOne(trait: Trait): Promise<Item>;
+
+  /**
+   * Get an item by trait, or return something else if the item isn't found.
+   * Usable on unique indexes only.
+   * @param trait The trait to look for
+   * @param alternative The value to return on failure
+   * @returns The found item, or alternative value.
+   */
+  findOneOr<T>(trait: Trait, alternative: T): Promise<Item | T>;
+
   /**
    * Select a single item by trait.
    * Usable on unique indexes only.
    */
-  one(trait: Trait): SelectionUnique<Item, Trait>;
+  selectOne(trait: Trait): SelectionUnique<Item, Trait>;
 
   /**
    * Select several items by a range of traits.
    */
-  range(query: Query<Trait>): Selection<Item, Trait>;
+  select(query: Query<Trait>): Selection<Item, Trait>;
 
   _transact<T>(mode: TransactionMode, callback: (index: IndexActual<Item, Trait>) => Promise<T>): Promise<T>;
 
@@ -150,18 +160,22 @@ export class IndexActual<Item extends Storable, Trait extends Indexable> impleme
   }
 
   /** @inheritdoc */
-  one(trait: Trait): SelectionUnique<Item, Trait> {
-    return new SelectionUnique({
-      source: this,
-      query: { equals: trait },
-      index_structures: this._sibling_structures,
-      storables: this._storables,
-      indexables: this._indexables,
-    });
+  async find(trait: Trait): Promise<Array<Item>> {
+    return await this.select({ equals: trait }).array();
   }
 
   /** @inheritdoc */
-  range(query: Query<Trait>): Selection<Item, Trait> {
+  async findOne(trait: Trait): Promise<Item> {
+    return await this.selectOne(trait).get();
+  }
+
+  /** @inheritdoc */
+  async findOneOr<T = undefined>(trait: Trait, alternative: T): Promise<Item | T> {
+    return await this.selectOne(trait).getOr(alternative);
+  }
+
+  /** @inheritdoc */
+  select(query: Query<Trait>): Selection<Item, Trait> {
     return new Selection({
       source: this,
       query: query,
@@ -172,13 +186,14 @@ export class IndexActual<Item extends Storable, Trait extends Indexable> impleme
   }
 
   /** @inheritdoc */
-  async get(trait: Trait): Promise<Item> {
-    return await this.one(trait).get();
-  }
-
-  /** @inheritdoc */
-  async find(trait: Trait): Promise<Array<Item>> {
-    return await this.range({ equals: trait }).array();
+  selectOne(trait: Trait): SelectionUnique<Item, Trait> {
+    return new SelectionUnique({
+      source: this,
+      selected_trait: trait,
+      index_structures: this._sibling_structures,
+      storables: this._storables,
+      indexables: this._indexables,
+    });
   }
 
   async _transact<T>(mode: TransactionMode, callback: (index: IndexActual<Item, Trait>) => Promise<T>): Promise<T> {
@@ -243,18 +258,22 @@ export class IndexBroker<Item extends Storable, Trait extends Indexable> impleme
   }
 
   /** @inheritdoc */
-  one(trait: Trait): SelectionUnique<Item, Trait> {
-    return new SelectionUnique({
-      source: this,
-      index_structures: this._parent._substructures,
-      query: { equals: trait },
-      storables: this._storables,
-      indexables: this._indexables,
-    });
+  async find(trait: Trait): Promise<Array<Item>> {
+    return await this.select({ equals: trait }).array();
   }
 
   /** @inheritdoc */
-  range(query: Query<Trait>): Selection<Item, Trait> {
+  async findOne(trait: Trait): Promise<Item> {
+    return await this.selectOne(trait).get();
+  }
+
+  /** @inheritdoc */
+  async findOneOr<T = undefined>(trait: Trait, alternative: T): Promise<Item | T> {
+    return await this.selectOne(trait).getOr(alternative);
+  }
+
+  /** @inheritdoc */
+  select(query: Query<Trait>): Selection<Item, Trait> {
     return new Selection({
       source: this,
       query: query,
@@ -265,13 +284,14 @@ export class IndexBroker<Item extends Storable, Trait extends Indexable> impleme
   }
 
   /** @inheritdoc */
-  async get(trait: Trait): Promise<Item> {
-    return await this.one(trait).get();
-  }
-
-  /** @inheritdoc */
-  async find(trait: Trait): Promise<Array<Item>> {
-    return await this.range({ equals: trait }).array();
+  selectOne(trait: Trait): SelectionUnique<Item, Trait> {
+    return new SelectionUnique({
+      source: this,
+      index_structures: this._parent._substructures,
+      selected_trait: trait,
+      storables: this._storables,
+      indexables: this._indexables,
+    });
   }
 
 }

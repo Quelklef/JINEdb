@@ -113,7 +113,7 @@ await jcon.$.recipes.add(tacros);
 // == // == // QUERIES // == // == //
 
 // I have a recipe's name
-assert.deepEqual(biscuits, await jcon.$.recipes.by.name.get('Basic Biscuits'));
+assert.deepEqual(biscuits, await jcon.$.recipes.by.name.findOne('Basic Biscuits'));
 // .get only works on unique indexes and returns one item, or errors if no item is found
 
 // I have some eggs I want to cook
@@ -122,15 +122,15 @@ assert.deepEqual([pancakes, waffles], egg_recipes);
 // .find returns all items matching a given trait
 
 // I'm gonna have a lot of guests over
-const party_recipes = await jcon.$.recipes.by.servings.range({ above: 7 }).array()
+const party_recipes = await jcon.$.recipes.by.servings.select({ above: 7 }).array()
 assert.deepEqual([biscuits, tacros], party_recipes);
 // It's just me for this meal, and I don't want leftovers 
-const alone_recipes = await jcon.$.recipes.by.servings.range({ below: 3 }).array()
+const alone_recipes = await jcon.$.recipes.by.servings.select({ below: 3 }).array()
 assert.deepEqual([], alone_recipes);
 // I want to try something complicated
-const complex_recipes = await jcon.$.recipes.by.ingredient_count.range({ above: 10 }).array();
+const complex_recipes = await jcon.$.recipes.by.ingredient_count.select({ above: 10 }).array();
 assert.deepEqual([waffles], complex_recipes);
-// .range accepts queries in the form:
+// .select accepts queries in the form:
 //   { above  : val }  for x > val
 //   { from   : val }  for x >= val
 //   { below  : val }  for x < val
@@ -140,7 +140,7 @@ assert.deepEqual([waffles], complex_recipes);
 //   { above: lo, through: hi }  for lo < x <= hi
 //   { from : lo, through: hi }  for lo <= x <= hi
 //   { equals: val }  for x === val
-//   { everything: true }  for everything
+//   'everything'  for everything
 
 // Just want to know how many recipes I have
 assert.equal(4, await jcon.$.recipes.count());

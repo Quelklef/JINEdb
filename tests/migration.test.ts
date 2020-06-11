@@ -167,9 +167,9 @@ describe('migration', () => {
     });
 
     await jine.connect(async (conn: any) => {
-      expect(await conn.$.people.by.body_rating.range({ above: new BodyTrait('pitiful') }).count()).toBe(2);
-      expect(await conn.$.people.by.body_rating.range({ above: new BodyTrait('reasonable') }).count()).toBe(1);
-      expect(await conn.$.people.by.body_rating.range({ above: new BodyTrait('impressive') }).count()).toBe(0);
+      expect(await conn.$.people.by.body_rating.select({ above: new BodyTrait('pitiful') }).count()).toBe(2);
+      expect(await conn.$.people.by.body_rating.select({ above: new BodyTrait('reasonable') }).count()).toBe(1);
+      expect(await conn.$.people.by.body_rating.select({ above: new BodyTrait('impressive') }).count()).toBe(0);
     });
 
   });

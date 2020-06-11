@@ -111,14 +111,14 @@ describe('index', () => {
       }
 
       await conn.$.items.add(item);
-      const got = await conn.$.items.by.index_unique.get("get me!");
+      const got = await conn.$.items.by.index_unique.findOne("get me!");
       expect(got).toEqual(item);
 
     });
 
     it("throws on a failed get()", async () => {
 
-      expect(async () => await conn.$.items.by.index_unique.get('xxx'))
+      expect(async () => await conn.$.items.by.index_unique.findOne('xxx'))
         .rejects.toThrow();
 
     });
