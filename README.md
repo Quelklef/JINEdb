@@ -47,7 +47,7 @@ await jine.upgrade(1, async (genuine: boolean, tx: Transaction<$$>) => {
   );
 });
 
-// Initialize database and open connection
+// Open connection
 const jcon = await jine.newConnection();
 
 // Add users
