@@ -109,7 +109,6 @@ function compileCursorDirection<Trait extends Indexable>(query: Query<Trait>): I
 }
 
 
-
 export class Cursor<Item extends Storable, Trait extends Indexable> {
   /* IDBCursor wrapper */
 
@@ -121,6 +120,9 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
   readonly index_structures: Dict<IndexStructure<Item>>;
   readonly storables: StorableRegistry;
   readonly indexables: IndexableRegistry;
+
+  // List of filter predicates
+  readonly predicates: Array<(item: Item) => boolean>;
 
   readonly _query: Query<Trait>;
 
@@ -142,6 +144,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     this.index_structures = args.index_structures;
     this.storables = args.storables;
     this.indexables = args.indexables;
+    this.predicates = [];
   }
 
   get initialized(): boolean {
@@ -176,8 +179,28 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     if (this.exhausted)
       throw Error('Cursor is exhausted and needs a nap.');
   }
+  
+  get active(): boolean {
+    return this.initialized && !this.exhausted;
+  }
 
-  step(): Promise<void> {
+  _assertActive(): void {
+    this._assertInitialized();
+    this._assertNotExhausted();
+  }
+  
+  _currentRow(): Row {
+    return some(this._idb_cur).value;
+  }
+
+  currentItem(): Item {
+    // Get the item at the cursor.
+    this._assertActive();
+    const row = some(this._idb_cur).value;
+    return this.storables.decode(row.payload);
+  }
+
+  _stepOne(): Promise<void> {
     this._assertInitialized();
     if (this.exhausted) {
       return Promise.resolve(undefined);
@@ -194,24 +217,27 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     }
   }
 
-  get active(): boolean {
-    return this.initialized && !this.exhausted;
+  async step(): Promise<void> {
+    if (this.predicates.length === 0) {
+      await this._stepOne();
+      return;
+    }
+    
+    for (;;) {
+      await this._stepOne();
+
+      if (this.exhausted)
+        break;
+
+      const item = this.currentItem();
+      if (this.predicates.every(p => p(item)))
+        break;
+    }
   }
 
-  _assertActive(): void {
-    this._assertInitialized();
-    this._assertNotExhausted();
-  }
-
-  _currentRow(): Row {
-    return some(this._idb_cur).value;
-  }
-
-  currentItem(): Item {
-    // Get the item at the cursor.
-    this._assertActive();
-    const row = some(this._idb_cur).value;
-    return this.storables.decode(row.payload);
+  filter(...predicates: Array<(item: Item) => boolean>): this {
+    this.predicates.push(...predicates);
+    return this;
   }
 
   get _sourceIsExploding(): boolean {
@@ -291,6 +317,8 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
   readonly storables: StorableRegistry;
   readonly indexables: IndexableRegistry;
 
+  readonly predicates: Array<(item: Item) => boolean>;
+
   constructor(args: {
     source: Store<Item> | Index<Item, Trait>;
     query: Query<Trait>;
@@ -303,6 +331,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
     this.index_structures = args.index_structures;
     this.storables = args.storables;
     this.indexables = args.indexables;
+    this.predicates = [];
   }
 
   async _withCursor<T>(mode: TransactionMode, callback: (cursor: Cursor<Item, Trait>) => Promise<T>): Promise<T> {
@@ -324,6 +353,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
         storables: this.storables,
         indexables: this.indexables,
       });
+      cursor.filter(...this.predicates);
       return await callback(cursor);
 
     });
@@ -338,6 +368,16 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
         await cursor._replaceRow(new_row);
       }
     });
+  }
+
+  /**
+   * Filter the selection
+   *
+   * @returns this
+   */
+  filter(...predicates: Array<(item: Item) => boolean>): this {
+    this.predicates.push(...predicates);
+    return this;
   }
 
   /**

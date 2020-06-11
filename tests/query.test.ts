@@ -69,6 +69,11 @@ describe('query', () => {
       expect(specific.length).toBe(1);
     });
 
+    it('supports .filter', async () => {
+      const odds = await conn.$.nums.all().filter((num: Num) => num.value % 2 === 1).array();
+      expect(odds).toEqual([one, three, five]);
+    });
+
     it("supports * queries", async () => {
       const result = await conn.$.nums.by.value.range('everything').array();
       expect(result).toEqual([one, two, three, four, five]);
