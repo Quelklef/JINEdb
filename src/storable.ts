@@ -30,9 +30,6 @@ export type NativelyStorable
 
 // works with "plain" objects. I assume that "plain" means string keys.
 // (empty interface is a hack to get TS to work)
-/**
- * An object with string keys and [[NativelyStorable]] values.
- */
 interface PlainObject extends Dict<NativelyStorable> { } // eslint-disable-line @typescript-eslint/no-empty-interface
 
 // --
@@ -58,7 +55,7 @@ export interface StorableRegistry {
   /**
    * Register a type as [[Storable]].
    *
-   * See {@page Serilization and Custom Types}.
+   * See {@page Serialization and Custom Types}.
    *
    * @param con The type constructor
    * @param id An arbitrary unique string id
@@ -69,7 +66,7 @@ export interface StorableRegistry {
   /**
    * Modify a type registration
    *
-   * See {@page Serilization and Custom Types}.
+   * See {@page Serialization and Custom Types}.
    *
    * @param id The id of the type
    * @param updates Type codec modifications
@@ -81,11 +78,14 @@ export interface StorableRegistry {
    *
    * Only use within a database migration.
    *
-   * See {@page Serilization and Custom Types}.
+   * See {@page Serialization and Custom Types}.
    *
    * @param id The id of the type
-   * @param args: the new `encode` and `decode` functions, new type constructor (if there is a new one),
-   * and function to migrate existing items.
+   * @param args
+   * - `encode: (x: item) => Storable`: the new encoder function
+   * - `decode: (x: encoded) => any`: the new decoder function
+   * - `constructor: Function`: (optional) the new type constructor (if there is a new one),
+   * - `migrate: () => Promise<void>`: the function to migrate existing items.
    */
   upgrade(id: string, args: Codec<any, Storable> & { constructor?: Constructor; migrate: () => Promise<void> }): Promise<void>;
 

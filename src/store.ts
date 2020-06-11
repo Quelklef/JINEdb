@@ -16,30 +16,35 @@ export { IndexableRegistry } from './indexable';
 
 
 /**
- * Generic interface for Jine stores.
+ * A collection of stored items.
  *
  * A store is a collection of items saved and managed by Jine.
- * Jine can natively handle storing a large number of types, but not all.
+ * Jine can natively handle storing some types (see [[NativelyStorable]]), but not all types.
  * Custom types must be registered. See [[Storable]].
  *
- * @typeParam Item The type of objects contained in this store.
+ * @typeparam Item The type of objects contained in this store.
  */
 export interface Store<Item extends Storable> {
 
   /**
-   * Store indexes.
+   * Store name.
+   * Unique per-[[Database]].
+   */
+  name: string;
+
+  /**
+   * Store [[Index]]es.
    */
   indexes: Dict<Index<Item, Indexable>>;
 
   /**
-   * Shorthand for [[Store.indexes]], but where values are asserted to not be `undefined`.
+   * An alias for [[Store.indexes]].
+   *
+   * The type is `unknown` because the type should be given by the user-defined `$$` type.
+   *
+   * See {@page Example}.
    */
-  by: Record<string, Index<Item, Indexable>>;
-
-  /**
-   * Store name
-   */
-  name: string;
+  by: unknown;
 
   /**
    * Add an item to the store.
@@ -72,18 +77,19 @@ export interface Store<Item extends Storable> {
 }
 
 /**
- * A store that is bound to a particular transaction
+ * A [[Store]] bound to a transaction.
+ *
+ * A [[StoreActual]] is bound to a particular transaction.
+ * Compare this to an [[StoreBroker]], which creates a new transaction on each operation.
  */
 export class StoreActual<Item extends Storable> implements Store<Item> {
 
-  /** @inheritDoc */
+  /** @inheritdoc */
   name: string;
-
-  /** @inheritDoc */
+  /** @inheritdoc */
   indexes: Dict<IndexActual<Item, Indexable>>;
-
-  /** @inheritDoc */
-  by: Record<string, Index<Item, Indexable>>;
+  /** @inheritdoc */
+  by: unknown;
 
   _idb_store: IDBObjectStore;
   _substructures: Dict<IndexStructure<Item>>;
@@ -131,7 +137,7 @@ export class StoreActual<Item extends Storable> implements Store<Item> {
     }
   }
 
-  /** @inheritDoc */
+  /** @inheritdoc */
   async add(item: Item): Promise<void> {
     return new Promise((resolve, reject) => {
       // Don't include the id since it's autoincrement'd
@@ -159,7 +165,7 @@ export class StoreActual<Item extends Storable> implements Store<Item> {
     return traits;
   }
 
-  /** @inheritDoc */
+  /** @inheritdoc */
   async clear(): Promise<void> {
     return new Promise((resolve, reject) => {
       const req = this._idb_store.clear();
@@ -168,7 +174,7 @@ export class StoreActual<Item extends Storable> implements Store<Item> {
     });
   }
 
-  /** @inheritDoc */
+  /** @inheritdoc */
   async count(): Promise<number> {
     return new Promise((resolve, reject) => {
       const req = this._idb_store.count();
@@ -180,7 +186,7 @@ export class StoreActual<Item extends Storable> implements Store<Item> {
     });
   }
 
-  /** @inheritDoc */
+  /** @inheritdoc */
   array(): Promise<Array<Item>> {
     return new Promise((resolve, reject) => {
       const req = this._idb_store.getAll();
@@ -204,10 +210,15 @@ export class StoreActual<Item extends Storable> implements Store<Item> {
   }
 
   /**
-   * Add an index to the store
+   * Add an index to the store.
    *
-   * @remark This is an asynchronous operation since derived indexes' values
-   * will be added to existing items in the db.
+   * Only possible in a `versionchange` transaction, which is given by [[Database.upgrade]].
+   *
+   * @param index_name The name to give the new index
+   * @param trait The path or function that defines the indexed trait (see [[Index]])
+   * @param options
+   * - `unqiue`: enforces unique values for this trait; see [[Index.unique]].
+   * - `explode`: see [[Index.explode]].
    */
   async addIndex<Trait extends Indexable>(
     index_name: string,
@@ -275,8 +286,9 @@ export class StoreActual<Item extends Storable> implements Store<Item> {
   /**
    * Remove an index from the store
    *
-   * @remark This is an asynchronous operation since derived indexes'
-   * calculated values will be purged from the db.
+   * Only possible in a `versionchange` transaction, which is given by [[Database.upgrade]].
+   *
+   * @param name The name of the index to remove.
    */
   async removeIndex(name: string): Promise<void> {
 
@@ -304,21 +316,27 @@ export class StoreActual<Item extends Storable> implements Store<Item> {
 }
 
 /**
- * A store that will start a new transaction on each method call
+ * A [[Store]] that is not bound to a particular transaction.
+ *
+ * A [[StoreBroker]] will create a new transaction on each operation.
+ * Compare this to an [[StoreBroker]], which is bound to a particular operation.
+ *
+ * Storees accessed from [[Database.$]] and [[Connection.$]] will be [[StoreBroker]]s,
+ * whereas indexes on [[Transaction.$]] are [[StoreActual]] objects.
  */
 export class StoreBroker<Item extends Storable> implements Store<Item> {
 
+  /** @inheritdoc */
   name: string;
+  /** @inheritdoc */
+  indexes: Dict<IndexBroker<Item, Indexable>>;
+  /** @inheritdoc */
+  by: unknown;
 
+  _conn: Connection;
   _substructures: Dict<IndexStructure>;
   _storables: StorableRegistry;
   _indexables: IndexableRegistry;
-
-  indexes: Dict<IndexBroker<Item, Indexable>>;
-
-  by: Record<string, Index<Item, Indexable>>;
-
-  _conn: Connection;
 
   constructor(args: {
     name: string;
@@ -353,27 +371,27 @@ export class StoreBroker<Item extends Storable> implements Store<Item> {
     });
   }
 
-  /** @inheritDoc */
+  /** @inheritdoc */
   async add(item: Item): Promise<void> {
     await this._transact('rw', async bound_store => await bound_store.add(item));
   }
 
-  /** @inheritDoc */
+  /** @inheritdoc */
   async clear(): Promise<void> {
     await this._transact('rw', async bound_store => await bound_store.clear());
   }
 
-  /** @inheritDoc */
+  /** @inheritdoc */
   async count(): Promise<number> {
     return await this._transact('r', async bound_store => await bound_store.count());
   }
 
-  /** @inheritDoc */
+  /** @inheritdoc */
   async array(): Promise<Array<Item>> {
     return await this._transact('r', async bound_store => await bound_store.array());
   }
 
-  /** @inheritDoc */
+  /** @inheritdoc */
   all(): QueryExecutor<Item, never> {
     return new QueryExecutor({
       source: this,

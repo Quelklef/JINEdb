@@ -16,6 +16,8 @@ newline='
 
 trap "rm -rf src/__interp_test*" EXIT
 
+rm -rf dist/
+
 files="$(git ls-files)"
 while read -r file; do
 

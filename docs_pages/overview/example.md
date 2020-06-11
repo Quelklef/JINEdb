@@ -2,10 +2,12 @@ First, check out {@page Installation}.
 
 Now, here's a 5-minute rundown of what Jine has to offer, and how to use it:
 
-### Initialization
-
 ```ts
-import { newJine, Store, Index, Transaction } from 'jine';
+import { newJine, Store, Index, Transaction } from 'jinedb';
+const assert = require('assert').strict;
+
+
+// == // == // INITIALIZATION // == // == //
 
 // What we'll be storing
 type Recipe = {
@@ -18,18 +20,23 @@ type Recipe = {
 // Let typescript know what our database will looks like
 interface $$ {
   recipes: Store<Recipe> & {
-    name: Index<Recipe, string>;
-    servings: Index<Recipe, number>;
-    ingredients: Index<Recipe, string>;
-    ingredient_count: Index<Recipe, number>;
+    by: {
+      name: Index<Recipe, string>;
+      servings: Index<Recipe, number>;
+      ingredients: Index<Recipe, string>;
+      ingredient_count: Index<Recipe, number>;
+    }
   };
 }
+
+// If your environment doesn't support top-level await
+async function main() {
 
 // Create our database
 const jine = await newJine<$$>('recipes');
 
 // Initialize db to version 1
-await jine.upgrade(1, (genuine: boolean, tx: Transaction<$$>) => {
+await jine.upgrade(1, async (genuine: boolean, tx: Transaction<$$>) => {
 
   // Create a item store for recipes
   const recipes = tx.addStore<Recipe>('recipes');
@@ -46,10 +53,10 @@ await jine.upgrade(1, (genuine: boolean, tx: Transaction<$$>) => {
   //  recipe.ingredients = ['milk', 'chocolate']
   // will get indexed for 'milk' and 'chocolate' individually
   // rather than indexed for the array as a whole
-  recipes.addIndex<Recipe, string>('ingredients', '.ingredients', { explode: true });
+  recipes.addIndex<string>('ingredients', '.ingredients', { explode: true });
   
   // Track recipes by their ingredient count
-  recipes.addIndex<Recipe, number>(
+  recipes.addIndex<number>(
     'ingredient_count',
     (recipe: Recipe) => recipe.ingredients.length,
   );
@@ -58,15 +65,15 @@ await jine.upgrade(1, (genuine: boolean, tx: Transaction<$$>) => {
 
 
 // Open a connection to the database
-const jcon = jine.newConnection();
-```
+const jcon = await jine.newConnection();
 
-### Population
 
-```ts
+
+// == // == // POPULATION // == // == //
+
 // Some recipes
 const pancakes = {
-  name: 'Todd's Famous Blueberry Pancakes',  // (who the hell is Todd??)
+  name: "Todd's Famous Blueberry Pancakes",  // (who the hell is Todd??)
   url: 'allrecipes.com/recipe/20177',
   servings: 6,
   ingredients: ['flour', 'eggs', 'salt', 'milk', 'baking powder', 'butter',
@@ -96,31 +103,33 @@ const tacros = {
 };
 
 // Add the recipes!
-await jcon.$.recipes.add(pancakes};
-await jcon.$.recipes.add(waffles};
-await jcon.$.recipes.add(biscuits};
-await jcon.$.recipes.add(tacros};
+await jcon.$.recipes.add(pancakes);
+await jcon.$.recipes.add(waffles);
+await jcon.$.recipes.add(biscuits);
+await jcon.$.recipes.add(tacros);
 
-await jcon.$.recipes.add(tacros};  // Error since name must be unique
-```
 
-### Queries
 
-```ts
+// == // == // QUERIES // == // == //
+
 // I have a recipe's name
-await jcon.$.recipes.by.name.get('Basic Biscuits');  // returns `biscuits`
+assert.deepEqual(biscuits, await jcon.$.recipes.by.name.get('Basic Biscuits'));
 // .get only works on unique indexes and returns one item, or errors if no item is found
 
 // I have some eggs I want to cook
-await jcon.$.recipes.by.ingredients.find('eggs');  // [pancakes, waffles]
+const egg_recipes = await jcon.$.recipes.by.ingredients.find('eggs')
+assert.deepEqual([pancakes, waffles], egg_recipes);
 // .find returns all items matching a given trait
 
 // I'm gonna have a lot of guests over
-await jcon.$.recipes.by.servings.range({ above: 7 }).array();  // [biscuits, tacros]
+const party_recipes = await jcon.$.recipes.by.servings.range({ above: 7 }).array()
+assert.deepEqual([biscuits, tacros], party_recipes);
 // It's just me for this meal, and I don't want leftovers 
-await jcon.$.recipes.by.servings.range({ below: 3 }).array();  // [] :(
+const alone_recipes = await jcon.$.recipes.by.servings.range({ below: 3 }).array()
+assert.deepEqual([], alone_recipes);
 // I want to try something complicated
-await jcon.$.recipes.by.ingredient_count.range({ above: 10 }).array();  // [waffles]
+const complex_recipes = await jcon.$.recipes.by.ingredient_count.range({ above: 10 }).array();
+assert.deepEqual([waffles], complex_recipes);
 // .range accepts queries in the form:
 //   { above  : val }  for x > val
 //   { from   : val }  for x >= val
@@ -134,48 +143,50 @@ await jcon.$.recipes.by.ingredient_count.range({ above: 10 }).array();  // [waff
 //   { everything: true }  for everything
 
 // Just want to know how many recipes I have
-await jcon.$.recipes.count();  // 4
-```
+assert.equal(4, await jcon.$.recipes.count());
 
-### Transactions
+// == // == // TRANSACTIONS // == // == //
 
-```ts
 const before_count = await jcon.$.recipes.count();
 
 const banana_bread = {
   name: "Joy's Easy Banana Bread",
   url: 'allrecipes.com/recipe/241707',
-  ingredients: ['bananas', 'white sugar', 'egg', butter', 'flour',
+  servings: 10,
+  ingredients: ['bananas', 'white sugar', 'egg', 'butter', 'flour',
                 'baking soda', 'salt'],
 };
 
-await jcon.transact(tx => {
+await jcon.transact([jcon.$.recipes], 'rw', async tx => {
   await tx.$.recipes.add(banana_bread);
-  throw Error();  // oh no!!
-  // or tx.abort();
+  tx.abort();
+  // or throw Error();
 });
 
 const after_count = await jcon.$.recipes.count();
-before_count === after_count;  // true, transaction atomically aborted
+assert.equal(before_count, after_count);  // transaction atomically aborted
 
-await jcon.transact(tx => {
+await jcon.transact([jcon.$.recipes], 'rw', async tx => {
   // Transactions are auto-committed when not in use
   await new Promise(resolve => setTimeout(resolve, 0));
   // The following is now an error:
   await tx.$.recipes.add(banana_bread);
 });
-```
 
-### Reset
 
-```ts
+
+// == // == // RESET // == // == //
+
 await jcon.$.recipes.clear();
-const count = await jcon.$.recipes.count();
-count === 0;  // true
-```
+assert.equal(0, await jcon.$.recipes.count());
 
-### Cleanup
 
-```ts
+
+// == // == // CLEANUP // == // == //
+
 jcon.close();
+
+}
+
+main();
 ```

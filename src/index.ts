@@ -8,20 +8,48 @@ import { Indexable, IndexableRegistry } from './indexable';
 import { QuerySpec, QueryExecutor, UniqueQueryExecutor } from './query';
 
 /**
- * Generic interface for indexes.
+ * An index on an object store.
  *
  * An index is a way of organizing stored items to be queried later.
+ * You set up an index to keep track of particular attributes of your
+ * items (such as a `.id` property). The attribute that you track is known
+ * as the *trait*. You can then query indexes to find items based on
+ * their traits.
  *
- * Indexes keep track of so-called 'traits' of your items; you may then
- * query the index to find items with a particular trait or within a certain
- * range of traits.
+ * @typeparam Item The type of the item stored on the [[Store]] that this indexes is connected to.
+ * @typeparam Trait The type of the traits being indexed by.
  */
 export interface Index<Item extends Storable, Trait extends Indexable> {
 
   /**
-   * Name of the index. Index names are unique for a particular store.
+   * Name of the index.
+   * Index names are unique for a particular store.
    */
   name: string;
+
+  /**
+   * Indexes come in two flavors: path indexes and derived indexes.
+   *
+   * With a *path index*, items are indexed on existing properties.
+   * For example, if we're storing array objects, we may index by `.length`.
+  * The path is stored in [[Index.trait_path]].
+   *
+   * With a *derived index*, items are indexed on calculated values.
+   * For example, storing an array object, we may want to index by whether or not the array has a duplicate value.
+   * Then we would index by the function `(item: Array) => item.length !== new Set(item).size` (or a more efficient alternative).
+   * This function is stored in [[Index.trait_getter]].
+   */
+  kind: 'path' | 'derived';
+
+  /**
+   * If `this.kind === 'path'`, return the trait path.
+   */
+  trait_path?: string;
+
+  /**
+   * If `this.kind === 'derived'`, return the trait computing function.
+   */
+  trait_getter?: (item: Item) => Trait;
 
   /**
    * Are the values in this index required to be unique?
@@ -31,24 +59,15 @@ export interface Index<Item extends Storable, Trait extends Indexable> {
   /**
    * If `explode` is `true`, then items' values for this index are expected to be arrays.
    * Each value in an array will be added to the index, instead of the array being added as a whole.
+   *
+   * For instance, say we're storing `type User = { id: number, liked_post_ids: Array<number> }` objects.
+   * We may have an index called `liked` which is intended to organize users by what posts they've liked.
+   * If the index is *not* exploding, then the user `{ id: 1, liked_post_ids: [1, 2, 3] }` will match
+   * a query for `[1, 2, 3]` but not a query for `1`, for `2`, or for `3`.
+   * But if the index *is* exploding, then this same user will match a query
+   * for each of `1`, `2`, and `3`, but not a query for `[1, 2, 3]`.
    */
   explode: boolean;
-
-  /**
-   * A path index is an index on an attribute of stored items.
-   * A derived index is an index that tracks computed values on items.
-   */
-  kind: 'path' | 'derived';
-
-  /**
-   * If `this.kind === 'path'`, return the path.
-   */
-  trait_path?: string;
-
-  /**
-   * If `this.kind === 'derived'`, return the computing function.
-   */
-  trait_getter?: (item: Item) => Trait;
 
   /**
    * Get an item by trait.
@@ -64,6 +83,7 @@ export interface Index<Item extends Storable, Trait extends Indexable> {
    */
   find(trait: Trait): Promise<Array<Item>>;
 
+  // TODO: perhaps all selection methods should become just .select
   /**
    * Select a single item by trait.
    * Usable on unique indexes only.
@@ -81,17 +101,25 @@ export interface Index<Item extends Storable, Trait extends Indexable> {
 
 
 /**
- * An index that is bound to a particular transaction
+ * An [[Index]] bound to a transaction.
+ *
+ * An [[IndexActual]] is bound to a particular transaction.
+ * Compare this to an [[IndexBroker]], which creates a new transaction on each operation.
  */
 export class IndexActual<Item extends Storable, Trait extends Indexable> implements Index<Item, Trait> {
 
-
+  /** @inheritdoc */
   name: string;
+  /** @inheritdoc */
   unique: boolean;
+  /** @inheritdoc */
   explode: boolean;
 
+  /** @inheritdoc */
   kind: 'path' | 'derived';
+  /** @inheritdoc */
   trait_path?: string;
+  /** @inheritdoc */
   trait_getter?: (item: Item) => Trait;
 
   _sibling_structures: Dict<IndexStructure<Item>>;
@@ -103,7 +131,7 @@ export class IndexActual<Item extends Storable, Trait extends Indexable> impleme
     idb_index: IDBIndex;
     name: string;
     structure: IndexStructure<Item, Trait>;
-    // vvv Should include the structure for this as well
+    // vvv The value of sibling_structures should include the structure for this index as well
     sibling_structures: Dict<IndexStructure<Item>>;
     storables: StorableRegistry;
     indexables: IndexableRegistry;
@@ -121,7 +149,7 @@ export class IndexActual<Item extends Storable, Trait extends Indexable> impleme
     this._indexables = args.indexables;
   }
 
-  /** @inheritDoc */
+  /** @inheritdoc */
   one(trait: Trait): UniqueQueryExecutor<Item, Trait> {
     return new UniqueQueryExecutor({
       source: this,
@@ -132,7 +160,7 @@ export class IndexActual<Item extends Storable, Trait extends Indexable> impleme
     });
   }
 
-  /** @inheritDoc */
+  /** @inheritdoc */
   range(query_spec: QuerySpec<Trait>): QueryExecutor<Item, Trait> {
     return new QueryExecutor({
       source: this,
@@ -143,12 +171,12 @@ export class IndexActual<Item extends Storable, Trait extends Indexable> impleme
     });
   }
 
-  /** @inheritDoc */
+  /** @inheritdoc */
   async get(trait: Trait): Promise<Item> {
     return await this.one(trait).get();
   }
 
-  /** @inheritDoc */
+  /** @inheritdoc */
   async find(trait: Trait): Promise<Array<Item>> {
     return await this.range({ equals: trait }).array();
   }
@@ -160,16 +188,28 @@ export class IndexActual<Item extends Storable, Trait extends Indexable> impleme
 }
 
 /**
- * An index that will create its own transaction on each method call
+ * An [[Index]] that is not bound to a particular transaction.
+ *
+ * An [[IndexBroker]] will create a new transaction on each operation.
+ * Compare this to an [[IndexAcutal]], which is bound to a particular operation.
+ *
+ * Indexes accessed from [[Database.$]] and [[Connection.$]] will be [[IndexBroker]]s,
+ * whereas indexes on [[Transaction.$]] are [[IndexActual]] objects.
  */
 export class IndexBroker<Item extends Storable, Trait extends Indexable> implements Index<Item, Trait> {
 
+  /** @inheritdoc */
   name: string;
+  /** @inheritdoc */
   unique: boolean;
+  /** @inheritdoc */
   explode: boolean;
 
+  /** @inheritdoc */
   kind: 'path' | 'derived';
+  /** @inheritdoc */
   trait_path?: string;
+  /** @inheritdoc */
   trait_getter?: (item: Item) => Trait;
 
   _parent: StoreBroker<Item>;
@@ -202,7 +242,7 @@ export class IndexBroker<Item extends Storable, Trait extends Indexable> impleme
     });
   }
 
-  /** @inheritDoc */
+  /** @inheritdoc */
   one(trait: Trait): UniqueQueryExecutor<Item, Trait> {
     return new UniqueQueryExecutor({
       source: this,
@@ -213,7 +253,7 @@ export class IndexBroker<Item extends Storable, Trait extends Indexable> impleme
     });
   }
 
-  /** @inheritDoc */
+  /** @inheritdoc */
   range(query_spec: QuerySpec<Trait>): QueryExecutor<Item, Trait> {
     return new QueryExecutor({
       source: this,
@@ -224,12 +264,12 @@ export class IndexBroker<Item extends Storable, Trait extends Indexable> impleme
     });
   }
 
-  /** @inheritDoc */
+  /** @inheritdoc */
   async get(trait: Trait): Promise<Item> {
     return await this.one(trait).get();
   }
 
-  /** @inheritDoc */
+  /** @inheritdoc */
   async find(trait: Trait): Promise<Array<Item>> {
     return await this.range({ equals: trait }).array();
   }

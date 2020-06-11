@@ -11,22 +11,40 @@ export interface Connection {
 
   _transact<T>(store_names: Array<string>, mode: TransactionMode, callback: (tx: Transaction) => Promise<T>): Promise<T>;
 
-  transact<T>(stores: Array<Store<Storable>>, mode: TransactionMode, callback: (tx: Transaction) => Promise<T>): Promise<T>;
+  /**
+   * Create a new transaction and run some code with it, automatically committing
+   * if the code completes or aborting if it fails.
+   *
+   * @param callback The code to run
+   * @typeparam R the type of the callback result
+   * @returns The result of the callback
+   */
+  transact<R>(stores: Array<Store<Storable>>, mode: TransactionMode, callback: (tx: Transaction) => Promise<R>): Promise<R>;
 
 }
 
 /**
- * A connection bound to a database
+ * A connection to a database.
  */
 export class ConnectionActual<$$ = {}> implements Connection {
 
-  _idb_conn: IDBDatabase;
+  /**
+   * The Connection shorthand object.
+   * Used for doing one-off database operations.
+   *
+   * An operation such as
+   * ```plaintext
+   * await conn.$.my_store.add(my_item)
+   * ```
+   * will automatically open start a [[Transaction]], run the `.add` operation,
+   * then close the transaction.
+   */
+  $: $$;
 
+  _idb_conn: IDBDatabase;
   _substructures: Dict<StoreStructure>;
   _storables: StorableRegistry;
   _indexables: IndexableRegistry;
-
-  $: $$;
 
   constructor(args: {
     idb_conn: IDBDatabase;
@@ -71,6 +89,7 @@ export class ConnectionActual<$$ = {}> implements Connection {
 
   /**
    * Create a new transaction on the given stores with the given mode.
+   *
    * @param stores The stores that the transaction wants access to.
    * @param mode The transaction mode.
    * @returns A new transaction
@@ -80,27 +99,21 @@ export class ConnectionActual<$$ = {}> implements Connection {
     return await this._newTransaction(store_names, mode);
   }
 
-  async _transact<T>(
+  async _transact<R>(
     store_names: Array<string>,
     mode: TransactionMode,
-    callback: (tx: Transaction<$$>) => Promise<T>,
-  ): Promise<T> {
+    callback: (tx: Transaction<$$>) => Promise<R>,
+  ): Promise<R> {
     const tx = await this._newTransaction(store_names, mode);
     return await tx.wrap(async tx => await callback(tx));
   }
 
-  /**
-   * Create a new transaction and run some code with it, automatically committing
-   * if the code completes or aborting if it fails.
-   * @param callback The code to run
-   * @typeParam T the type of the callback result
-   * @returns The result of the callback
-   */
-  async transact<T>(
+  /** @inheritdoc */
+  async transact<R>(
     stores: Array<Store<any>>,
     mode: TransactionMode,
-    callback: (tx: Transaction<$$>) => Promise<T>,
-  ): Promise<T> {
+    callback: (tx: Transaction<$$>) => Promise<R>,
+  ): Promise<R> {
     const tx = await this.newTransaction(stores, mode);
     return await tx.wrap(async tx => await callback(tx));
   }
@@ -114,11 +127,12 @@ export class ConnectionActual<$$ = {}> implements Connection {
 
   /**
    * Run some code with this connection and then close it afterwards.
+   *
    * @param callback The code to run
    * @typeParam the type of the callback result
    * @returns The result of the callback
    */
-  async wrap<Ret>(callback: (conn: this) => Promise<Ret>): Promise<Ret> {
+  async wrap<R>(callback: (conn: this) => Promise<R>): Promise<R> {
     try {
       return await callback(this);
     } finally {
@@ -128,6 +142,12 @@ export class ConnectionActual<$$ = {}> implements Connection {
 
 }
 
+/**
+ * A [[Connection]] not bound to one lifespan.
+ *
+ * A [[ConnectionBroker]] will actually open a *new* connection on each operation.
+ * Compare this to [[ConnectionActual]], which has a temporal aspect.
+ */
 export class ConnectionBroker implements Connection {
 
   _db_name: string;
@@ -180,6 +200,7 @@ export class ConnectionBroker implements Connection {
     return result;
   }
 
+  /** @inheritdoc */
   async transact<T>(
     stores: Array<Store<any>>,
     mode: TransactionMode,

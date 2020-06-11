@@ -23,7 +23,7 @@ import { Database } from './database';
 export type Jine<$$> = Database<$$>;
 
 /**
- * Create a new database and run migrations on it.
+ * Create and initialize a [[Database]]
  */
 export async function newJine<$$>(name: string): Promise<Jine<$$>> {
   const db = new Database<$$>(name);

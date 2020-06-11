@@ -14,7 +14,7 @@ import { Indexable, NativelyIndexable, IndexableRegistry } from './indexable';
  *
  * A query falls into one of 3 categories:
  *
- * Wildcard: A wildcard query selects everything. This is given by `null`.
+ * Wildcard: A wildcard query selects everything. This is given by `{ everything: true }`.
  *
  * Exact: An exact query selects a particular value. This is given by `{ equals: value }`.
  *
@@ -276,8 +276,8 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
 
 /**
  * Used to execute queries.
- * @typeParam Item The type of the items for the parent database
- * @typeParam Trait The type of the trait for the parent index
+ * @typeparam Item The type of the items for the parent database
+ * @typeparam Trait The type of the trait for the parent index
  */
 export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
 
@@ -339,6 +339,7 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
 
   /**
    * Replace all selected items.
+   *
    * @param mapper Given an existing item, this function should return the new item.
    */
   async replace(mapper: (item: Item) => Item): Promise<void> {
@@ -353,6 +354,7 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
 
   /**
    * Update all selected items with the given delta.
+   *
    * @param updates The delta
    */
   async update(updates: Partial<Item>): Promise<void> {
@@ -375,7 +377,7 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
   }
 
   /**
-   * Return the number of selected items.
+   * @return The number of selected items.
    */
   async count(): Promise<number> {
     return await this._withCursor('r', async cursor => {
@@ -389,6 +391,7 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
 
   /**
    * Return all selected items as an array.
+   *
    * @returns The items
    */
   async array(): Promise<Array<Item>> {
@@ -404,7 +407,7 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
 }
 
 /**
- *  [[QueryExecutor]], but for unique indexes.
+ * Like [[QueryExecutor]], but for unique indexes.
  */
 export class UniqueQueryExecutor<Item extends Storable, Trait extends Indexable> {
 
@@ -447,11 +450,6 @@ export class UniqueQueryExecutor<Item extends Storable, Trait extends Indexable>
 
   /**
    * Get the item from the database.
-   *
-   * Example:
-   * ```ts
-   * await my_host.$.my_store.by.my_index.one(trait_val).get()
-   * ```
    *
    * @returns The item
    */

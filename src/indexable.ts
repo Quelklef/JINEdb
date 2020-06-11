@@ -36,7 +36,7 @@ export interface IndexableRegistry {
   /**
    * Register a type as [[Indexable]].
    *
-   * See {@page Serilization and Custom Types}.
+   * See {@page Serialization and Custom Types}.
    *
    * @param con The type constructor
    * @param id An arbitrary unique string id
@@ -47,7 +47,7 @@ export interface IndexableRegistry {
   /**
    * Modify a type registration
    *
-   * See {@page Serilization and Custom Types}.
+   * See {@page Serialization and Custom Types}.
    *
    * @param id The id of the type
    * @param updates Type codec modifications
@@ -59,11 +59,14 @@ export interface IndexableRegistry {
    *
    * Only use within a database migration.
    *
-   * See {@page Serilization and Custom Types}.
+   * See {@page Serialization and Custom Types}.
    *
    * @param id The id of the type
-   * @param args: the new `encode` and `decode` functions, new type constructor (if there is a new one),
-   * and function to migrate existing items.
+   * @param args
+   * - `encode: (x: item) => Indexable`: the new encoder function
+   * - `decode: (x: encoded) => any`: the new decoder function
+   * - `constructor: Function`: (optional) the new type constructor (if there is a new one),
+   * - `migrate: () => Promise<void>`: the function to migrate existing items.
    */
   upgrade(id: string, args: Codec<any, Indexable> & { constructor?: Constructor; migrate: () => Promise<void> }): Promise<void>;
 

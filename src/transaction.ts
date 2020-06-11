@@ -34,7 +34,10 @@ export function uglifyTransactionMode(tx_mode: TransactionMode): IDBTransactionM
 }
 
 /**
- * A transaction with a particular database.
+ * A transaction on a particular database.
+ *
+ * Transactions are groups of related database operations.
+ * Transactions are atomic: if an error occurs during a transaction, all operations will be cancelled.
  */
 export class Transaction<$$ = {}> {
 
@@ -46,19 +49,26 @@ export class Transaction<$$ = {}> {
   stores: Dict<StoreActual<Storable>>;
 
   /**
-   * Shorthand for object stores.
-   */
-  readonly $: $$;
-
-  /**
    * A non-genuine transaction will not allow `.commit()` and will not
    * propagate staged changes to the databse.
+   *
+   * All transactions are genuine, except for those created by [[Database.upgrade]],
+   * which may be genuine or ingenuine.
+   *
+   * Also see [[Database.upgrade]].
    */
   genuine: boolean;
 
-  _substructures: Dict<StoreStructure>;
-  _storables: StorableRegistry;
-  _indexables: IndexableRegistry;
+  /**
+   * Current transaction state.
+   *
+   * `active` - In progress.
+   *
+   * `committed` - Successfully complete.
+   *
+   * `aborted` - Unsuccessful.
+   */
+  state: 'active' | 'committed' | 'aborted';
 
   // TODO: I think these can be modified in non-versionchange transactions, which is not desirable
   /**
@@ -80,13 +90,15 @@ export class Transaction<$$ = {}> {
   }
 
   /**
-   * Current transaction state.
+   * Alias for [[Transaction.stores]], but with the user-defined `$$` type.
    *
-   * `active` - In progress.
-   * `committed` - Successfully complete.
-   * `aborted` - Unsuccessful.
+   * Also see {@page Example}.
    */
-  state: 'active' | 'committed' | 'aborted';
+  $: $$;
+
+  _substructures: Dict<StoreStructure>;
+  _storables: StorableRegistry;
+  _indexables: IndexableRegistry;
 
   _idb_tx: IDBTransaction;
   _idb_db: IDBDatabase;
@@ -138,7 +150,7 @@ export class Transaction<$$ = {}> {
   /**
    *  [[Transaction.wrap]], but synchronous.
    */
- wrapSynchronous<T>(callback: (tx: Transaction<$$>) => T): T {
+ wrapSynchronous<R>(callback: (tx: Transaction<$$>) => R): R {
     try {
       return callback(this);
     } catch (ex) {
@@ -154,11 +166,12 @@ export class Transaction<$$ = {}> {
    * Run some code with the transaction.
    * If the code successfully completes, commit the transaction.
    * If the code calls `.abort()` or throws an exception, abort the transaction.
+   *
    * @param callback The code to run
-   * @typeParam T The return type of the callback
+   * @typeParam R The return type of the callback
    * @returns The return value of the callback
    */
-  async wrap<T>(callback: (tx: Transaction<$$>) => Promise<T>): Promise<T> {
+  async wrap<R>(callback: (tx: Transaction<$$>) => Promise<R>): Promise<R> {
     try {
       return await callback(this);
     } catch (ex) {
@@ -171,8 +184,11 @@ export class Transaction<$$ = {}> {
   }
 
   /**
-   * Add a store.
-   * @param name store name
+   * Add a store to the database.
+   *
+   * Only possible in a `versionchange` transaction, which is given by [[Database.upgrade]].
+   *
+   * @param name The name to give the new store
    * @returns The new store
    */
   addStore<Item extends Storable>(store_name: string): StoreActual<Item> {
@@ -199,8 +215,11 @@ export class Transaction<$$ = {}> {
   }
 
   /**
-   * Remove a store
-   * @param name store name
+   * Remove a store from the index.
+   *
+   * Only possible in a `versionchange` transaction, which is given by [[Database.upgrade]].
+   *
+   * @param name The name of the store to remove
    */
   removeStore(name: string): void {
     this._idb_db.deleteObjectStore(name);

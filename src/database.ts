@@ -42,7 +42,7 @@ async function getDbVersion(db_name: string): Promise<number> {
 
 
 /**
- * A database
+ * Represents a Database, which houses several item [[Store]]s contain data, queryable by [[Index]]es.
  */
 export class Database<$$ = {}> {
 
@@ -57,14 +57,26 @@ export class Database<$$ = {}> {
    * Database versions are integers greater than zero.
    *
    * Null if the database has not yet been initialized.
+   * If the database is created with [[newJine]], this should never be null.
    */
   version: number | null;
 
+  /**
+   * The Database shorthand object.
+   * Used for doing one-off database operations.
+   *
+   * An operation such as
+   * ```plaintext
+   * await db.$.my_store.add(my_item)
+   * ```
+   * will automatically open up a [[Connection]], start a [[Transaction]], run the `.add` operation,
+   * close the transaction, and close the connection.
+   */
+  $: $$;
+  
   _substructures: Dict<StoreStructure>;
   _storables: StorableRegistry;
   _indexables: IndexableRegistry;
-
-  $: $$;
 
   constructor(name: string) {
     this.name = name;
@@ -116,7 +128,7 @@ export class Database<$$ = {}> {
   }
 
   /**
-   * Creates and returns a new connection to the database.
+   * Create new connection to the database.
    *
    * Connections created with this method must be manually closed.
    * It's recommended to use [[Database.connect]] instead, which will close the connection for you.
@@ -139,27 +151,40 @@ export class Database<$$ = {}> {
    * close the connection once the callback has completed.
    *
    * @param callback The function to run with the database connection.
-   * @typeParam T The return type of the callback.
+   * @typeparam T The return type of the callback.
    * @returns The callback result
    */
-  async connect<T>(callback: (conn: ConnectionActual<$$>) => Promise<T>): Promise<T> {
+  async connect<R>(callback: (conn: ConnectionActual<$$>) => Promise<R>): Promise<R> {
     const conn = await this.newConnection();
     return await conn.wrap(async conn => await callback(conn));
   }
 
   /**
-   * Upgrade the database to a new version.
+   * Like [[Database.connect]], except that the callbakc is allowed to update the format of the database,
+   * for instance with [[Transaction.addStore]] and [[StoreActual.addIndex]].
    *
-   * This is like [[Database.connect]], except that you are able to update the format of the database,
-   * for instance with [[Transaction.addStore]] and [[Store.addIndex]].
+   * The callback accepts an extra argument, `genuine`. This value is equal to `tx.genuine` and is `true`
+   * exactly when the upgrade is being done "for real" instead of being used to recalculate database shape.
+   *
+   * vvv TODO: move
+   * See, database upgrades typically involve two parts: one
+   * is altering the format of the database, such as adding and removing stores. The other part is any
+   * other work, such as updating modifying existing data to fit the new format. The unfortunate fact is that
+   * Jine is unable to save the database format in any persistant storage (as it would have to save functions,
+   * which is not possible in any perfeect manner); Jine this instead recalculates the database shape every
+   * runtime. This means it runs every database upgrade every runtime and simply tosses out any actual
+   * database modifications or writes. The argument `genuine` is `true` if this upgrade is being run only
+   * in order to calculate database shape, and `false` if the upgrade is being run "for real". One should
+   * wrap side-effectful that isn't e.g. a call to `tx.addStore` code in an `if (genuine)` guard.
    *
    * Also see {@page Versioning and Migrations}.
    *
-   * @param version The version to open the database with
-   * @param callback The upgrade function
+   * @param version The version to upgrade to
+   * @param callback The upgrade function.
+   * @typeparam R The return type of the callback
    * @returns The return value of the callback.
    */
-  async upgrade<Ret>(version: number, callback: (genuine: boolean, tx: Transaction<$$>) => Promise<Ret>): Promise<Ret> {
+  async upgrade<R>(version: number, callback: (genuine: boolean, tx: Transaction<$$>) => Promise<R>): Promise<R> {
     // ^^^ We add `tx.genuine` as an argument (the FIRST argument) to the callback
     //     in order to call it to the attention of the API user
 
@@ -179,7 +204,7 @@ export class Database<$$ = {}> {
         }
       };
 
-      let result: Ret;
+      let result: R;
       req.onupgradeneeded = _event => {
         const idb_tx = some(req.transaction);
         const tx = new Transaction<$$>({
