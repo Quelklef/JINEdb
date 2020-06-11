@@ -10,11 +10,11 @@ import { Storable, StorableRegistry } from './storable';
 import { Indexable, NativelyIndexable, IndexableRegistry } from './indexable';
 
 /**
- * Query spec
+ * Query specification
  *
  * A query falls into one of 3 categories:
  *
- * Wildcard: A wildcard query selects everything. This is given by `{ everything: true }`.
+ * Wildcard: A wildcard query selects everything. This is given by `'everything'`.
  *
  * Exact: An exact query selects a particular value. This is given by `{ equals: value }`.
  *
@@ -30,78 +30,81 @@ import { Indexable, NativelyIndexable, IndexableRegistry } from './indexable';
  * the query results should be traversed in reverse order, and `unique` marks that
  * duplicated values should be skipped.
  */
-export interface QuerySpec<Trait extends Indexable> {
-  /** Select everything */
-  everything?: boolean;
-  /** Equality */
-  equals?: Trait;
-  /** Inclusive lower bound */
-  from?: Trait;
-  /** Exclusive lower bound */
-  above?: Trait;
-  /** Inclusive upper bound */
-  through?: Trait;
-  /** Exclusive upper bound */
-  below?: Trait;
-  /** Reversed? */
-  reversed?: boolean;
-  /** Unique? */
-  unique?: boolean;
-}
+export type Query<Trait extends Indexable>
+  = 'everything'
+  | {
+    /** Equality */
+    equals?: Trait;
+    /** Inclusive lower bound */
+    from?: Trait;
+    /** Exclusive lower bound */
+    above?: Trait;
+    /** Inclusive upper bound */
+    through?: Trait;
+    /** Exclusive upper bound */
+    below?: Trait;
+    /** Reversed? */
+    reversed?: boolean;
+    /** Unique? */
+    unique?: boolean;
+  };
 
 
-function compileTraitRange<Trait extends Indexable>(spec: QuerySpec<Trait>, indexables: IndexableRegistry): IDBKeyRange | undefined {
-  /* Conpile an IDBKeyRange object from a QuerySpec<Trait>. */
+function compileTraitRange<Trait extends Indexable>(query: Query<Trait>, indexables: IndexableRegistry): IDBKeyRange | undefined {
+  /* Conpile an IDBKeyRange object from a Query<Trait>. */
 
   // The implementation isn't elegant, but it's easy to understand
 
-  if (spec.everything)
+  if (query === 'everything')
     return undefined;
 
-  if ('equals' in spec)
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.only(indexables.encode(spec.equals!, false));
+  query = query as Omit<Query<Trait>, 'everything'>;
 
-  if ('from' in spec && 'through' in spec)
+  if ('equals' in query)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.bound(indexables.encode(spec.from!, false), indexables.encode(spec.through!, false), false, false);
+    return IDBKeyRange.only(indexables.encode(query.equals!, false));
 
-  if ('from' in spec && 'below' in spec)
+  if ('from' in query && 'through' in query)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.bound(indexables.encode(spec.from!, false), indexables.encode(spec.below!, false), false, true);
+    return IDBKeyRange.bound(indexables.encode(query.from!, false), indexables.encode(query.through!, false), false, false);
 
-  if ('above' in spec && 'through' in spec)
+  if ('from' in query && 'below' in query)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.bound(indexables.encode(spec.above!, false), indexables.encode(spec.through!, false), true, false);
+    return IDBKeyRange.bound(indexables.encode(query.from!, false), indexables.encode(query.below!, false), false, true);
 
-  if ('above' in spec && 'below' in spec)
+  if ('above' in query && 'through' in query)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.bound(indexables.encode(spec.above!, false), indexables.encode(spec.below!, false), true, true);
+    return IDBKeyRange.bound(indexables.encode(query.above!, false), indexables.encode(query.through!, false), true, false);
 
-  if ('from' in spec)
+  if ('above' in query && 'below' in query)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.lowerBound(indexables.encode(spec.from!, false), false)
+    return IDBKeyRange.bound(indexables.encode(query.above!, false), indexables.encode(query.below!, false), true, true);
 
-  if ('above' in spec)
+  if ('from' in query)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.lowerBound(indexables.encode(spec.above!, false), true);
+    return IDBKeyRange.lowerBound(indexables.encode(query.from!, false), false)
 
-  if ('through' in spec)
+  if ('above' in query)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.upperBound(indexables.encode(spec.through!, false), false);
+    return IDBKeyRange.lowerBound(indexables.encode(query.above!, false), true);
 
-  if ('below' in spec)
+  if ('through' in query)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.upperBound(indexables.encode(spec.below!, false), true);
+    return IDBKeyRange.upperBound(indexables.encode(query.through!, false), false);
+
+  if ('below' in query)
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    return IDBKeyRange.upperBound(indexables.encode(query.below!, false), true);
 
   throw new Error('uh oh');
 
 }
 
-function compileCursorDirection<T extends Indexable>(query_spec: QuerySpec<T>): IDBCursorDirection {
-  if (query_spec === null) return 'next';
-  let result = query_spec.reversed ? 'prev' : 'next';
-  if (query_spec.unique) result += 'unique';
+function compileCursorDirection<Trait extends Indexable>(query: Query<Trait>): IDBCursorDirection {
+  if (query === 'everything') return 'next';
+  query = query as Omit<Query<Trait>, 'everything'>;
+  let result = query.reversed ? 'prev' : 'next';
+  if (query.unique) result += 'unique';
   return result as IDBCursorDirection;
 }
 
@@ -119,7 +122,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
   readonly storables: StorableRegistry;
   readonly indexables: IndexableRegistry;
 
-  readonly _query_spec: QuerySpec<Trait>;
+  readonly _query: Query<Trait>;
 
   readonly _idb_source: IDBIndex | IDBObjectStore;
   _idb_req: IDBRequest | null;
@@ -127,12 +130,12 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
 
   constructor(args: {
     idb_source: IDBIndex | IDBObjectStore;
-    query_spec: QuerySpec<Trait>;
+    query: Query<Trait>;
     index_structures: Dict<IndexStructure<Item>>;
     storables: StorableRegistry;
     indexables: IndexableRegistry;
   }) {
-    this._query_spec = args.query_spec;
+    this._query = args.query;
     this._idb_source = args.idb_source;
     this._idb_req = null;
     this._idb_cur = null;
@@ -152,8 +155,8 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
 
   init(): Promise<void> {
     const req = this._idb_source.openCursor(
-      compileTraitRange(this._query_spec, this.indexables),
-      compileCursorDirection(this._query_spec),
+      compileTraitRange(this._query, this.indexables),
+      compileCursorDirection(this._query),
     );
     this._idb_req = req;
     return new Promise((resolve, reject) => {
@@ -279,10 +282,10 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
  * @typeparam Item The type of the items for the parent database
  * @typeparam Trait The type of the trait for the parent index
  */
-export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
+export class Selection<Item extends Storable, Trait extends Indexable> {
 
   readonly source: Store<Item> | Index<Item, Trait>;
-  readonly query_spec: QuerySpec<Trait>;
+  readonly query: Query<Trait>;
 
   readonly index_structures: Dict<IndexStructure<Item>>;
   readonly storables: StorableRegistry;
@@ -290,13 +293,13 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
 
   constructor(args: {
     source: Store<Item> | Index<Item, Trait>;
-    query_spec: QuerySpec<Trait>;
+    query: Query<Trait>;
     index_structures: Dict<IndexStructure<Item>>;
     storables: StorableRegistry;
     indexables: IndexableRegistry;
   }) {
     this.source = args.source;
-    this.query_spec = args.query_spec;
+    this.query = args.query;
     this.index_structures = args.index_structures;
     this.storables = args.storables;
     this.indexables = args.indexables;
@@ -316,7 +319,7 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
 
       const cursor = new Cursor<Item, Trait>({
         idb_source: idb_source,
-        query_spec: this.query_spec,
+        query: this.query,
         index_structures: this.index_structures,
         storables: this.storables,
         indexables: this.indexables,
@@ -407,22 +410,22 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
 }
 
 /**
- * Like [[QueryExecutor]], but for unique indexes.
+ * Like [[Selection]], but for unique indexes.
  */
-export class UniqueQueryExecutor<Item extends Storable, Trait extends Indexable> {
+export class SelectionUnique<Item extends Storable, Trait extends Indexable> {
 
-  readonly qe: QueryExecutor<Item, Trait>;
+  readonly qe: Selection<Item, Trait>;
 
   constructor(args: {
     source: Index<Item, Trait>;
-    query_spec: QuerySpec<Trait>;
+    query: Query<Trait>;
     index_structures: Dict<IndexStructure<Item>>;
     storables: StorableRegistry;
     indexables: IndexableRegistry;
   }) {
     if (!args.source.unique)
-      throw Error('Cannot create a UniqueQueryExecutor on a non-unique index.');
-    this.qe = new QueryExecutor(args);
+      throw Error('Cannot create a SelectionUnique on a non-unique index.');
+    this.qe = new Selection(args);
   }
 
   /**

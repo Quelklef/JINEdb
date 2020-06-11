@@ -6,7 +6,7 @@ import { some, Dict } from './util';
 import { Connection } from './connection';
 import { TransactionMode } from './transaction';
 import { StorableRegistry } from './storable';
-import { QueryExecutor, Cursor } from './query';
+import { Selection, Cursor } from './query';
 import { StoreStructure, IndexStructure } from './structure';
 import { Index, IndexActual, IndexBroker } from './index';
 import { Indexable, IndexableRegistry, NativelyIndexable } from './indexable';
@@ -70,7 +70,7 @@ export interface Store<Item extends Storable> {
    * Begin a query with all the items in the store
    * @returns The query executor.
    */
-  all(): QueryExecutor<Item, never>;
+  all(): Selection<Item, never>;
 
   _transact<T>(mode: TransactionMode, callback: (store: StoreActual<Item>) => Promise<T>): Promise<T>;
 
@@ -128,7 +128,7 @@ export class StoreActual<Item extends Storable> implements Store<Item> {
     const cursor = new Cursor({
       idb_source: this._idb_store,
       index_structures: this._substructures,
-      query_spec: { everything: true },
+      query: 'everything',
       storables: this._storables,
       indexables: this._indexables,
     });
@@ -199,10 +199,10 @@ export class StoreActual<Item extends Storable> implements Store<Item> {
     });
   }
 
-  all(): QueryExecutor<Item, never> {
-    return new QueryExecutor({
+  all(): Selection<Item, never> {
+    return new Selection({
       source: this,
-      query_spec: { everything: true },
+      query: 'everything',
       index_structures: this._substructures,
       storables: this._storables,
       indexables: this._indexables,
@@ -392,10 +392,10 @@ export class StoreBroker<Item extends Storable> implements Store<Item> {
   }
 
   /** @inheritdoc */
-  all(): QueryExecutor<Item, never> {
-    return new QueryExecutor({
+  all(): Selection<Item, never> {
+    return new Selection({
       source: this,
-      query_spec: { everything: true },
+      query: 'everything',
       index_structures: this._substructures,
       storables: this._storables,
       indexables: this._indexables,

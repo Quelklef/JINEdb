@@ -70,7 +70,7 @@ describe('query', () => {
     });
 
     it("supports * queries", async () => {
-      const result = await conn.$.nums.by.value.range({ everything: true }).array();
+      const result = await conn.$.nums.by.value.range('everything').array();
       expect(result).toEqual([one, two, three, four, five]);
     });
 

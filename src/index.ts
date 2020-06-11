@@ -5,7 +5,7 @@ import { IndexStructure } from './structure';
 import { TransactionMode } from './transaction';
 import { Storable, StorableRegistry } from './storable';
 import { Indexable, IndexableRegistry } from './indexable';
-import { QuerySpec, QueryExecutor, UniqueQueryExecutor } from './query';
+import { Query, Selection, SelectionUnique } from './query';
 
 /**
  * An index on an object store.
@@ -88,12 +88,12 @@ export interface Index<Item extends Storable, Trait extends Indexable> {
    * Select a single item by trait.
    * Usable on unique indexes only.
    */
-  one(trait: Trait): UniqueQueryExecutor<Item, Trait>;
+  one(trait: Trait): SelectionUnique<Item, Trait>;
 
   /**
    * Select several items by a range of traits.
    */
-  range(spec: QuerySpec<Trait>): QueryExecutor<Item, Trait>;
+  range(query: Query<Trait>): Selection<Item, Trait>;
 
   _transact<T>(mode: TransactionMode, callback: (index: IndexActual<Item, Trait>) => Promise<T>): Promise<T>;
 
@@ -150,10 +150,10 @@ export class IndexActual<Item extends Storable, Trait extends Indexable> impleme
   }
 
   /** @inheritdoc */
-  one(trait: Trait): UniqueQueryExecutor<Item, Trait> {
-    return new UniqueQueryExecutor({
+  one(trait: Trait): SelectionUnique<Item, Trait> {
+    return new SelectionUnique({
       source: this,
-      query_spec: { equals: trait },
+      query: { equals: trait },
       index_structures: this._sibling_structures,
       storables: this._storables,
       indexables: this._indexables,
@@ -161,10 +161,10 @@ export class IndexActual<Item extends Storable, Trait extends Indexable> impleme
   }
 
   /** @inheritdoc */
-  range(query_spec: QuerySpec<Trait>): QueryExecutor<Item, Trait> {
-    return new QueryExecutor({
+  range(query: Query<Trait>): Selection<Item, Trait> {
+    return new Selection({
       source: this,
-      query_spec: query_spec,
+      query: query,
       index_structures: this._sibling_structures,
       storables: this._storables,
       indexables: this._indexables,
@@ -243,21 +243,21 @@ export class IndexBroker<Item extends Storable, Trait extends Indexable> impleme
   }
 
   /** @inheritdoc */
-  one(trait: Trait): UniqueQueryExecutor<Item, Trait> {
-    return new UniqueQueryExecutor({
+  one(trait: Trait): SelectionUnique<Item, Trait> {
+    return new SelectionUnique({
       source: this,
       index_structures: this._parent._substructures,
-      query_spec: { equals: trait },
+      query: { equals: trait },
       storables: this._storables,
       indexables: this._indexables,
     });
   }
 
   /** @inheritdoc */
-  range(query_spec: QuerySpec<Trait>): QueryExecutor<Item, Trait> {
-    return new QueryExecutor({
+  range(query: Query<Trait>): Selection<Item, Trait> {
+    return new Selection({
       source: this,
-      query_spec: query_spec,
+      query: query,
       index_structures: this._parent._substructures,
       storables: this._storables,
       indexables: this._indexables,
