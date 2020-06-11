@@ -1,6 +1,6 @@
 
 import 'fake-indexeddb/auto';
-import { newJine, Jine, Store, Index, ConnectionActual, Transaction } from '../src/jine';
+import { newJine, Database, Store, Index, ConnectionActual, Transaction } from '../src/jine';
 import { reset } from './shared';
 
 type Post = {
@@ -61,7 +61,7 @@ describe('shorthand', () => {
 
   // --
 
-  let jine!: Jine<$$>;
+  let jine!: Database<$$>;
 
   beforeEach(async () => {
     reset();

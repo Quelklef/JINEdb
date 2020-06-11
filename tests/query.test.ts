@@ -1,6 +1,6 @@
 
 import 'fake-indexeddb/auto';
-import { newJine, Jine, Store, Index, ConnectionActual } from '../src/jine';
+import { newJine, Database, Store, Index, ConnectionActual } from '../src/jine';
 import { reset } from './shared';
 
 type Num = {
@@ -18,7 +18,7 @@ interface $$ {
 
 describe('query', () => {
 
-  let jine!: Jine<$$>;
+  let jine!: Database<$$>;
   let conn!: ConnectionActual<$$>;
 
   beforeEach(async () => {

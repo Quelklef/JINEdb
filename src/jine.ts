@@ -18,14 +18,9 @@ export { Indexable, NativelyIndexable} from './indexable';
 import { Database } from './database';
 
 /**
- * Top-level helper type
- */
-export type Jine<$$> = Database<$$>;
-
-/**
  * Create and initialize a [[Database]]
  */
-export async function newJine<$$>(name: string): Promise<Jine<$$>> {
+export async function newJine<$$>(name: string): Promise<Database<$$>> {
   const db = new Database<$$>(name);
   await db.init();
   return db;
