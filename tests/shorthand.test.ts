@@ -1,6 +1,6 @@
 
 import 'fake-indexeddb/auto';
-import { newJine, Jine, Store, Index, BoundConnection, Transaction } from '../src/jine';
+import { newJine, Jine, Store, Index, ConnectionActual, Transaction } from '../src/jine';
 import { reset } from './shared';
 
 type Post = {
@@ -76,7 +76,7 @@ describe('shorthand', () => {
 
   describe("connection-bound", () => {
 
-    let conn!: BoundConnection<$$>;
+    let conn!: ConnectionActual<$$>;
 
     beforeEach(async () => {
       conn = await jine.newConnection();

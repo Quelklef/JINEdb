@@ -2,13 +2,13 @@
 import { Row } from './row';
 import { Storable } from './storable';
 import { mapError } from './errors';
-import { Connection } from './connection';
 import { some, Dict } from './util';
+import { Connection } from './connection';
 import { TransactionMode } from './transaction';
 import { StorableRegistry } from './storable';
 import { QueryExecutor, Cursor } from './query';
 import { StoreStructure, IndexStructure } from './structure';
-import { Index, BoundIndex, AutonomousIndex } from './index';
+import { Index, IndexActual, IndexBroker } from './index';
 import { Indexable, IndexableRegistry, NativelyIndexable } from './indexable';
 
 export { StorableRegistry } from './storable';
@@ -67,20 +67,20 @@ export interface Store<Item extends Storable> {
    */
   all(): QueryExecutor<Item, never>;
 
-  _transact<T>(mode: TransactionMode, callback: (store: BoundStore<Item>) => Promise<T>): Promise<T>;
+  _transact<T>(mode: TransactionMode, callback: (store: StoreActual<Item>) => Promise<T>): Promise<T>;
 
 }
 
 /**
  * A store that is bound to a particular transaction
  */
-export class BoundStore<Item extends Storable> implements Store<Item> {
+export class StoreActual<Item extends Storable> implements Store<Item> {
 
   /** @inheritDoc */
   name: string;
 
   /** @inheritDoc */
-  indexes: Dict<BoundIndex<Item, Indexable>>;
+  indexes: Dict<IndexActual<Item, Indexable>>;
 
   /** @inheritDoc */
   by: Record<string, Index<Item, Indexable>>;
@@ -105,7 +105,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
 
     this.indexes = {};
     for (const index_name of Object.keys(this._substructures)) {
-      this.indexes[index_name] = new BoundIndex({
+      this.indexes[index_name] = new IndexActual({
         idb_index: this._idb_store.index(index_name),
         name: index_name,
         structure: some(this._substructures[index_name]),
@@ -256,7 +256,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
       });
     }
 
-    const index = new BoundIndex<Item, Trait>({
+    const index = new IndexActual<Item, Trait>({
       idb_index: idb_index,
       name: index_name,
       structure: index_structure,
@@ -297,7 +297,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
 
   }
 
-  async _transact<T>(mode: TransactionMode, callback: (store: BoundStore<Item>) => Promise<T>): Promise<T> {
+  async _transact<T>(mode: TransactionMode, callback: (store: StoreActual<Item>) => Promise<T>): Promise<T> {
     return await callback(this);
   }
 
@@ -306,7 +306,7 @@ export class BoundStore<Item extends Storable> implements Store<Item> {
 /**
  * A store that will start a new transaction on each method call
  */
-export class AutonomousStore<Item extends Storable> implements Store<Item> {
+export class StoreBroker<Item extends Storable> implements Store<Item> {
 
   name: string;
 
@@ -314,7 +314,7 @@ export class AutonomousStore<Item extends Storable> implements Store<Item> {
   _storables: StorableRegistry;
   _indexables: IndexableRegistry;
 
-  indexes: Dict<AutonomousIndex<Item, Indexable>>;
+  indexes: Dict<IndexBroker<Item, Indexable>>;
 
   by: Record<string, Index<Item, Indexable>>;
 
@@ -335,7 +335,7 @@ export class AutonomousStore<Item extends Storable> implements Store<Item> {
 
     this.indexes = {};
     for (const index_name of Object.keys(this._substructures)) {
-      this.indexes[index_name] = new AutonomousIndex({
+      this.indexes[index_name] = new IndexBroker({
         parent: this,
         name: index_name,
         structure: some(this._substructures[index_name]),
@@ -346,9 +346,9 @@ export class AutonomousStore<Item extends Storable> implements Store<Item> {
     this.by = this.indexes as Record<string, Index<Item, Indexable>>;
   }
 
-  async _transact<T>(mode: TransactionMode, callback: (bound_store: BoundStore<Item>) => Promise<T>): Promise<T> {
+  async _transact<T>(mode: TransactionMode, callback: (bound_store: StoreActual<Item>) => Promise<T>): Promise<T> {
     return await this._conn._transact([this.name], mode, async tx => {
-      const bound_store = some(tx.stores[this.name]) as any as BoundStore<Item>;
+      const bound_store = some(tx.stores[this.name]) as any as StoreActual<Item>;
       return await callback(bound_store);
     });
   }

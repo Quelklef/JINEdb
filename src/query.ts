@@ -4,8 +4,8 @@ import { mapError } from './errors';
 import { some, Dict } from './util';
 import { IndexStructure } from './structure';
 import { TransactionMode } from './transaction';
-import { Store, BoundStore } from './store';
-import { Index, BoundIndex } from './index';
+import { Store, StoreActual } from './store';
+import { Index, IndexActual } from './index';
 import { Storable, StorableRegistry } from './storable';
 import { Indexable, NativelyIndexable, IndexableRegistry } from './indexable';
 
@@ -304,13 +304,13 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
 
   async _withCursor<T>(mode: TransactionMode, callback: (cursor: Cursor<Item, Trait>) => Promise<T>): Promise<T> {
 
-    type TransactType = <T>(mode: TransactionMode, callback: (bound_source: BoundStore<Item> | BoundIndex<Item, Trait>) => Promise<T>) => Promise<T>;
+    type TransactType = <T>(mode: TransactionMode, callback: (bound_source: StoreActual<Item> | IndexActual<Item, Trait>) => Promise<T>) => Promise<T>;
     const transact: TransactType = this.source._transact.bind(this.source);
 
-    return await transact(mode, async (bound_source: BoundStore<Item> | BoundIndex<Item, Trait>) => {
+    return await transact(mode, async (bound_source: StoreActual<Item> | IndexActual<Item, Trait>) => {
 
       const idb_source =
-        bound_source instanceof BoundStore
+        bound_source instanceof StoreActual
           ? (bound_source as any)._idb_store
           : (bound_source as any)._idb_index;
 
@@ -404,7 +404,7 @@ export class QueryExecutor<Item extends Storable, Trait extends Indexable> {
 }
 
 /**
- * Like [[QueryExecutor]], but for unique indexes.
+ *  [[QueryExecutor]], but for unique indexes.
  */
 export class UniqueQueryExecutor<Item extends Storable, Trait extends Indexable> {
 

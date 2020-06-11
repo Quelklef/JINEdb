@@ -1,7 +1,7 @@
 
 import { clone } from 'true-clone';
+import { StoreActual } from './store';
 import { some, Dict } from './util';
-import { BoundStore } from './store';
 import { StoreStructure } from './structure';
 import { IndexableRegistry } from './indexable';
 import { Storable, StorableRegistry } from './storable';
@@ -43,7 +43,7 @@ export class Transaction<$$ = {}> {
    *
    * For non-programmatic code, [[Transaction.$]] is nicer to use.
    */
-  stores: Dict<BoundStore<Storable>>;
+  stores: Dict<StoreActual<Storable>>;
 
   /**
    * Shorthand for object stores.
@@ -112,7 +112,7 @@ export class Transaction<$$ = {}> {
     this.stores = {};
     for (const store_name of Object.keys(this._substructures)) {
       const idb_store = this._idb_tx.objectStore(store_name);
-      const store = new BoundStore({
+      const store = new StoreActual({
         idb_store: idb_store,
         structure: some(this._substructures[store_name]),
         storables: this._storables,
@@ -136,7 +136,7 @@ export class Transaction<$$ = {}> {
   }
 
   /**
-   * Like [[Transaction.wrap]], but synchronous.
+   *  [[Transaction.wrap]], but synchronous.
    */
  wrapSynchronous<T>(callback: (tx: Transaction<$$>) => T): T {
     try {
@@ -175,7 +175,7 @@ export class Transaction<$$ = {}> {
    * @param name store name
    * @returns The new store
    */
-  addStore<Item extends Storable>(store_name: string): BoundStore<Item> {
+  addStore<Item extends Storable>(store_name: string): StoreActual<Item> {
 
     this._idb_db.createObjectStore(store_name, { keyPath: 'id', autoIncrement: true });
 
@@ -184,7 +184,7 @@ export class Transaction<$$ = {}> {
       indexes: { },
     };
 
-    const store = new BoundStore<Item>({
+    const store = new StoreActual<Item>({
       idb_store: this._idb_tx.objectStore(store_name),
       structure: store_structure,
       storables: this._storables,
@@ -192,7 +192,7 @@ export class Transaction<$$ = {}> {
     });
 
     this._substructures[store_name] = store_structure;
-    this.stores[store_name] = store as any as BoundStore<Storable>;
+    this.stores[store_name] = store as any as StoreActual<Storable>;
 
     return store;
 

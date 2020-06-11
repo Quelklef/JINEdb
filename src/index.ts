@@ -1,7 +1,7 @@
 
 import { some, Dict } from './util';
+import { StoreBroker } from './store';
 import { IndexStructure } from './structure';
-import { AutonomousStore } from './store';
 import { TransactionMode } from './transaction';
 import { Storable, StorableRegistry } from './storable';
 import { Indexable, IndexableRegistry } from './indexable';
@@ -75,7 +75,7 @@ export interface Index<Item extends Storable, Trait extends Indexable> {
    */
   range(spec: QuerySpec<Trait>): QueryExecutor<Item, Trait>;
 
-  _transact<T>(mode: TransactionMode, callback: (index: BoundIndex<Item, Trait>) => Promise<T>): Promise<T>;
+  _transact<T>(mode: TransactionMode, callback: (index: IndexActual<Item, Trait>) => Promise<T>): Promise<T>;
 
 }
 
@@ -83,7 +83,7 @@ export interface Index<Item extends Storable, Trait extends Indexable> {
 /**
  * An index that is bound to a particular transaction
  */
-export class BoundIndex<Item extends Storable, Trait extends Indexable> implements Index<Item, Trait> {
+export class IndexActual<Item extends Storable, Trait extends Indexable> implements Index<Item, Trait> {
 
 
   name: string;
@@ -153,7 +153,7 @@ export class BoundIndex<Item extends Storable, Trait extends Indexable> implemen
     return await this.range({ equals: trait }).array();
   }
 
-  async _transact<T>(mode: TransactionMode, callback: (index: BoundIndex<Item, Trait>) => Promise<T>): Promise<T> {
+  async _transact<T>(mode: TransactionMode, callback: (index: IndexActual<Item, Trait>) => Promise<T>): Promise<T> {
     return await callback(this);
   }
 
@@ -162,7 +162,7 @@ export class BoundIndex<Item extends Storable, Trait extends Indexable> implemen
 /**
  * An index that will create its own transaction on each method call
  */
-export class AutonomousIndex<Item extends Storable, Trait extends Indexable> implements Index<Item, Trait> {
+export class IndexBroker<Item extends Storable, Trait extends Indexable> implements Index<Item, Trait> {
 
   name: string;
   unique: boolean;
@@ -172,12 +172,12 @@ export class AutonomousIndex<Item extends Storable, Trait extends Indexable> imp
   trait_path?: string;
   trait_getter?: (item: Item) => Trait;
 
-  _parent: AutonomousStore<Item>;
+  _parent: StoreBroker<Item>;
   _storables: StorableRegistry;
   _indexables: IndexableRegistry;
 
   constructor(args: {
-    parent: AutonomousStore<Item>;
+    parent: StoreBroker<Item>;
     name: string;
     structure: IndexStructure<Item, Trait>;
     storables: StorableRegistry;
@@ -195,9 +195,9 @@ export class AutonomousIndex<Item extends Storable, Trait extends Indexable> imp
     this._indexables = args.indexables;
   }
 
-  async _transact<T>(mode: TransactionMode, callback: (bound_index: BoundIndex<Item, Trait>) => Promise<T>): Promise<T> {
+  async _transact<T>(mode: TransactionMode, callback: (bound_index: IndexActual<Item, Trait>) => Promise<T>): Promise<T> {
     return this._parent._transact(mode, async bound_store => {
-      const bound_index = some(bound_store.indexes[this.name]) as BoundIndex<Item, Trait>;
+      const bound_index = some(bound_store.indexes[this.name]) as IndexActual<Item, Trait>;
       return await callback(bound_index);
     });
   }

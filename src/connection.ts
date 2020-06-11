@@ -1,9 +1,9 @@
 
 import { some, Dict } from './util';
-import { IndexableRegistry } from './indexable';
-import { Store, AutonomousStore } from './store';
-import { Storable, StorableRegistry } from './storable';
 import { StoreStructure } from './structure';
+import { IndexableRegistry } from './indexable';
+import { Store, StoreBroker } from './store';
+import { Storable, StorableRegistry } from './storable';
 import { JineBlockedError, JineInternalError, mapError } from './errors';
 import { Transaction, TransactionMode, uglifyTransactionMode } from './transaction';
 
@@ -18,7 +18,7 @@ export interface Connection {
 /**
  * A connection bound to a database
  */
-export class BoundConnection<$$ = {}> implements Connection {
+export class ConnectionActual<$$ = {}> implements Connection {
 
   _idb_conn: IDBDatabase;
 
@@ -46,7 +46,7 @@ export class BoundConnection<$$ = {}> implements Connection {
           const store_name = prop;
           // vvv Mimic missing key returning undefined
           if (!(store_name in self._substructures)) return undefined;
-          const aut_store = new AutonomousStore({
+          const aut_store = new StoreBroker({
             name: store_name,
             conn: self,
             structure: some(self._substructures[store_name]),
@@ -128,7 +128,7 @@ export class BoundConnection<$$ = {}> implements Connection {
 
 }
 
-export class AutonomousConnection implements Connection {
+export class ConnectionBroker implements Connection {
 
   _db_name: string;
   _substructures: Dict<StoreStructure>;
@@ -159,9 +159,9 @@ export class AutonomousConnection implements Connection {
     });
   }
 
-  async _new_bound_conn(): Promise<BoundConnection> {
+  async _new_bound_conn(): Promise<ConnectionActual> {
     const idb_conn = await this._new_idb_conn();
-    return new BoundConnection({
+    return new ConnectionActual({
       idb_conn: idb_conn,
       substructures: this._substructures,
       storables: this._storables,

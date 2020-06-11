@@ -1,12 +1,12 @@
 
 import 'fake-indexeddb/auto';
-import { newJine, Jine, Store, Index, BoundConnection, NativelyStorable } from '../src/jine';
+import { newJine, Jine, Store, Index, ConnectionActual, NativelyStorable } from '../src/jine';
 import { reset } from './shared';
 
 describe('migration', () => {
 
   let jine!: Jine<any>;  // use any for convenience
-  let conn!: BoundConnection<any>;
+  let conn!: ConnectionActual<any>;
 
   beforeEach(async () => {
     reset();

@@ -1,10 +1,10 @@
 
 import { Transaction } from './transaction';
+import { StoreBroker } from './store';
 import { StoreStructure } from './structure';
-import { AutonomousStore } from './store';
 import { some, invoke, Dict } from './util';
+import { ConnectionActual, ConnectionBroker } from './connection';
 import { newStorableRegistry, StorableRegistry } from './storable';
-import { BoundConnection, AutonomousConnection } from './connection';
 import { IndexableRegistry, newIndexableRegistry } from './indexable';
 import { JineBlockedError, JineInternalError, mapError } from './errors';
 
@@ -81,9 +81,9 @@ export class Database<$$ = {}> {
           const store_name = prop;
           // vvv Mimic missing key returning undefined
           if (!(store_name in self._substructures)) return undefined;
-          const aut_store = new AutonomousStore({
+          const aut_store = new StoreBroker({
             name: store_name,
-            conn: new AutonomousConnection({
+            conn: new ConnectionBroker({
               db_name: self.name,
               substructures: self._substructures,
               storables: self._storables,
@@ -104,7 +104,7 @@ export class Database<$$ = {}> {
   }
 
   // TODO: there's a better way to wrap requests and handle errors
-  // TODO: this should maybe be moved onto BoundConnection
+  // TODO: this should maybe be moved onto Connection
   async _newIdbConn(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(this.name);
@@ -123,8 +123,8 @@ export class Database<$$ = {}> {
    *
    * @returns A new connection
    */
-  async newConnection(): Promise<BoundConnection<$$>> {
-    return new BoundConnection<$$>({
+  async newConnection(): Promise<ConnectionActual<$$>> {
+    return new ConnectionActual<$$>({
       idb_conn: await this._newIdbConn(),
       substructures: this._substructures,
       storables: this._storables,
@@ -142,7 +142,7 @@ export class Database<$$ = {}> {
    * @typeParam T The return type of the callback.
    * @returns The callback result
    */
-  async connect<T>(callback: (conn: BoundConnection<$$>) => Promise<T>): Promise<T> {
+  async connect<T>(callback: (conn: ConnectionActual<$$>) => Promise<T>): Promise<T> {
     const conn = await this.newConnection();
     return await conn.wrap(async conn => await callback(conn));
   }

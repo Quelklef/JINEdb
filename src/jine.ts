@@ -4,10 +4,10 @@
 
 // (in order of ownership; lower is bound to higher)
 export { Database } from './database';
-export { Connection, BoundConnection, AutonomousConnection } from './connection';
+export { Connection, ConnectionActual, ConnectionBroker } from './connection';
 export { Transaction } from './transaction';
-export { Store, BoundStore, AutonomousStore } from './store';
-export { Index, BoundIndex, AutonomousIndex } from './index';
+export { Store, StoreActual, StoreBroker } from './store';
+export { Index, IndexActual, IndexBroker } from './index';
 
 export { Storable, NativelyStorable} from './storable';
 export { Indexable, NativelyIndexable} from './indexable';
