@@ -172,7 +172,7 @@ await jcon.transact([jcon.$.recipes], 'rw', async tx => {
   // Transactions are auto-committed when not in use
   await new Promise(resolve => setTimeout(resolve, 0));
   // The following is now an error:
-  await tx.$.recipes.add(banana_bread);
+  assert.rejects(async () => await tx.$.recipes.add(banana_bread));
 });
 
 
