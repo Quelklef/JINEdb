@@ -167,7 +167,7 @@ export class ConnectionBroker implements Connection {
     this._indexables = args.indexables;
   }
 
-  _new_idb_conn(): Promise<IDBDatabase> {
+  _newIdbConn(): Promise<IDBDatabase> {
     return new Promise<IDBDatabase>((resolve, reject) => {
       const db_name = this._db_name;
       const req = indexedDB.open(db_name);
@@ -179,8 +179,8 @@ export class ConnectionBroker implements Connection {
     });
   }
 
-  async _new_bound_conn(): Promise<ConnectionActual> {
-    const idb_conn = await this._new_idb_conn();
+  async _newConnectionActual(): Promise<ConnectionActual> {
+    const idb_conn = await this._newIdbConn();
     return new ConnectionActual({
       idb_conn: idb_conn,
       substructures: this._substructures,
@@ -194,7 +194,7 @@ export class ConnectionBroker implements Connection {
     mode: TransactionMode,
     callback: (tx: Transaction) => Promise<T>,
   ): Promise<T> {
-    const conn = await this._new_bound_conn();
+    const conn = await this._newConnectionActual();
     const result = await conn._transact(store_names, mode, callback);
     conn.close();
     return result;
@@ -206,7 +206,7 @@ export class ConnectionBroker implements Connection {
     mode: TransactionMode,
     callback: (tx: Transaction) => Promise<T>,
   ): Promise<T> {
-    const conn = await this._new_bound_conn();
+    const conn = await this._newConnectionActual();
     const result = await conn.transact(stores, mode, callback);
     conn.close();
     return result;
