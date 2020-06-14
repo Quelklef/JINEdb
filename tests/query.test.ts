@@ -16,7 +16,7 @@ interface $$ {
 }
 
 
-describe('query', () => {
+describe('selections', () => {
 
   let jine!: Database<$$>;
   let conn!: ConnectionActual<$$>;
@@ -35,7 +35,7 @@ describe('query', () => {
     conn.close();
   });
 
-  describe("selects", () => {
+  describe(".select", () => {
 
     const one = { value: 1 };
     const two = { value: 2 };
