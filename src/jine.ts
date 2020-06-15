@@ -9,8 +9,8 @@ export { Transaction } from './transaction';
 export { Store, StoreActual, StoreBroker } from './store';
 export { Index, IndexActual, IndexBroker } from './index';
 
-export { Storable, NativelyStorable} from './storable';
-export { Indexable, NativelyIndexable} from './indexable';
+export { Storable, NativelyStorable } from './storable';
+export { Indexable, NativelyIndexable } from './indexable';
 
 export { Encodable } from './codec-registry';
 
