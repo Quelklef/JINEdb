@@ -9,8 +9,6 @@ import { Transaction, TransactionMode, uglifyTransactionMode } from './transacti
 
 export interface Connection {
 
-  _transact<T>(store_names: Array<string>, mode: TransactionMode, callback: (tx: Transaction) => Promise<T>): Promise<T>;
-
   /**
    * Create a new transaction and run some code with it, automatically committing
    * if the code completes or aborting if it fails.
@@ -19,7 +17,7 @@ export interface Connection {
    * @typeparam R the type of the callback result
    * @returns The result of the callback
    */
-  transact<R>(stores: Array<Store<Storable>>, mode: TransactionMode, callback: (tx: Transaction) => Promise<R>): Promise<R>;
+  transact<R>(stores: Array<string | Store<Storable>>, mode: TransactionMode, callback: (tx: Transaction) => Promise<R>): Promise<R>;
 
 }
 
@@ -77,7 +75,15 @@ export class ConnectionActual<$$ = {}> implements Connection {
     });
   }
 
-  async _newTransaction(store_names: Array<string>, mode: TransactionMode): Promise<Transaction<$$>> {
+  /**
+   * Create a new transaction on the given stores with the given mode.
+   *
+   * @param stores The stores that the transaction wants access to.
+   * @param mode The transaction mode.
+   * @returns A new transaction
+   */
+  newTransaction(stores: Array<string | Store<any>>, mode: TransactionMode): Transaction<$$> {
+    const store_names = stores.map(s => typeof s === 'string' ? s : s.name);
     return new Transaction<$$>({
       idb_tx: this._idb_conn.transaction(store_names, uglifyTransactionMode(mode)),
       genuine: true,
@@ -87,34 +93,13 @@ export class ConnectionActual<$$ = {}> implements Connection {
     });
   }
 
-  /**
-   * Create a new transaction on the given stores with the given mode.
-   *
-   * @param stores The stores that the transaction wants access to.
-   * @param mode The transaction mode.
-   * @returns A new transaction
-   */
-  async newTransaction(stores: Array<Store<any>>, mode: TransactionMode): Promise<Transaction<$$>> {
-    const store_names = stores.map(store => store.name);
-    return await this._newTransaction(store_names, mode);
-  }
-
-  async _transact<R>(
-    store_names: Array<string>,
-    mode: TransactionMode,
-    callback: (tx: Transaction<$$>) => Promise<R>,
-  ): Promise<R> {
-    const tx = await this._newTransaction(store_names, mode);
-    return await tx.wrap(async tx => await callback(tx));
-  }
-
   /** @inheritdoc */
   async transact<R>(
-    stores: Array<Store<any>>,
+    stores: Array<string | Store<any>>,
     mode: TransactionMode,
     callback: (tx: Transaction<$$>) => Promise<R>,
   ): Promise<R> {
-    const tx = await this.newTransaction(stores, mode);
+    const tx = this.newTransaction(stores, mode);
     return await tx.wrap(async tx => await callback(tx));
   }
 
@@ -189,20 +174,9 @@ export class ConnectionBroker implements Connection {
     });
   }
 
-  async _transact<T>(
-    store_names: Array<string>,
-    mode: TransactionMode,
-    callback: (tx: Transaction) => Promise<T>,
-  ): Promise<T> {
-    const conn = await this._newConnectionActual();
-    const result = await conn._transact(store_names, mode, callback);
-    conn.close();
-    return result;
-  }
-
   /** @inheritdoc */
   async transact<T>(
-    stores: Array<Store<any>>,
+    stores: Array<string | Store<any>>,
     mode: TransactionMode,
     callback: (tx: Transaction) => Promise<T>,
   ): Promise<T> {

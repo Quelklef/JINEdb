@@ -365,7 +365,7 @@ export class StoreBroker<Item extends Storable> implements Store<Item> {
   }
 
   async _transact<T>(mode: TransactionMode, callback: (bound_store: StoreActual<Item>) => Promise<T>): Promise<T> {
-    return await this._conn._transact([this.name], mode, async tx => {
+    return await this._conn.transact([this.name], mode, async tx => {
       const bound_store = some(tx.stores[this.name]) as any as StoreActual<Item>;
       return await callback(bound_store);
     });
