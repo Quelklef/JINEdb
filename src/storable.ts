@@ -104,8 +104,8 @@ export interface StorableRegistry {
   // --
 
   hasCodec(val: any): val is Encodable;
-  encode(val: Encodable | Storable): Storable;
-  decode(val: Storable): any;
+  encode(val: Storable): NativelyStorable;
+  decode(val: NativelyStorable): Storable;
 
 }
 

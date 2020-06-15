@@ -2,13 +2,13 @@
 import { some, Codec, Constructor } from './util';
 
 /**
- * Cast a value to this type after registering it to be storable or indexable.
- *
- * Do **not** create a value that genuinely matches this type.
+ * Mark a class as encodable by having it satisfy this interface.
  *
  * For more information, see {@page Serialization and Custom Types}.
  */
-export type Encodable = { __DONT__: never };
+export interface Encodable {
+  __JINE_ENCODABLE__: true;
+}
 
 export class CodecRegistry<Encoded, Box extends Encoded> {
 

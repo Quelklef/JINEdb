@@ -192,7 +192,7 @@ export class StoreActual<Item extends Storable> implements Store<Item> {
       const req = this._idb_store.getAll();
       req.onsuccess = (event) => {
         const rows = (event.target as any).result as Array<Row>;
-        const items = rows.map(row => this._storables.decode(row.payload));
+        const items = rows.map(row => this._storables.decode(row.payload) as Item);
         resolve(items);
       };
       req.onerror = _event => reject(mapError(req.error));
@@ -261,7 +261,7 @@ export class StoreActual<Item extends Storable> implements Store<Item> {
     if (index_structure.kind === 'derived') {
       const trait_getter = some(index_structure.getter);
       await this.all()._replaceRows((row: Row) => {
-        const item = this._storables.decode(row.payload);
+        const item = this._storables.decode(row.payload) as Item;
         row.traits[index_name] = this._indexables.encode(trait_getter(item), explode);
         return row;
       });

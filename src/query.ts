@@ -197,7 +197,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     // Get the item at the cursor.
     this._assertActive();
     const row = some(this._idb_cur).value;
-    return this.storables.decode(row.payload);
+    return this.storables.decode(row.payload) as Item;
   }
 
   _stepOne(): Promise<void> {
