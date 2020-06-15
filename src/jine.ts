@@ -12,6 +12,8 @@ export { Index, IndexActual, IndexBroker } from './index';
 export { Storable, NativelyStorable} from './storable';
 export { Indexable, NativelyIndexable} from './indexable';
 
+export { Encodable } from './codec-registry';
+
 
 // == Top-level == //
 
