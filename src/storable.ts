@@ -1,5 +1,5 @@
 
-import { Dict, Constructor, Codec } from './util';
+import { Constructor, Codec } from './util';
 import { CodecRegistry, Encodable } from './codec-registry';
 
 // List is according to https://stackoverflow.com/a/22550288/4608364
@@ -30,7 +30,7 @@ export type NativelyStorable
 
 // works with "plain" objects. I assume that "plain" means string keys.
 // (empty interface is a hack to get TS to work)
-interface PlainObject extends Dict<NativelyStorable> { } // eslint-disable-line @typescript-eslint/no-empty-interface
+interface PlainObject extends Record<string, NativelyStorable> { } // eslint-disable-line @typescript-eslint/no-empty-interface
 
 // --
 
@@ -40,7 +40,16 @@ interface PlainObject extends Dict<NativelyStorable> { } // eslint-disable-line 
  * Jine supports a number of types out-of-the-box (see [[NativelyStorable]]).
  * To be able to store a custom type, it must be registered, see [[registerStorable]].
  */
-export type Storable = NativelyStorable | Encodable;
+export type Storable =
+  | NativelyStorable
+  | Encodable
+  | Array<Storable>
+  | Map<Storable, Storable>
+  | Set<Storable>
+  | StorableObject
+  ;
+
+interface StorableObject extends Record<string, Storable> { } // eslint-disable-line @typescript-eslint/no-empty-interface
 
 type Box = {
   __JINE_BOX__: NativelyStorable;
@@ -127,6 +136,82 @@ export function newStorableRegistry(): StorableRegistry {
   result.isStorable = function(val: any): val is Encodable {
     return this.hasCodec(val);
   }
+
+
+  result.encode = function(decoded: Storable): NativelyStorable {
+    
+    const super_encode = CodecRegistry.prototype.encode.bind(this);
+
+    // Recursively encode Array, Map, Set, and Object values in order to allow
+    // custom-Storable types within these types
+
+    if (decoded instanceof Array) {
+      const array = decoded as Array<Storable>;
+      return array.map(elem => this.encode(elem));
+    }
+
+    if (decoded instanceof Map) {
+      const map = decoded as Map<Storable, Storable>;
+      const pairs = [...map.entries()];
+      return new Map(pairs.map( ([k, v]) => [this.encode(k), this.encode(v)] ));
+    }
+
+    if (decoded instanceof Set) {
+      const set = decoded as Set<Storable>;
+      return new Set([...set].map(elem => this.encode(elem)));
+    }
+
+    if (Object.getPrototypeOf(decoded).constructor === Object) {
+      const object = decoded as Record<string, Storable>;
+      const unboxed = {} as Record<string, NativelyStorable>;
+      for (const key of Object.keys(object)) {
+        unboxed[key] = this.encode(object[key]);
+      }
+      const boxed = super_encode(unboxed);
+      return boxed;
+    }
+
+    return super_encode(decoded);
+    
+  }
+
+  result.decode = function(encoded: NativelyStorable): Storable {
+
+    const super_decode = CodecRegistry.prototype.decode.bind(this);
+
+    // Recursively decode Array, Map, Set and Object values
+
+    if (encoded instanceof Array) {
+      const array = encoded as Array<NativelyStorable>;
+      return array.map(elem => this.decode(elem));
+    }
+
+    if (encoded instanceof Map) {
+      const map = encoded as Map<NativelyStorable, NativelyStorable>;
+      const pairs = [...map.entries()];
+      return new Map(pairs.map(([k, v]) => [this.decode(k), this.decode(v)]));
+    }
+
+    if (encoded instanceof Set) {
+      const set = encoded as Set<NativelyStorable>;
+      return new Set([...set].map(elem => this.decode(elem)));
+    }
+
+    // vvv If the encoded value is a PLAIN object, no custom registered type
+    if (encoded instanceof Object && (encoded as any).__JINE_META__.startsWith('-')) {
+      const boxed = encoded as Box;
+      const unboxed = super_decode(boxed) as Record<string, NativelyStorable>;
+      const decoded = {} as Record<string, Storable>;
+      for (const key of Object.keys(unboxed)) {
+        decoded[key] = this.decode(unboxed[key]);
+      }
+      return decoded;
+    }
+    
+    return super_decode(encoded);
+    
+  }
+
   return result;
 
 }

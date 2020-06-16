@@ -22,7 +22,11 @@ export type NativelyIndexable
  * Jine supports a number of types out-of-the-box (see [[NativelyIndexable]]).
  * To be able to index with a custom type, it must be registered, see [[registerIndexable]].
  */
-export type Indexable = NativelyIndexable | Encodable;
+export type Indexable =
+  | NativelyIndexable
+  | Encodable
+  | Array<Indexable>
+  ;
 
 // --
 
@@ -89,6 +93,7 @@ export interface IndexableRegistry {
   decode(encoded: NativelyIndexable, exploding: boolean): Indexable;
 
 }
+
 export function newIndexableRegistry(): IndexableRegistry {
 
   const result = <IndexableRegistry> <any> new CodecRegistry<NativelyIndexable, Box>({
@@ -114,39 +119,62 @@ export function newIndexableRegistry(): IndexableRegistry {
   the codec registry.
 
   This is an issue when it comes to exploding (i.e. multiEntry)
-  indexes. If an exploding index is supplied an array, it will
-  index each item in the array rather than the array as a whole.
-
-  However, since we use arrays as boxes, that means that the
-  exploding index values will be boxed within an array and won't
-  properly explode.
-
+  indexes. When we store an array, it will be boxed in another array;
+  it will be mistaken to pass this to an idb multiEntry index
+  since what we want to pass in is an unboxed array of encoded items.
+  
   We account for this by adding a boolean 'exploding' argument to
   our encoding and decoding functions. If true, the given array
   will not be boxed, so as to preserve correct exploding behaviour.
 
   */
 
-  result.encode = function(val: Indexable, exploding: boolean): NativelyIndexable {
-    // See [1]
-    const super_encode = CodecRegistry.prototype.encode.bind(this) as any as CodecRegistry<NativelyIndexable, Box>['encode'];
+  result.encode = function(decoded: Indexable, exploding: boolean): NativelyIndexable {
+    
+    // vvv See [1]
+    const super_encode = CodecRegistry.prototype.encode.bind(this);
+
+    // vvv Account for exploding/multiEntry indexes
     if (exploding) {
-      const array = val as Array<any>;
-      return array.map(child => super_encode(child));
-    } else {
-      return super_encode(val);
+      const array = decoded as Array<Indexable>;
+      return array.map(elem => this.encode(elem, false));
     }
+
+    // vvv Recursively encode Array objects in order to allow
+    // custom-Indexable types within arrays
+    if (decoded instanceof Array) {
+      const array = decoded as Array<Indexable>;
+      const unboxed = array.map(elem => this.encode(elem, false));
+      const boxed = super_encode(unboxed);
+      return boxed;
+    }
+
+    return super_encode(decoded);
+    
   }
 
   result.decode = function(encoded: NativelyIndexable, exploding: boolean): Indexable {
-    // See [1]
-    const super_decode = CodecRegistry.prototype.decode.bind(this) as any as CodecRegistry<NativelyIndexable, Box>['decode'];
+
+    // vvv See [1]
+    const super_decode = CodecRegistry.prototype.decode.bind(this);
+
+    // vvv Account for exploding/multiEntry indexes
     if (exploding) {
       const array = encoded as Array<NativelyIndexable>;
-      return array.map(child => super_decode(child));
-    } else {
-      return super_decode(encoded);
+      return array.map(elem => this.decode(elem, false));
     }
+
+    // vvv Recursively decode Array objects
+    // Note that these objects will be boxed
+    if (encoded instanceof Array) {
+      const boxed = encoded as Box;
+      const unboxed: Array<NativelyIndexable> = super_decode(boxed);
+      const decoded = unboxed.map(elem => this.decode(elem, false));
+      return decoded;
+    }
+    
+    return super_decode(encoded);
+    
   }
 
   /* [1]
