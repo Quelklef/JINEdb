@@ -160,22 +160,11 @@ export class Database<$$ = {}> {
   }
 
   /**
-   * Like [[Database.connect]], except that the callbakc is allowed to update the format of the database,
+   * Like [[Database.connect]], except that the callback is allowed to update the format of the database,
    * for instance with [[Transaction.addStore]] and [[StoreActual.addIndex]].
    *
    * The callback accepts an extra argument, `genuine`. This value is equal to `tx.genuine` and is `true`
    * exactly when the upgrade is being done "for real" instead of being used to recalculate database shape.
-   *
-   * vvv TODO: move
-   * See, database upgrades typically involve two parts: one
-   * is altering the format of the database, such as adding and removing stores. The other part is any
-   * other work, such as updating modifying existing data to fit the new format. The unfortunate fact is that
-   * Jine is unable to save the database format in any persistant storage (as it would have to save functions,
-   * which is not possible in any perfeect manner); Jine this instead recalculates the database shape every
-   * runtime. This means it runs every database upgrade every runtime and simply tosses out any actual
-   * database modifications or writes. The argument `genuine` is `true` if this upgrade is being run only
-   * in order to calculate database shape, and `false` if the upgrade is being run "for real". One should
-   * wrap side-effectful that isn't e.g. a call to `tx.addStore` code in an `if (genuine)` guard.
    *
    * Also see {@page Versioning and Migrations}.
    *
