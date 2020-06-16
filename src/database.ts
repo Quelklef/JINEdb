@@ -1,12 +1,12 @@
 
-import { Transaction } from './transaction';
-import { StoreBroker } from './store';
 import { StoreStructure } from './structure';
+import { Store, StoreBroker } from './store';
 import { some, invoke, Dict } from './util';
+import { Transaction, TransactionMode } from './transaction';
 import { ConnectionActual, ConnectionBroker } from './connection';
-import { newStorableRegistry, StorableRegistry } from './storable';
 import { IndexableRegistry, newIndexableRegistry } from './indexable';
 import { JineBlockedError, JineInternalError, mapError } from './errors';
+import { Storable, newStorableRegistry, StorableRegistry } from './storable';
 
 async function getDbVersion(db_name: string): Promise<number> {
   /* Return current database version number. Returns an integer greater than or
@@ -292,6 +292,25 @@ export class Database<$$ = {}> {
     await this._ensureInitialized();
     const conn = await this.newConnection();
     return await conn.wrap(async conn => await callback(conn));
+  }
+
+  /**
+   * Convenience method for creating a single-use connection and transacting on it.
+   *
+   * The code
+   * ```ts
+   * await db.transact(tx => ...);
+   * ```
+   * is shorthand for
+   * ```ts
+   * await db.connect(async conn => await conn.transact(tx => ...))
+   * ```
+   */
+  async transact<R>(stores: Array<string | Store<Storable>>, mode: TransactionMode, callback: (tx: Transaction) => Promise<R>): Promise<R> {
+    await this._ensureInitialized();
+    return await this.connect(async conn =>
+      await conn.transact(stores, mode, async tx =>
+        await callback(tx)));
   }
 
   /**
