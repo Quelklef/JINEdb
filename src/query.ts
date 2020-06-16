@@ -447,6 +447,47 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
     });
   }
 
+  /**
+   * Iterate over the selected items.
+   *
+   * If another transaction is run during iteration, the transaction
+   * that the iterator is bound to will autocommit, and the next iteration
+   * will fail.
+   *
+   * @returns An asynchronous iterator
+   */
+  [Symbol.asyncIterator](): AsyncIterator<Item> {
+    
+    let iterator!: AsyncIterator<Item>;
+
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    this._withCursor('r', cursor => {
+      return new Promise(iter_done => {
+        iterator = {
+          async next(): Promise<IteratorResult<Item>> {
+
+            if (!cursor.initialized)
+              await cursor.init();
+
+            if (cursor.exhausted) {
+              const result: IteratorResult<Item> = { done: true, value: undefined };
+              iter_done();
+              return result;
+            } else {
+              const result: IteratorResult<Item> = { done: false, value: cursor.currentItem() };
+              await cursor.step();
+              return result;
+            }
+
+          }
+        }
+      });
+    });
+
+    return iterator;
+    
+  }
+
 }
 
 /**

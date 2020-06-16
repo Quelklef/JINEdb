@@ -73,6 +73,26 @@ describe('selections', () => {
       expect(odds).toEqual([one, three, five]);
     });
 
+    describe('regarding for-await', () => {
+
+      it('works', async () => {
+        const results = [];
+        for await (const result of conn.$.nums.all())
+          results.push(result);
+        expect(results).toStrictEqual([one, two, three, four, five])
+      });
+
+      it("times out if there's another operation during iteration", async () => {
+        const f = async () => {
+          for await (const result of conn.$.nums.all()) {
+            await conn.$.nums.array();
+          }
+        };
+        expect(f()).rejects.toThrow();
+      });
+
+    });
+
     it("supports * queries", async () => {
       const result = await conn.$.nums.by.value.select('everything').array();
       expect(result).toEqual([one, two, three, four, five]);
