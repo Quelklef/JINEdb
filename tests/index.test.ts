@@ -1,6 +1,6 @@
 
 import 'fake-indexeddb/auto';
-import { newJine, Database, Store, Index, ConnectionActual } from '../src/jine';
+import { Database, Store, Index, ConnectionActual } from '../src/jine';
 import { reset } from './shared';
 
 type Item = {
@@ -28,8 +28,8 @@ describe('index', () => {
 
   beforeEach(async () => {
     reset();
-    jine = await newJine<$$>('jine');
-    await jine.upgrade(1, async (genuine: boolean, tx) => {
+    jine = new Database<$$>('jine');
+    jine.migration(1, async (genuine: boolean, tx) => {
       const items = tx.addStore<Item>('items');
       items.addIndex<string>('index', '.attr');
       items.addIndex<string>('index_unique', '.attr_unique', { unique: true });

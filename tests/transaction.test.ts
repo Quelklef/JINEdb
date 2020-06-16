@@ -1,6 +1,6 @@
 
 import 'fake-indexeddb/auto';
-import { newJine, Database, Store, Index, ConnectionActual } from '../src/jine';
+import { Database, Store, Index, ConnectionActual } from '../src/jine';
 import { reset } from './shared';
 
 type Person = {
@@ -21,8 +21,8 @@ describe('transaction', () => {
 
   beforeEach(async () => {
     reset();
-    jine = await newJine<$$>('jine');
-    await jine.upgrade(1, async (genuine: boolean, tx) => {
+    jine = new Database<$$>('jine');
+    jine.migration(1, async (genuine: boolean, tx) => {
       tx.addStore<Person>('people');
     });
     conn = await jine.newConnection();

@@ -1,6 +1,6 @@
 
 import 'fake-indexeddb/auto';
-import { newJine, Database, Store, Index, ConnectionActual, NativelyIndexable, NativelyStorable } from '../src/jine';
+import { Database, Store, Index, ConnectionActual, NativelyIndexable, NativelyStorable } from '../src/jine';
 import { reset } from './shared';
 
 describe('migration', () => {
@@ -8,10 +8,10 @@ describe('migration', () => {
   let jine!: Database<any>;  // use <any> for convenience
   let conn!: ConnectionActual<any>;
 
-  beforeEach(async () => {
+  beforeEach(() => {
     reset();
-    jine = await newJine<any>('jine');
-    await jine.upgrade(1, async (tx: any) => { });
+    jine = new Database<any>('jine');
+    jine.migration(1, async (tx: any) => { });
   });
 
   it('allows for adding and removing stores', async () => {

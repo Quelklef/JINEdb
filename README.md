@@ -7,7 +7,7 @@ Almost all information is [in the docs](https://quelklef.github.io/JINEdb/docs).
 But while you're here, have some delicious sample code:
 
 ```ts
-import { newJine, Store, Index, Transaction } from 'jinedb';
+import { Database, Connection, Transaction, Store, Index } from 'jinedb';
 const assert = require('assert').strict;
 
 // Type to store in DB
@@ -27,13 +27,9 @@ interface $$ {
   };
 };
 
-// if your system doesn't support top-level awaits
-async function main() {
-
-// Initialize database
-const jine = await newJine<$$>('users');
-
-await jine.upgrade(1, async (genuine: boolean, tx: Transaction<$$>) => {
+// Set up database
+const jine = new Database<$$>('users');
+jine.migration(1, async (genuine: boolean, tx: Transaction<$$>) => {
   // Add user storage
   const users = tx.addStore<User>('users');
   // Index by unique username
@@ -48,15 +44,15 @@ await jine.upgrade(1, async (genuine: boolean, tx: Transaction<$$>) => {
 });
 
 // Open connection
-const jcon = await jine.newConnection();
+jine.connect(async conn => {
 
 // Add users
-await jcon.$.users.add({ username: 'billy02'   , friends: ['AverageJoe'] });
-await jcon.$.users.add({ username: 'AverageJoe', friends: ['billy02']    });
-await jcon.$.users.add({ username: 'l0neRider' , friends: []             });
+await conn.$.users.add({ username: 'billy02'   , friends: ['AverageJoe'] });
+await conn.$.users.add({ username: 'AverageJoe', friends: ['billy02']    });
+await conn.$.users.add({ username: 'l0neRider' , friends: []             });
 
 // billy02 and l0neRider just become friends!
-await jcon.transact([jine.$.users], 'rw', async (tx: Transaction<$$>) => {
+await conn.transact([jine.$.users], 'rw', async (tx: Transaction<$$>) => {
   await tx.$.users.by.name.selectOne('l0neRider').update({ friends: ['billy02'] });
 
   await tx.$.users.by.name.selectOne('billy02').replace((old_billy02: User) =>
@@ -64,24 +60,19 @@ await jcon.transact([jine.$.users], 'rw', async (tx: Transaction<$$>) => {
 });
 
 // Who's friends with billy02?
-const billy02_friends = await jcon.$.users.by.friends.find('billy02');
+const billy02_friends = await conn.$.users.by.friends.find('billy02');
 assert.deepEqual(['AverageJoe', 'l0neRider'], billy02_friends.map(user => user.username));
 
 // Anyone without friends?
-const lonely = await jcon.$.users.by.popularity.find(0);
+const lonely = await conn.$.users.by.popularity.find(0);
 // nope!
 assert.equal(0, lonely.length);
 
 // Anyone super popular?
-const popular = await jcon.$.users.by.popularity.select({ above: 15 }).array();
+const popular = await conn.$.users.by.popularity.select({ above: 15 }).array();
 // also nope!
 assert.equal(0, popular.length);
 
-// Close database connection
-jcon.close();
-
-}
-
-main();
+});
 ```
 

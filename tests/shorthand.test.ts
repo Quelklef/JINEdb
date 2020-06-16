@@ -1,6 +1,6 @@
 
 import 'fake-indexeddb/auto';
-import { newJine, Database, Store, Index, ConnectionActual, Transaction } from '../src/jine';
+import { Database, Store, Index, ConnectionActual, Transaction } from '../src/jine';
 import { reset } from './shared';
 
 type Post = {
@@ -65,7 +65,7 @@ describe('shorthand', () => {
 
   beforeEach(async () => {
     reset();
-    jine = await newJine<$$>('jine');
+    jine = new Database<$$>('jine');
     await jine.upgrade(1, async (genuine: boolean, tx) => {
       const posts = tx.addStore<Post>('posts');
       posts.addIndex<string>('title', '.title');
