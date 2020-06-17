@@ -11,7 +11,7 @@
     /* Specify ECMAScript target version: 'ES3' (default), 'ES5', 'ES2015', 'ES2016', 'ES2017', 'ES2018', 'ES2019' or 'ESNEXT'. */
     "target": "ES6",
     /* Specify module code generation: 'none', 'commonjs', 'amd', 'system', 'umd', 'es2015', or 'ESNext'. */
-    "module": "es2015",
+    "module": "commonjs",
     /* Specify library files to be included in the compilation. */
     "lib": ["esnext", "dom"],
     /* Allow javascript files to be compiled. */
