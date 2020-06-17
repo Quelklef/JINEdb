@@ -381,6 +381,16 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
   }
 
   /**
+  * Test if the selection is empty or not.
+  */
+  async isEmpty(): Promise<boolean> {
+    return await this._withCursor('r', async cursor => {
+      await cursor.init();
+      return cursor.exhausted;
+    });
+  }
+
+  /**
    * Replace all selected items.
    *
    * @param mapper Given an existing item, this function should return the new item.

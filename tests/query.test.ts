@@ -15,11 +15,16 @@ interface $$ {
   };
 }
 
-
-describe('selections', () => {
+describe('queries!', () => {
 
   let jine!: Database<$$>;
   let conn!: ConnectionActual<$$>;
+
+  const one = { value: 1 };
+  const two = { value: 2 };
+  const three = { value: 3 };
+  const four = { value: 4 };
+  const five = { value: 5 };
 
   beforeEach(async () => {
     reset();
@@ -29,33 +34,26 @@ describe('selections', () => {
       nums.addIndex<number>('value', '.value');
     });
     conn = await jine.newConnection();
+    conn.transact([conn.$.nums], 'rw', async tx => {
+      await tx.$.nums.add(one);
+      await tx.$.nums.add(two);
+      await tx.$.nums.add(three);
+      await tx.$.nums.add(four);
+      await tx.$.nums.add(five);
+    });
   });
 
   afterEach(async () => {
+    await conn.$.nums.clear();
     conn.close();
   });
 
+  it('Index supports .exists', async () => {
+    expect(await conn.$.nums.by.value.exists(3)).toBe(true);
+    expect(await conn.$.nums.by.value.exists(6)).toBe(false);
+  });
+
   describe(".select", () => {
-
-    const one = { value: 1 };
-    const two = { value: 2 };
-    const three = { value: 3 };
-    const four = { value: 4 };
-    const five = { value: 5 };
-
-    beforeEach(async () => {
-      conn.transact([conn.$.nums], 'rw', async tx => {
-        await tx.$.nums.add(one);
-        await tx.$.nums.add(two);
-        await tx.$.nums.add(three);
-        await tx.$.nums.add(four);
-        await tx.$.nums.add(five);
-      });
-    });
-
-    afterEach(async () => {
-      await conn.$.nums.clear();
-    });
 
     it('supports .update', async () => {
       await conn.$.nums.by.value.select({ equals: 3 }).update({ value: 10 });
@@ -91,6 +89,11 @@ describe('selections', () => {
         expect(f()).rejects.toThrow();
       });
 
+    });
+
+    it('supports .isEmpty', async () => {
+      expect(await conn.$.nums.by.value.select({ equals: 3 }).isEmpty()).toBe(false);
+      expect(await conn.$.nums.by.value.select({ equals: 6 }).isEmpty()).toBe(true);
     });
 
     it("supports * queries", async () => {

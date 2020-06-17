@@ -70,6 +70,11 @@ export interface Index<Item extends Storable, Trait extends Indexable> {
   explode: boolean;
 
   /**
+   * Test if there are any items with the given trait
+   */
+  exists(trait: Trait): Promise<boolean>;
+
+  /**
    * Find all items matching a given trait.
    * @param trait The trait to look for
    * @returns The found items.
@@ -157,6 +162,11 @@ export class IndexActual<Item extends Storable, Trait extends Indexable> impleme
     this._sibling_structures = args.sibling_structures;
     this._storables = args.storables;
     this._indexables = args.indexables;
+  }
+
+  /** @inheritdoc */
+  async exists(trait: Trait): Promise<boolean> {
+    return !(await this.select({ equals: trait }).isEmpty());
   }
 
   /** @inheritdoc */
@@ -255,6 +265,11 @@ export class IndexBroker<Item extends Storable, Trait extends Indexable> impleme
       const bound_index = some(bound_store.indexes[this.name]) as IndexActual<Item, Trait>;
       return await callback(bound_index);
     });
+  }
+  
+  /** @inheritdoc */
+  async exists(trait: Trait): Promise<boolean> {
+    return !(await this.select({ equals: trait }).isEmpty());
   }
 
   /** @inheritdoc */
