@@ -129,6 +129,7 @@ export class Transaction<$$ = {}> {
         structure: some(this._substructures[store_name]),
         storables: this._storables,
         indexables: this._indexables,
+        tx: this,
       });
       this.stores[store_name] = store;
     }
@@ -193,7 +194,8 @@ export class Transaction<$$ = {}> {
    */
   addStore<Item extends Storable>(store_name: string): StoreActual<Item> {
 
-    this._idb_db.createObjectStore(store_name, { keyPath: 'id', autoIncrement: true });
+    if (this.genuine)
+      this._idb_db.createObjectStore(store_name, { keyPath: 'id', autoIncrement: true });
 
     const store_structure = {
       name: store_name,
@@ -205,6 +207,7 @@ export class Transaction<$$ = {}> {
       structure: store_structure,
       storables: this._storables,
       indexables: this._indexables,
+      tx: this,
     });
 
     this._substructures[store_name] = store_structure;
@@ -222,7 +225,8 @@ export class Transaction<$$ = {}> {
    * @param name The name of the store to remove
    */
   removeStore(name: string): void {
-    this._idb_db.deleteObjectStore(name);
+    if (this.genuine)
+      this._idb_db.deleteObjectStore(name);
     delete this._substructures[name];
     delete this.stores[name];
   }

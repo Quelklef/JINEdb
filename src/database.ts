@@ -1,10 +1,10 @@
 
 import { StoreStructure } from './structure';
 import { Store, StoreBroker } from './store';
-import { some, invoke, Dict } from './util';
 import { Transaction, TransactionMode } from './transaction';
 import { ConnectionActual, ConnectionBroker } from './connection';
 import { IndexableRegistry, newIndexableRegistry } from './indexable';
+import { some, invoke, Dict, DOMStringList_to_Array } from './util';
 import { JineBlockedError, JineInternalError, mapError } from './errors';
 import { Storable, newStorableRegistry, StorableRegistry } from './storable';
 
@@ -194,7 +194,28 @@ export class Database<$$ = {}> {
   }
 
   // Run a database migration
+  // Will only run a genuine migration if the version is greater than the current db version
   async _upgrade(version: number, callback: (genuine: boolean, tx: Transaction<$$>) => Promise<void>): Promise<void> {
+
+    const genuine = version > some(this.version);
+
+    const invokeAndUpdate = async (tx: Transaction<$$>): Promise<void> => {
+      // Invoke the callback with the given transaction
+      // Use the results to upgrade the database info
+      
+      await tx.wrap(async tx => await callback(genuine, tx));
+
+      // vvv Update structure if stores were added etc
+      // TODO: the `(!tx.genuine ||` is included because ingeuine transactions ARE aborted.
+      // however, this will (wronlgy) update structure from
+      // a genuinely user-aborted ingenuine transaction
+      if (!tx.genuine || tx.state !== 'aborted') {
+        this._substructures = tx._substructures;
+        this._storables = tx._storables;
+        this._indexables = tx._indexables;
+        this.version = version;
+      }
+    };
 
     return new Promise((resolve, reject) => {
 
@@ -216,40 +237,59 @@ export class Database<$$ = {}> {
         const idb_tx = some(req.transaction);
         const tx = new Transaction<$$>({
           idb_tx: idb_tx,
-          genuine: version > some(this.version),
+          genuine: genuine,
           substructures: this._substructures,
           storables: this._storables,
           indexables: this._indexables,
         });
 
+        // (*)
         // vvv The below looks concerning due to the fact that we don't await the promise.
         //     In fact, it's fine; floating callback are natural when working with idb.
         //     The 'after' code doesn't come after awaiting the promise, it comes in onsuccess.
         // eslint-disable-next-line @typescript-eslint/no-floating-promises
-        invoke(async (): Promise<void> => {
-          await tx.wrap(async tx => await callback(tx.genuine, tx));
-
-          // vvv Update structure if stores were added etc
-          if (tx.state !== 'aborted') {
-            this._substructures = tx._substructures;
-            this._storables = tx._storables;
-            this._indexables = tx._indexables;
-            if (version > some(this.version)) this.version = version;
-          }
-        });
+        invokeAndUpdate(tx);
       };
 
-      req.onsuccess = _event => {
-        const idb_db = req.result;
-        idb_db.close();
-        resolve();
-      };
+      if (genuine) {
+        req.onsuccess = _event => {
+          const idb_conn = req.result;
+          idb_conn.close();
+          resolve();
+        };
+      } else {
+        req.onsuccess = _event => {
+          // vvv See (*)
+          // eslint-disable-next-line @typescript-eslint/no-floating-promises
+          invoke(async () => {
+            
+            const idb_conn = req.result;
+            // open a readonly transaction with all object stores
+            const idb_tx = idb_conn.transaction(DOMStringList_to_Array(idb_conn.objectStoreNames), 'readonly');
+
+            // If we didn't do a version change, we still need to
+            // upgrade the internal structure info
+            const tx = new Transaction<$$>({
+              idb_tx: idb_tx,
+              genuine: genuine,
+              substructures: this._substructures,
+              storables: this._storables,
+              indexables: this._indexables,
+            });
+            
+            await invokeAndUpdate(tx);
+
+            idb_conn.close();
+            resolve();
+
+          });
+        };
+      }
 
     });
   }
 
   // TODO: there's a better way to wrap requests and handle errors
-  // TODO: this should maybe be moved onto Connection
   async _newIdbConn(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(this.name);

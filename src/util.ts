@@ -37,3 +37,11 @@ export function invoke<T>(iife: () => T): T {
 
   return iife();
 }
+
+export function DOMStringList_to_Array(dsl: DOMStringList): Array<string> {
+  const result = [];
+  for (let i = 0; i < dsl.length; i++) {
+    result.push('' + dsl.item(i));
+  }
+  return result;
+}

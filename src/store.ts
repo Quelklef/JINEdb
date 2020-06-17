@@ -4,9 +4,9 @@ import { Storable } from './storable';
 import { mapError } from './errors';
 import { some, Dict } from './util';
 import { Connection } from './connection';
-import { TransactionMode } from './transaction';
 import { StorableRegistry } from './storable';
 import { Selection, Cursor } from './query';
+import { Transaction, TransactionMode } from './transaction';
 import { StoreStructure, IndexStructure } from './structure';
 import { Index, IndexActual, IndexBroker } from './index';
 import { Indexable, IndexableRegistry, NativelyIndexable } from './indexable';
@@ -96,11 +96,14 @@ export class StoreActual<Item extends Storable> implements Store<Item> {
   _storables: StorableRegistry;
   _indexables: IndexableRegistry;
 
+  _tx: Transaction;
+
   constructor(args: {
     idb_store: IDBObjectStore;
     structure: StoreStructure;
     storables: StorableRegistry;
     indexables: IndexableRegistry;
+    tx: Transaction;
   }) {
     this.name = args.idb_store.name;
 
@@ -108,6 +111,8 @@ export class StoreActual<Item extends Storable> implements Store<Item> {
     this._substructures = args.structure.indexes;
     this._storables = args.storables;
     this._indexables = args.indexables;
+
+    this._tx = args.tx;
 
     this.indexes = {};
     for (const index_name of Object.keys(this._substructures)) {
@@ -241,14 +246,20 @@ export class StoreActual<Item extends Storable> implements Store<Item> {
     // create idb index
     const idb_tx = this._idb_store.transaction;
     const idb_store = idb_tx.objectStore(this.name);
-    const idb_index = idb_store.createIndex(
-      index_name,
-      `traits.${index_name}`,
-      {
-        unique: unique,
-        multiEntry: explode,
-      },
-    );
+
+    let idb_index;
+    if (this._tx.genuine) {
+      idb_index = idb_store.createIndex(
+        index_name,
+        `traits.${index_name}`,
+        {
+          unique: unique,
+          multiEntry: explode,
+        },
+      );
+    } else {
+      idb_index = idb_store.index(index_name);
+    }
 
     const index_structure = new IndexStructure({
       name: index_name,
@@ -292,15 +303,19 @@ export class StoreActual<Item extends Storable> implements Store<Item> {
    */
   async removeIndex(name: string): Promise<void> {
 
-    // remove idb index
-    this._idb_store.deleteIndex(name);
+    if (this._tx.genuine) {
 
-    // update existing rows if needed
-    if (some(this.indexes[name]).kind === 'derived') {
-      await this.all()._replaceRows((row: Row) => {
-        delete row.traits[name];
-        return row;
-      });
+      // remove idb index
+      this._idb_store.deleteIndex(name);
+
+      // update existing rows if needed
+      if (some(this.indexes[name]).kind === 'derived') {
+        await this.all()._replaceRows((row: Row) => {
+          delete row.traits[name];
+          return row;
+        });
+      }
+
     }
 
     // remove index from this object

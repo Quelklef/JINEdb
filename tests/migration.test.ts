@@ -3,10 +3,35 @@ import 'fake-indexeddb/auto';
 import { Database, Store, Index, ConnectionActual, NativelyIndexable, NativelyStorable } from '../src/jine';
 import { reset } from './shared';
 
+describe('migration (no beforeEach)', () => {
+
+  it('after reloading, jine should be able to reconstruct structure via migrations', async () => {
+
+    let db!: Database<any>;
+    
+    async function setup() {
+      db = new Database<any>('db');
+      await db.upgrade(1, async (genuine: boolean, tx: any) => {
+        tx.addStore('items');
+      });
+    }
+
+    // session 1
+    await setup();
+    await db.$.items.add('item');
+    expect(await db.$.items.array()).toStrictEqual(['item']);
+
+    // session 2
+    await setup();
+    expect(await db.$.items.array()).toStrictEqual(['item']);
+    
+  });
+  
+});
+
 describe('migration', () => {
 
   let jine!: Database<any>;  // use <any> for convenience
-  let conn!: ConnectionActual<any>;
 
   beforeEach(() => {
     reset();
