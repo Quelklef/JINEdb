@@ -288,14 +288,17 @@ describe("usage", () => {
         expectArraySetEq(rooms, ROOMS);
       });
 
-      it("times out if there's another mid-iteration operation", async () => {
+      it("throws if there's another mid-iteration operation", async () => {
         const bugged = async () => {
           for await (const result of $.rooms.all()) {
             // Another operation
-            await $.rooms.array();
+            await new Promise(resolve => setTimeout(resolve, 0));
+            // Note we can't use an "actual" other operation here
+            // because if there $ were from a Database, that would
+            // open a new connection and would actually *not* throw
           }
         };
-        expect(bugged()).rejects.toThrow();
+        expect(bugged).rejects.toThrow();
       });
       
     });
