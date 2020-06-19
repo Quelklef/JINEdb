@@ -165,7 +165,8 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     return new Promise((resolve, reject) => {
       req.onsuccess = _event => {
         this._idb_cur = req.result;
-        resolve();
+        // First item may fail a predicate, advance to one that doesn't
+        this._advanceToNextSatisfactory().then(resolve, reject);
       }
       req.onerror = _event => reject(mapError(req.error));
     });
@@ -217,22 +218,25 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     }
   }
 
-  async step(): Promise<void> {
-    if (this.predicates.length === 0) {
-      await this._stepOne();
-      return;
-    }
-    
+  async _advanceToNextSatisfactory(): Promise<void> {
+    if (this.predicates.length === 0)
+     return;
+     
     for (;;) {
-      await this._stepOne();
-
       if (this.exhausted)
         break;
 
       const item = this.currentItem();
       if (this.predicates.every(p => p(item)))
         break;
+        
+      await this._stepOne();
     }
+  }
+
+  async step(): Promise<void> {
+    await this._stepOne();
+    await this._advanceToNextSatisfactory();
   }
 
   filter(...predicates: Array<(item: Item) => boolean>): this {

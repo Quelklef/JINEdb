@@ -273,7 +273,7 @@ describe("usage", () => {
     });
 
     it("$.{store}.by.{index}.select().filter()", async () => {
-      const expected = ROOMS.filter(room => room.name.includes('stairway'));
+      const expected = ROOMS.filter(room => room.name.includes("stairway"));
       const actual = await $.rooms.all().filter(room => room.name.includes("stairway")).array();
       expectArraySetEq(actual, expected);
     });
