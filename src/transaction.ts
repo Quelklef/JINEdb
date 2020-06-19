@@ -1,6 +1,8 @@
 
 import { clone } from 'true-clone';
-import { StoreActual } from './store';
+
+import { Store } from './store';
+import { AsyncCont } from './cont';
 import { some, Dict } from './util';
 import { StoreStructure } from './structure';
 import { IndexableRegistry } from './indexable';
@@ -46,7 +48,7 @@ export class Transaction<$$ = {}> {
    *
    * For non-programmatic code, [[Transaction.$]] is nicer to use.
    */
-  stores: Dict<StoreActual<Storable>>;
+  stores: Dict<Store<Storable>>;
 
   /**
    * A non-genuine transaction will not allow `.commit()` and will not
@@ -124,12 +126,11 @@ export class Transaction<$$ = {}> {
     this.stores = {};
     for (const store_name of Object.keys(this._substructures)) {
       const idb_store = this._idb_tx.objectStore(store_name);
-      const store = new StoreActual({
-        idb_store: idb_store,
+      const store = new Store({
+        idb_store_k: AsyncCont.fromValue(idb_store),
         structure: some(this._substructures[store_name]),
         storables: this._storables,
         indexables: this._indexables,
-        tx: this,
       });
       this.stores[store_name] = store;
     }
@@ -192,7 +193,7 @@ export class Transaction<$$ = {}> {
    * @param name The name to give the new store
    * @returns The new store
    */
-  addStore<Item extends Storable>(store_name: string): StoreActual<Item> {
+  addStore<Item extends Storable>(store_name: string): Store<Item> {
 
     if (this.genuine)
       this._idb_db.createObjectStore(store_name, { keyPath: 'id', autoIncrement: true });
@@ -202,16 +203,15 @@ export class Transaction<$$ = {}> {
       indexes: { },
     };
 
-    const store = new StoreActual<Item>({
-      idb_store: this._idb_tx.objectStore(store_name),
+    const store = new Store<Item>({
+      idb_store_k: AsyncCont.fromValue(this._idb_tx.objectStore(store_name)),
       structure: store_structure,
       storables: this._storables,
       indexables: this._indexables,
-      tx: this,
     });
 
     this._substructures[store_name] = store_structure;
-    this.stores[store_name] = store as any as StoreActual<Storable>;
+    this.stores[store_name] = store as any as Store<Storable>;
 
     return store;
 

@@ -1,13 +1,13 @@
 
 
 import 'fake-indexeddb/auto';
-import { Database, Store, Index, ConnectionActual, NativelyIndexable, NativelyStorable } from '../src/jine';
+import { Database, Store, Index, Connection, NativelyIndexable, NativelyStorable } from '../src/jine';
 import { reset } from './shared';
 
 describe('core', () => {
 
   let jine!: Database<any>;  // use <any> for convenience
-  let conn!: ConnectionActual<any>;
+  let conn!: Connection<any>;
 
   beforeEach(() => {
     reset();
@@ -167,7 +167,7 @@ describe('core', () => {
         },
       });
       const itemstore = tx.addStore('itemstore');
-      itemstore.addIndex('trait', (item: Item) => item.nums.map(n => new MyCustomIndexable(n as any)));
+      await itemstore.addIndex('trait', (item: Item) => item.nums.map(n => new MyCustomIndexable(n as any)));
       for (const item of items)
         await itemstore.add(item);
     });

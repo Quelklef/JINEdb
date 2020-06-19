@@ -1,11 +1,11 @@
 
 import { Row } from './row';
+import { Store } from './store';
+import { Index } from './index';
 import { mapError } from './errors';
 import { some, Dict } from './util';
 import { IndexStructure } from './structure';
 import { TransactionMode } from './transaction';
-import { Store, StoreActual } from './store';
-import { Index, IndexActual } from './index';
 import { Storable, StorableRegistry } from './storable';
 import { Indexable, NativelyIndexable, IndexableRegistry } from './indexable';
 
@@ -126,7 +126,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
 
   readonly _query: Query<Trait>;
 
-  readonly _idb_source: IDBIndex | IDBObjectStore;
+  readonly _idb_source: IDBObjectStore | IDBIndex;
   _idb_req: IDBRequest | null;
   _idb_cur: IDBCursorWithValue | null;
 
@@ -334,18 +334,15 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
     this.predicates = [];
   }
 
-  async _withCursor<T>(mode: TransactionMode, callback: (cursor: Cursor<Item, Trait>) => Promise<T>): Promise<T> {
+  async _withCursor<R>(mode: TransactionMode, callback: (cursor: Cursor<Item, Trait>) => Promise<R>): Promise<R> {
 
-    type TransactType = <T>(mode: TransactionMode, callback: (bound_source: StoreActual<Item> | IndexActual<Item, Trait>) => Promise<T>) => Promise<T>;
-    const transact: TransactType = this.source._transact.bind(this.source);
+    const idb_source_k =
+      this.source instanceof Store
+        ? (this.source as any)._idb_store_k
+        : (this.source as any)._idb_index_k;
 
-    return await transact(mode, async (bound_source: StoreActual<Item> | IndexActual<Item, Trait>) => {
-
-      const idb_source =
-        bound_source instanceof StoreActual
-          ? (bound_source as any)._idb_store
-          : (bound_source as any)._idb_index;
-
+    // TODO: use transactionmode
+    return await idb_source_k.run(async (idb_source: IDBObjectStore | IDBIndex) => {
       const cursor = new Cursor<Item, Trait>({
         idb_source: idb_source,
         query: this.query,
@@ -355,7 +352,6 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
       });
       cursor.filter(...this.predicates);
       return await callback(cursor);
-
     });
 
   }
@@ -495,6 +491,58 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
     });
 
     return iterator;
+    
+  }
+  
+  other_asyncIterator(): AsyncIterator<Item> {
+
+    // !-!-!-!-!-!-!-!-! WARNING !-!-!-!-!-!-!-!-!
+    // Reading the following code has been linked
+    // to such effects as:
+    // - Nausea and/or vomiting
+    // - Psychotic break from reality
+    // - Beginning or ending of belief in God
+    // - Mid-life crisis
+    // Proceed at your own risk!
+    
+    let resolve_cursor: (cursor: Cursor<Item, Trait>) => void;
+    const cursor_p: Promise<Cursor<Item, Trait>>
+      = new Promise(resolve => resolve_cursor = resolve);
+
+    let resolve_iterator_done: (iterator_done: () => void) => void;
+    const iterator_done_p: Promise<() => void>
+      = new Promise(resolve => resolve_iterator_done = resolve);
+   
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    this._withCursor('r', cursor => {
+      resolve_cursor(cursor);
+      return new Promise(resolve => {
+        const iterator_done = resolve;
+        resolve_iterator_done(iterator_done);
+      });
+    });
+
+    return {
+      async next(): Promise<IteratorResult<Item>> {
+
+        const iterator_done = await iterator_done_p;
+        const cursor = await cursor_p;
+
+        if (!cursor.initialized)
+          await cursor.init();
+
+        if (cursor.exhausted) {
+          const result: IteratorResult<Item> = { done: true, value: undefined };
+          iterator_done();
+          return result;
+        } else {
+          const result: IteratorResult<Item> = { done: false, value: cursor.currentItem() };
+          await cursor.step();
+          return result;
+        }
+
+      }
+    };
     
   }
 

@@ -1,6 +1,6 @@
 
 import 'fake-indexeddb/auto';
-import { Database, Store, Index, ConnectionActual } from '../src/jine';
+import { Database, Store, Index, Connection } from '../src/jine';
 import { reset } from './shared';
 
 type Person = {
@@ -17,7 +17,7 @@ interface $$ {
 describe('transaction', () => {
 
   let jine!: Database<$$>;
-  let conn!: ConnectionActual<$$>;
+  let conn!: Connection<$$>;
 
   beforeEach(async () => {
     reset();

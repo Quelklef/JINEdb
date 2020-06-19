@@ -1,6 +1,6 @@
 
 import 'fake-indexeddb/auto';
-import { Database, Store, Index, ConnectionActual, NativelyIndexable, NativelyStorable } from '../src/jine';
+import { Database, Store, Index, Connection, NativelyIndexable, NativelyStorable } from '../src/jine';
 import { reset } from './shared';
 
 describe('migration (no beforeEach)', () => {

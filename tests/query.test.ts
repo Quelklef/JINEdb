@@ -1,6 +1,6 @@
 
 import 'fake-indexeddb/auto';
-import { Database, Store, Index, ConnectionActual } from '../src/jine';
+import { Database, Store, Index, Connection } from '../src/jine';
 import { reset } from './shared';
 
 type Num = {
@@ -18,7 +18,7 @@ interface $$ {
 describe('queries!', () => {
 
   let jine!: Database<$$>;
-  let conn!: ConnectionActual<$$>;
+  let conn!: Connection<$$>;
 
   const one = { value: 1 };
   const two = { value: 2 };

@@ -1,8 +1,9 @@
 
+import { Store } from './store';
+import { AsyncCont } from './cont';
+import { Connection } from './connection';
 import { StoreStructure } from './structure';
-import { Store, StoreBroker } from './store';
 import { Transaction, TransactionMode } from './transaction';
-import { ConnectionActual, ConnectionBroker } from './connection';
 import { IndexableRegistry, newIndexableRegistry } from './indexable';
 import { some, invoke, Dict, DOMStringList_to_Array } from './util';
 import { JineBlockedError, JineInternalError, mapError } from './errors';
@@ -14,7 +15,7 @@ async function getDbVersion(db_name: string): Promise<number> {
   database's name. All other version numbers are given by the underlying idb database
   version number.
 
-  This method does NOT prolong the curernt transaction. */
+  This method does NOT prolong the current transaction. */
 
   const database_names: Array<string> =
     // [2020-05-17] types don't include .databases() but docs do:
@@ -96,19 +97,22 @@ export class Database<$$ = {}> {
           const store_name = prop;
           // vvv Mimic missing key returning undefined
           if (!(store_name in self._substructures)) return undefined;
-          const aut_store = new StoreBroker({
-            name: store_name,
-            conn: new ConnectionBroker({
-              db_name: self.name,
-              substructures: self._substructures,
-              storables: self._storables,
-              indexables: self._indexables,
-            }),
+
+          const idb_conn_k = AsyncCont.fromProducer(async () => await self._newIdbConn());
+          const idb_store_k = idb_conn_k.map(idb_conn => {
+            // TODO: how to tell what mode? cant hardcode readwrie
+            const idb_tx = idb_conn.transaction([store_name], 'readwrite');
+            const idb_store = idb_tx.objectStore(store_name);
+            return idb_store;
+          });
+          const store = new Store({
+            idb_store_k: idb_store_k,
             structure: some(self._substructures[store_name]),
             storables: self._storables,
             indexables: self._indexables,
           });
-          return aut_store;
+
+          return store;
         }
       }
     });
@@ -308,10 +312,13 @@ export class Database<$$ = {}> {
    *
    * @returns A new connection
    */
-  async newConnection(): Promise<ConnectionActual<$$>> {
+  async newConnection(): Promise<Connection<$$>> {
     await this._ensureInitialized();
-    return new ConnectionActual<$$>({
-      idb_conn: await this._newIdbConn(),
+    return new Connection<$$>({
+      // vvv Yes, we want to `await this._newIdbConn`; this provides the guarantee
+      //     that consumers of the continuation never have to wait
+      // TODO: remove this :)  -- it should cause problems in Selection#asyncIterator
+      idb_conn_k: AsyncCont.fromValue(await this._newIdbConn()),
       substructures: this._substructures,
       storables: this._storables,
       indexables: this._indexables,
@@ -328,7 +335,7 @@ export class Database<$$ = {}> {
    * @typeparam T The return type of the callback.
    * @returns The callback result
    */
-  async connect<R>(callback: (conn: ConnectionActual<$$>) => Promise<R>): Promise<R> {
+  async connect<R>(callback: (conn: Connection<$$>) => Promise<R>): Promise<R> {
     await this._ensureInitialized();
     const conn = await this.newConnection();
     return await conn.wrap(async conn => await callback(conn));

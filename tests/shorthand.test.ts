@@ -1,6 +1,6 @@
 
 import 'fake-indexeddb/auto';
-import { Database, Store, Index, ConnectionActual, Transaction } from '../src/jine';
+import { Database, Store, Index, Connection, Transaction } from '../src/jine';
 import { reset } from './shared';
 
 type Post = {
@@ -76,7 +76,7 @@ describe('shorthand', () => {
 
   describe("connection-bound", () => {
 
-    let conn!: ConnectionActual<$$>;
+    let conn!: Connection<$$>;
 
     beforeEach(async () => {
       conn = await jine.newConnection();
@@ -93,7 +93,9 @@ describe('shorthand', () => {
       let tx!: Transaction<$$>;
 
       beforeEach(async () => {
-        tx = await conn.newTransaction([conn.$.posts], 'rw');
+        // TODO: fix this
+        const tx_k = await conn.newTransaction([conn.$.posts], 'rw');
+        tx = await tx_k.value;
       });
 
       afterEach(async () => {

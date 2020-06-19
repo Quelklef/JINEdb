@@ -1,30 +1,17 @@
 
+import { Store } from './store';
+import { AsyncCont } from './cont';
 import { some, Dict } from './util';
 import { StoreStructure } from './structure';
+import { StorableRegistry } from './storable';
 import { IndexableRegistry } from './indexable';
-import { Store, StoreBroker } from './store';
-import { Storable, StorableRegistry } from './storable';
-import { JineBlockedError, JineInternalError, mapError } from './errors';
 import { Transaction, TransactionMode, uglifyTransactionMode } from './transaction';
 
-export interface Connection {
-
-  /**
-   * Create a new transaction and run some code with it, automatically committing
-   * if the code completes or aborting if it fails.
-   *
-   * @param callback The code to run
-   * @typeparam R the type of the callback result
-   * @returns The result of the callback
-   */
-  transact<R>(stores: Array<string | Store<Storable>>, mode: TransactionMode, callback: (tx: Transaction) => Promise<R>): Promise<R>;
-
-}
 
 /**
  * A connection to a database.
  */
-export class ConnectionActual<$$ = {}> implements Connection {
+export class Connection<$$ = {}> {
 
   /**
    * The Connection shorthand object.
@@ -39,18 +26,18 @@ export class ConnectionActual<$$ = {}> implements Connection {
    */
   $: $$;
 
-  _idb_conn: IDBDatabase;
+  _idb_conn_k: AsyncCont<IDBDatabase>;
   _substructures: Dict<StoreStructure>;
   _storables: StorableRegistry;
   _indexables: IndexableRegistry;
 
   constructor(args: {
-    idb_conn: IDBDatabase;
+    idb_conn_k: AsyncCont<IDBDatabase>;
     substructures: Dict<StoreStructure>;
     storables: StorableRegistry;
     indexables: IndexableRegistry;
   }) {
-    this._idb_conn = args.idb_conn;
+    this._idb_conn_k = args.idb_conn_k;
     this._substructures = args.substructures;
     this._storables = args.storables;
     this._indexables = args.indexables;
@@ -62,9 +49,15 @@ export class ConnectionActual<$$ = {}> implements Connection {
           const store_name = prop;
           // vvv Mimic missing key returning undefined
           if (!(store_name in self._substructures)) return undefined;
-          const aut_store = new StoreBroker({
-            name: store_name,
-            conn: self,
+          // vvv TODO: code duplication; below is copy/pasted from database.ts
+          const idb_store_k = self._idb_conn_k.map(idb_conn => {
+            // TODO: how to tell what mode? cant hardcode readwrie
+            const idb_tx = idb_conn.transaction([store_name], 'readwrite');
+            const idb_store = idb_tx.objectStore(store_name);
+            return idb_store;
+          });
+          const aut_store = new Store({
+            idb_store_k: idb_store_k,
             structure: some(self._substructures[store_name]),
             storables: self._storables,
             indexables: self._indexables,
@@ -82,32 +75,46 @@ export class ConnectionActual<$$ = {}> implements Connection {
    * @param mode The transaction mode.
    * @returns A new transaction
    */
-  newTransaction(stores: Array<string | Store<any>>, mode: TransactionMode): Transaction<$$> {
+  newTransaction(stores: Array<string | Store<any>>, tx_mode: TransactionMode): AsyncCont<Transaction<$$>> {
     const store_names = stores.map(s => typeof s === 'string' ? s : s.name);
-    return new Transaction<$$>({
-      idb_tx: this._idb_conn.transaction(store_names, uglifyTransactionMode(mode)),
-      genuine: true,
-      substructures: this._substructures,
-      storables: this._storables,
-      indexables: this._indexables,
+    const idb_tx_mode = uglifyTransactionMode(tx_mode)
+    return this._idb_conn_k.map(idb_conn => {
+      return new Transaction<$$>({
+        idb_tx: idb_conn.transaction(store_names, idb_tx_mode),
+        genuine: true,
+        substructures: this._substructures,
+        storables: this._storables,
+        indexables: this._indexables,
+      });
     });
   }
 
-  /** @inheritdoc */
+  /**
+   * Create a new transaction and run some code with it, automatically committing
+   * if the code completes or aborting if it fails.
+   *
+   * @param callback The code to run
+   * @typeparam R the type of the callback result
+   * @returns The result of the callback
+   */
   async transact<R>(
     stores: Array<string | Store<any>>,
     mode: TransactionMode,
     callback: (tx: Transaction<$$>) => Promise<R>,
   ): Promise<R> {
-    const tx = this.newTransaction(stores, mode);
-    return await tx.wrap(async tx => await callback(tx));
+    const nn_tx = this.newTransaction(stores, mode);
+    return nn_tx.run(tx => tx.wrap(callback));
   }
 
   /**
    * Close the connection to the database.
    */
-  close(): void {
-    this._idb_conn.close();
+  // TODO: technically, this must return a Promise<void> to account
+  // for the case that this._idb_conn_k is not a bound value; however,
+  // that is exactly the case where we wouldn't want to .close() the
+  // connection.
+  close(): void | Promise<void> {
+    return this._idb_conn_k.run(idb_conn => idb_conn.close());
   }
 
   /**
@@ -121,69 +128,8 @@ export class ConnectionActual<$$ = {}> implements Connection {
     try {
       return await callback(this);
     } finally {
-      this.close();
+      await this.close();
     }
-  }
-
-}
-
-/**
- * A [[Connection]] not bound to one lifespan.
- *
- * A [[ConnectionBroker]] will actually open a *new* connection on each operation.
- * Compare this to [[ConnectionActual]], which has a temporal aspect.
- */
-export class ConnectionBroker implements Connection {
-
-  _db_name: string;
-  _substructures: Dict<StoreStructure>;
-  _storables: StorableRegistry;
-  _indexables: IndexableRegistry;
-
-  constructor(args: {
-    db_name: string;
-    substructures: Dict<StoreStructure>;
-    storables: StorableRegistry;
-    indexables: IndexableRegistry;
-  }) {
-    this._db_name = args.db_name;
-    this._substructures = args.substructures;
-    this._storables = args.storables;
-    this._indexables = args.indexables;
-  }
-
-  _newIdbConn(): Promise<IDBDatabase> {
-    return new Promise<IDBDatabase>((resolve, reject) => {
-      const db_name = this._db_name;
-      const req = indexedDB.open(db_name);
-      // vvv Since we're opening without a version, no upgradeneeded should fire
-      req.onupgradeneeded = _event => reject(new JineInternalError());
-      req.onblocked = _event => reject(new JineBlockedError());
-      req.onerror = _event => reject(mapError(req.error));
-      req.onsuccess = _event => resolve(req.result);
-    });
-  }
-
-  async _newConnectionActual(): Promise<ConnectionActual> {
-    const idb_conn = await this._newIdbConn();
-    return new ConnectionActual({
-      idb_conn: idb_conn,
-      substructures: this._substructures,
-      storables: this._storables,
-      indexables: this._indexables,
-    });
-  }
-
-  /** @inheritdoc */
-  async transact<T>(
-    stores: Array<string | Store<any>>,
-    mode: TransactionMode,
-    callback: (tx: Transaction) => Promise<T>,
-  ): Promise<T> {
-    const conn = await this._newConnectionActual();
-    const result = await conn.transact(stores, mode, callback);
-    conn.close();
-    return result;
   }
 
 }
