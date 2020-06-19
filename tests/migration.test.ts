@@ -112,4 +112,15 @@ describe('migration', () => {
 
   });
 
+  it("using Database.$ without calling .initialize, relying on auto-init, works", async () => {
+
+    jine.migration(2, async (genuine: boolean, tx: any) => {
+      tx.addStore('numbers');
+    });
+
+    const got = await jine.$.numbers.array();
+    expect(got).toStrictEqual([]);
+    
+  });
+
 });
