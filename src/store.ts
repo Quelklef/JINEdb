@@ -217,12 +217,7 @@ export class Store<Item extends Storable> {
     const unique = options?.unique ?? false;
     const explode = options?.explode ?? false;
 
-    const idb_index =
-      // eslint-disable-next-line no-constant-condition
-      'this._tx.genuine' // TODO
-        ? idb_store.createIndex(index_name, `traits.${index_name}`, { unique, multiEntry: explode })
-        : idb_store.index(index_name)
-        ;
+    const idb_index = idb_store.createIndex(index_name, `traits.${index_name}`, { unique, multiEntry: explode });
 
     const index_structure = new IndexStructure({
       name: index_name,
@@ -266,20 +261,15 @@ export class Store<Item extends Storable> {
    */
   async removeIndex(name: string): Promise<void> {
 
-    // eslint-disable-next-line no-constant-condition
-    if ('this._tx.genuine') {  // TODO
+    // remove idb index
+    await this._idb_store_k.run(idb_store => idb_store.deleteIndex(name));
 
-      // remove idb index
-      await this._idb_store_k.run(idb_store => idb_store.deleteIndex(name));
-
-      // update existing rows if needed
-      if (some(this.indexes[name]).kind === 'derived') {
-        await this.all()._replaceRows((row: Row) => {
-          delete row.traits[name];
-          return row;
-        });
-      }
-
+    // update existing rows if needed
+    if (some(this.indexes[name]).kind === 'derived') {
+      await this.all()._replaceRows((row: Row) => {
+        delete row.traits[name];
+        return row;
+      });
     }
 
     // remove index from this object

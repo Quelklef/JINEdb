@@ -81,6 +81,9 @@ export class Database<$$ = {}> {
   _migrations: Record<number, (genuine: boolean, tx: Transaction<$$>) => Promise<void>>;
 
   constructor(name: string) {
+    if (name.startsWith("__JINE_DUMMY__"))
+      throw new Error("Jine db names may not start with '__JINE_DUMMY__'");
+
     this.name = name;
     this.version = null;
 
@@ -157,11 +160,18 @@ export class Database<$$ = {}> {
 
     this.version = await getDbVersion(this.name);
 
+    // Reset dummy database
+    const dummy_name = '__JINE_DUMMY__' + this.name;
+    await new Promise((resolve, reject) => {
+      const req = indexedDB.deleteDatabase(dummy_name);
+      req.onerror = _event => reject(mapError(req.error));
+      req.onsuccess = _event => resolve();
+    });
+
     const versions =
       Object.keys(this._migrations)
-        .map((key: string) => parseInt(key))
+        .map((key: string) => parseInt(key, 10))
         .sort();
-
     for (const version of versions) {
       await this._upgrade(version, this._migrations[version]);
     }
@@ -203,33 +213,25 @@ export class Database<$$ = {}> {
 
     const genuine = version > some(this.version);
 
-    const invokeAndUpdate = async (tx: Transaction<$$>): Promise<void> => {
-      // Invoke the callback with the given transaction
-      // Use the results to upgrade the database info
-      
-      await tx.wrap(async tx => await callback(genuine, tx));
-
-      // vvv Update structure if stores were added etc
-      // TODO: the `(!tx.genuine ||` is included because ingeuine transactions ARE aborted.
-      // however, this will (wronlgy) update structure from
-      // a genuinely user-aborted ingenuine transaction
-      if (!tx.genuine || tx.state !== 'aborted') {
-        this._substructures = tx._substructures;
-        this._storables = tx._storables;
-        this._indexables = tx._indexables;
-        this.version = version;
-      }
-    };
-
     return new Promise((resolve, reject) => {
 
-      const req = indexedDB.open(this.name, version);
+      // For genuine transactions, we run it on the actual database
+      // For ingenuine transactions, we run it on a parallel 'dummy' database
+      // which is always reset when the database is initialized.
+      // Thus the migrations run in a dummy environment until we reach the
+      // point that the actual database is at, when they switch to being run
+      // on the actual db.
+      const req =
+        genuine
+          ? indexedDB.open(this.name, version)
+          : indexedDB.open('__JINE_DUMMY__' + this.name, version)
+          ;
 
       req.onblocked = _event => reject(new JineBlockedError());
 
       req.onerror = _event => {
         const idb_error = req.error;
-        // A .abort call in a versionchange tx should not raise an error
+        // An .abort call in a versionchange tx should not raise an error
         if (idb_error?.name === 'AbortError') {
           resolve();
         } else {
@@ -247,48 +249,30 @@ export class Database<$$ = {}> {
           indexables: this._indexables,
         });
 
-        // (*)
         // vvv The below looks concerning due to the fact that we don't await the promise.
-        //     In fact, it's fine; floating callback are natural when working with idb.
+        //     In fact, it's fine; floating callbacks are natural when working with idb
+        //     (as long as they don't span multiple ticks).
         //     The 'after' code doesn't come after awaiting the promise, it comes in onsuccess.
         // eslint-disable-next-line @typescript-eslint/no-floating-promises
-        invokeAndUpdate(tx);
+        tx.wrap(async tx => {
+          await callback(genuine, tx);
+
+          // vvv Update structure if stores were added etc
+          // TODO: not sure why we still reach here if the tx is .abort()ed
+          if (tx.state !== 'aborted') {
+            this._substructures = tx._substructures;
+            this._storables = tx._storables;
+            this._indexables = tx._indexables;
+            this.version = version;
+          }
+        });
       };
 
-      if (genuine) {
-        req.onsuccess = _event => {
-          const idb_conn = req.result;
-          idb_conn.close();
-          resolve();
-        };
-      } else {
-        req.onsuccess = _event => {
-          // vvv See (*)
-          // eslint-disable-next-line @typescript-eslint/no-floating-promises
-          invoke(async () => {
-            
-            const idb_conn = req.result;
-            // open a readonly transaction with all object stores
-            const idb_tx = idb_conn.transaction(DOMStringList_to_Array(idb_conn.objectStoreNames), 'readonly');
-
-            // If we didn't do a version change, we still need to
-            // upgrade the internal structure info
-            const tx = new Transaction<$$>({
-              idb_tx: idb_tx,
-              genuine: genuine,
-              substructures: this._substructures,
-              storables: this._storables,
-              indexables: this._indexables,
-            });
-            
-            await invokeAndUpdate(tx);
-
-            idb_conn.close();
-            resolve();
-
-          });
-        };
-      }
+      req.onsuccess = _event => {
+        const idb_conn = req.result;
+        idb_conn.close();
+        resolve();
+      };
 
     });
   }

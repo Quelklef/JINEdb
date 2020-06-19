@@ -195,8 +195,7 @@ export class Transaction<$$ = {}> {
    */
   addStore<Item extends Storable>(store_name: string): Store<Item> {
 
-    if (this.genuine)
-      this._idb_db.createObjectStore(store_name, { keyPath: 'id', autoIncrement: true });
+    this._idb_db.createObjectStore(store_name, { keyPath: 'id', autoIncrement: true });
 
     const store_structure = {
       name: store_name,
@@ -225,8 +224,7 @@ export class Transaction<$$ = {}> {
    * @param name The name of the store to remove
    */
   removeStore(name: string): void {
-    if (this.genuine)
-      this._idb_db.deleteObjectStore(name);
+    this._idb_db.deleteObjectStore(name);
     delete this._substructures[name];
     delete this.stores[name];
   }
