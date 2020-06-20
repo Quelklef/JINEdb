@@ -9,4 +9,9 @@ module.exports = {
       'sort': 'status'
     }],
   ],
+
+
+  runner: 'jest-runner-eslint',
+  displayName: 'lint',
+  testMatch: ['<rootDir>/tests/**/*.test.ts'],
 };

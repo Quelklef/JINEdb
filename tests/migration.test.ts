@@ -1,5 +1,6 @@
 
 import 'fake-indexeddb/auto';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { Database, Store, Index, Connection, NativelyIndexable, NativelyStorable } from '../src/jine';
 import { reset } from './shared';
 
@@ -9,7 +10,7 @@ describe('migration (no beforeEach)', () => {
 
     let db!: Database<any>;
     
-    async function setup() {
+    async function setup(): Promise<void> {
       db = new Database<any>('db');
       await db.upgrade(1, async (genuine: boolean, tx: any) => {
         tx.addStore('items');
@@ -36,7 +37,7 @@ describe('migration', () => {
   beforeEach(() => {
     reset();
     jine = new Database<any>('jine');
-    jine.migration(1, async (tx: any) => { });
+    jine.migration(1, async (_tx: any) => { });
   });
 
   it('allows for adding and removing stores', async () => {
@@ -55,7 +56,7 @@ describe('migration', () => {
     });
 
     await jine.connect(async (conn: any) => {
-      expect(async () => await conn.$.strings.array())
+      await expect(async () => await conn.$.strings.array())
         .rejects.toThrow();
     });
 
@@ -78,7 +79,7 @@ describe('migration', () => {
     });
 
     await jine.connect(async (conn: any) => {
-      expect(async () => await conn.$.strings.by.self.find('whatever'))
+      await expect(async () => await conn.$.strings.by.self.find('whatever'))
         .rejects.toThrow();
     });
 
@@ -96,12 +97,12 @@ describe('migration', () => {
 
     await jine.upgrade(2, async (genuine: boolean, tx: any) => {
       tx.storables.register(SomeClass, 'SomeClass', {
-        encode: (sc: SomeClass): NativelyStorable => null,
-        decode: (ns: NativelyStorable): SomeClass => new SomeClass(),
+        encode: (_sc: SomeClass): NativelyStorable => null,
+        decode: (_ns: NativelyStorable): SomeClass => new SomeClass(),
       });
       tx.indexables.register(SomeClass, 'SomeClass', {
-        encode: (sc: SomeClass): NativelyStorable => null,
-        decode: (ns: NativelyStorable): SomeClass => new SomeClass(),
+        encode: (_sc: SomeClass): NativelyStorable => null,
+        decode: (_ns: NativelyStorable): SomeClass => new SomeClass(),
       });
 
       tx.abort();

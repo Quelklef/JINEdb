@@ -1,16 +1,17 @@
 
 import "fake-indexeddb/auto";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { Database, Connection, Transaction, Store, Index } from "../src/jine";
 import { reset } from "./shared";
 
 type Score = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 type Room = {
   // Name of the room
-  name: string,
+  name: string;
   // 1-7 how much I like the room
   score: Score;
   // Neighboring rooms
-  neighbors: Array<string>,
+  neighbors: Array<string>;
 }
 
 interface $$ {
@@ -20,8 +21,8 @@ interface $$ {
       score: Index<Room, number>;
       neighbors: Index<Room, string>;
       degree: Index<Room, number>;
-    }
-  }
+    };
+  };
 }
 
 const room = (name: string, score: Score, neighbors: Array<string>): Room => ({ name, score, neighbors });
@@ -47,7 +48,7 @@ const ROOMS: Array<Room> = [
   room("laundry room", 4, ["basement main"]),
 ];
 
-function expectArraySetEq<T>(actual: Array<T>, expected: Array<T>) {
+function expectArraySetEq<T>(actual: Array<T>, expected: Array<T>): void {
   // https://stackoverflow.com/a/57428906/4608364
   expect(actual).toEqual(expect.arrayContaining(expected));
   expect(expected).toEqual(expect.arrayContaining(actual));
@@ -144,15 +145,15 @@ describe("usage", () => {
       $ = tx.$;
     });
 
-    afterEach(() => {
-      con.close();
+    afterEach(async () => {
+      await con.close();
     });
 
     test_$();
 
   });
 
-  function test_$() {
+  function test_$(): void {
 
     it("$.{store}.count()", async () => {
       expect(await $.rooms.count()).toBe(ROOMS.length);
@@ -289,8 +290,8 @@ describe("usage", () => {
       });
 
       it("throws if there's another mid-iteration operation", async () => {
-        const bugged = async () => {
-          for await (const result of $.rooms.all()) {
+        const bugged = async (): Promise<void> => {
+          for await (const _result of $.rooms.all()) {
             // Another operation
             await new Promise(resolve => setTimeout(resolve, 0));
             // Note we can't use an "actual" other operation here
@@ -298,7 +299,7 @@ describe("usage", () => {
             // open a new connection and would actually *not* throw
           }
         };
-        expect(bugged).rejects.toThrow();
+        await expect(bugged).rejects.toThrow();
       });
       
     });

@@ -1,22 +1,22 @@
 
-
 import 'fake-indexeddb/auto';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { Database, Store, Index, Connection, NativelyIndexable, NativelyStorable } from '../src/jine';
 import { reset } from './shared';
 
 describe('core', () => {
 
   let jine!: Database<any>;  // use <any> for convenience
-  let conn!: Connection<any>;
 
   beforeEach(() => {
     reset();
     jine = new Database<any>('jine');
-    jine.migration(1, async (tx: any) => { });
+    jine.migration(1, async (_tx: any) => { });
   });
 
   it('works with custom storable types', async () => {
 
+    // eslint-disable-next-line @typescript-eslint/class-name-casing
     class MyPair_v1 {
       constructor(
         public left: any,
@@ -25,7 +25,7 @@ describe('core', () => {
     }
 
     await jine.upgrade(2, async (genuine: boolean, tx: any) => {
-      const pairs = await tx.addStore('pairs');
+      tx.addStore('pairs');
 
       tx.storables.register(MyPair_v1, 'MyPair', {
         encode(pair: MyPair_v1): NativelyStorable {
@@ -46,6 +46,7 @@ describe('core', () => {
       expect(got[0].constructor).toBe(MyPair_v1);
     });
 
+    // eslint-disable-next-line @typescript-eslint/class-name-casing
     class MyPair_v2 {
       constructor(
         public fst: any,

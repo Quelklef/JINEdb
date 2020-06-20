@@ -4,7 +4,10 @@ module.exports = {
 
   env: {
     browser: true,
+    "jest/globals": true,  /* for jest */
   },
+
+  plugins: ["jest"],
 
   extends: [
     'eslint:recommended',
