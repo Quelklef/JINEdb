@@ -1,9 +1,9 @@
 {
   "name": "jinedb",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "description": "For when Json Is Not Enough",
-  "main": "dist/jine.js",
-  "types": "dist/jine.d.ts",
+  "main": "dist/src/jine.js",
+  "types": "dist/src/jine.d.ts",
   "scripts": {
     "dev": "nodemon --watch src -x \"npm run dev-one\"",
     "dev-one": "tsc --incremental && npm run lint",
