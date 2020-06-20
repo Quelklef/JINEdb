@@ -38,20 +38,20 @@ jine.migration(1, async (genuine: boolean, tx: Transaction<$$>) => {
   
   // Track recipes by their name
   // Require names to be unique
-  recipes.addIndex<string>('name', '.name', { unique: true });
+  await recipes.addIndex<string>('name', '.name', { unique: true });
   
   // Track recipes by their serving count
-  recipes.addIndex<number>('servings', '.servings');
+  await recipes.addIndex<number>('servings', '.servings');
   
   // Track recipes by their ingredients
   // The flag 'explode: true' means that a recipe where
   //  recipe.ingredients = ['milk', 'chocolate']
   // will get indexed for 'milk' and 'chocolate' individually
   // rather than indexed for the array as a whole
-  recipes.addIndex<string>('ingredients', '.ingredients', { explode: true });
+  await recipes.addIndex<string>('ingredients', '.ingredients', { explode: true });
   
   // Track recipes by their ingredient count
-  recipes.addIndex<number>(
+  await recipes.addIndex<number>(
     'ingredient_count',
     (recipe: Recipe) => recipe.ingredients.length,
   );

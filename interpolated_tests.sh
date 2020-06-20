@@ -81,7 +81,7 @@ tsc || exit 1
 testlocs="$(find dist/ | grep '^dist/__interp_test.*\.js$')"
 while read -r testloc; do
   echo "Running $testloc ..."
-  node "$testloc" && result=ok || result=err
+  node --trace-warnings --unhandled-rejections=strict "$testloc" && result=ok || result=err
   [[ "$result" == err ]] && echo "^^ Test failed ^^" && exit 1
 done <<< "$testlocs"
 

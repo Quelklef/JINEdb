@@ -33,11 +33,11 @@ jine.migration(1, async (genuine: boolean, tx: Transaction<$$>) => {
   // Add user storage
   const users = tx.addStore<User>('users');
   // Index by unique username
-  users.addIndex<string>('name', '.username', { unique: true });
+  await users.addIndex<string>('name', '.username', { unique: true });
   // Index by friend names
-  users.addIndex<string>('friends', '.friends', { explode: true });
+  await users.addIndex<string>('friends', '.friends', { explode: true });
   // Index by friend count
-  users.addIndex<number>(
+  await users.addIndex<number>(
     'popularity',
     (user: User) => user.friends.length,
   );
