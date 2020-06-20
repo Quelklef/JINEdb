@@ -1,9 +1,12 @@
 
-import { Storable } from './storable';
-import { Indexable } from './indexable';
 import { some, Dict } from './util';
+import { Storable, StorableRegistry } from './storable';
+import { Indexable, IndexableRegistry } from './indexable';
 
-export class IndexStructure<Item extends Storable = Storable, Trait extends Indexable = Indexable> {
+// Precisely, the schema contains the information that is controlled
+// by migrations
+
+export class IndexSchema<Item extends Storable = Storable, Trait extends Indexable = Indexable> {
   name: string;
   unique: boolean;
   explode: boolean;
@@ -13,16 +16,23 @@ export class IndexStructure<Item extends Storable = Storable, Trait extends Inde
   kind: 'path' | 'derived';
   path?: string;
   getter?: (item: Item) => Trait;
+  
+  storables: StorableRegistry;
+  indexables: IndexableRegistry;
 
   constructor(args: {
     name: string;
     unique: boolean;
     explode: boolean;
     trait_path_or_getter: string | ((item: Item) => Trait);
+    storables: StorableRegistry;
+    indexables: IndexableRegistry;
   }) {
     this.name = args.name;
     this.unique = args.unique;
     this.explode = args.explode;
+    this.storables = args.storables;
+    this.indexables = args.indexables;
 
     if (args.trait_path_or_getter instanceof Function) {
       this.kind = 'derived';
@@ -42,12 +52,18 @@ export class IndexStructure<Item extends Storable = Storable, Trait extends Inde
   }
 }
 
-export type StoreStructure<Item extends Storable = Storable> = {
+export type StoreSchema<Item extends Storable = Storable> = {
   name: string;
-  indexes: Dict<IndexStructure<Item>>;
+  indexes: Dict<IndexSchema<Item>>;
+
+  storables: StorableRegistry;
+  indexables: IndexableRegistry;
 };
 
-export type DatabaseStructure = {
+export type DatabaseSchema = {
   name: string;
-  stores: Dict<StoreStructure>;
+  stores: Dict<StoreSchema>;
+  
+  storables: StorableRegistry;
+  indexables: IndexableRegistry;
 };

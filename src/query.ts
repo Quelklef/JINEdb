@@ -3,10 +3,10 @@ import { Row } from './row';
 import { Store } from './store';
 import { Index } from './index';
 import { mapError } from './errors';
-import { some, Dict } from './util';
-import { IndexStructure } from './structure';
+import { Storable } from './storable';
+import { StoreSchema } from './schema';
 import { TransactionMode } from './transaction';
-import { Storable, StorableRegistry } from './storable';
+import { some, Dict, Awaitable } from './util';
 import { Indexable, NativelyIndexable, IndexableRegistry } from './indexable';
 
 /**
@@ -117,9 +117,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
   // TODO: replicate on other classes.
   my: Dict<any> = {};
 
-  readonly index_structures: Dict<IndexStructure<Item>>;
-  readonly storables: StorableRegistry;
-  readonly indexables: IndexableRegistry;
+  readonly store_schema: StoreSchema<Item>;
 
   // List of filter predicates
   readonly predicates: Array<(item: Item) => boolean>;
@@ -133,17 +131,13 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
   constructor(args: {
     idb_source: IDBIndex | IDBObjectStore;
     query: Query<Trait>;
-    index_structures: Dict<IndexStructure<Item>>;
-    storables: StorableRegistry;
-    indexables: IndexableRegistry;
+    store_schema: StoreSchema<Item>;
   }) {
     this._query = args.query;
     this._idb_source = args.idb_source;
     this._idb_req = null;
     this._idb_cur = null;
-    this.index_structures = args.index_structures;
-    this.storables = args.storables;
-    this.indexables = args.indexables;
+    this.store_schema = args.store_schema;
     this.predicates = [];
   }
 
@@ -158,7 +152,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
 
   init(): Promise<void> {
     const req = this._idb_source.openCursor(
-      compileTraitRange(this._query, this.indexables),
+      compileTraitRange(this._query, this.store_schema.indexables),
       compileCursorDirection(this._query),
     );
     this._idb_req = req;
@@ -198,7 +192,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     // Get the item at the cursor.
     this._assertActive();
     const row = some(this._idb_cur).value;
-    return this.storables.decode(row.payload) as Item;
+    return this.store_schema.storables.decode(row.payload) as Item;
   }
 
   _stepOne(): Promise<void> {
@@ -251,7 +245,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
   currentTrait(): Trait {
     this._assertActive();
     const encoded = some(this._idb_cur).key as NativelyIndexable;
-    return this.indexables.decode(encoded, this._sourceIsExploding) as Trait;
+    return this.store_schema.indexables.decode(encoded, this._sourceIsExploding) as Trait;
   }
 
   async delete(): Promise<void> {
@@ -280,13 +274,13 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     const row: any = some(this._idb_cur).value;
 
     // update payload
-    row.payload = this.storables.encode(new_item);
+    row.payload = this.store_schema.storables.encode(new_item);
 
     // update traits
-    for (const index_name of Object.keys(this.index_structures)) {
-      const index_structure = some(this.index_structures[index_name]);
-      const trait = index_structure.calc_trait(new_item);
-      const encoded = this.indexables.encode(trait, index_structure.explode);
+    for (const index_name of Object.keys(this.store_schema.indexes)) {
+      const index_schema = some(this.store_schema.indexes[index_name]);
+      const trait = index_schema.calc_trait(new_item);
+      const encoded = this.store_schema.indexables.encode(trait, index_schema.explode);
       const trait_name = index_name;
       row.traits[trait_name] = encoded;
     }
@@ -317,27 +311,22 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
   readonly source: Store<Item> | Index<Item, Trait>;
   readonly query: Query<Trait>;
 
-  readonly index_structures: Dict<IndexStructure<Item>>;
-  readonly storables: StorableRegistry;
-  readonly indexables: IndexableRegistry;
+  readonly store_schema_g: () => Awaitable<StoreSchema<Item>>;
 
   readonly predicates: Array<(item: Item) => boolean>;
 
   constructor(args: {
     source: Store<Item> | Index<Item, Trait>;
     query: Query<Trait>;
-    index_structures: Dict<IndexStructure<Item>>;
-    storables: StorableRegistry;
-    indexables: IndexableRegistry;
+    store_schema_g: () => Awaitable<StoreSchema<Item>>;
   }) {
     this.source = args.source;
     this.query = args.query;
-    this.index_structures = args.index_structures;
-    this.storables = args.storables;
-    this.indexables = args.indexables;
+    this.store_schema_g = args.store_schema_g;
     this.predicates = [];
   }
 
+  // TODO: could replace this method with a mapped .source._idb_(store|index)_k
   async _withCursor<R>(mode: TransactionMode, callback: (cursor: Cursor<Item, Trait>) => Promise<R>): Promise<R> {
 
     const idb_source_k =
@@ -345,14 +334,13 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
         ? (this.source as any)._idb_store_k
         : (this.source as any)._idb_index_k;
 
+    const schema = await this.store_schema_g();
     // TODO: use transactionmode
     return await idb_source_k.run(async (idb_source: IDBObjectStore | IDBIndex) => {
       const cursor = new Cursor<Item, Trait>({
         idb_source: idb_source,
         query: this.query,
-        index_structures: this.index_structures,
-        storables: this.storables,
-        indexables: this.indexables,
+        store_schema: schema,
       });
       cursor.filter(...this.predicates);
       return await callback(cursor);
@@ -517,23 +505,24 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
 export class SelectionUnique<Item extends Storable, Trait extends Indexable> {
 
   readonly selection: Selection<Item, Trait>;
+  readonly source: Index<Item, Trait>;
 
   constructor(args: {
     source: Index<Item, Trait>;
     selected_trait: Trait;
-    index_structures: Dict<IndexStructure<Item>>;
-    storables: StorableRegistry;
-    indexables: IndexableRegistry;
+    store_schema_g: () => Awaitable<StoreSchema<Item>>;
   }) {
-    if (!args.source.unique)
-      throw Error('Cannot create a SelectionUnique on a non-unique index.');
+    this.source = args.source;
     this.selection = new Selection({
       source: args.source,
       query: { equals: args.selected_trait },
-      index_structures: args.index_structures,
-      storables: args.storables,
-      indexables: args.indexables,
+      store_schema_g: args.store_schema_g,
     });
+  }
+
+  async _ensureSourceUnique(): Promise<void> {
+    if (!await this.source.unique)
+      throw Error('Cannot create a SelectionUnique on a non-unique index.');
   }
 
   /**
@@ -542,6 +531,7 @@ export class SelectionUnique<Item extends Storable, Trait extends Indexable> {
    * @param mapper A function that accepts the old item and returns the new item
    */
   async replace(mapper: (old_item: Item) => Item): Promise<void> {
+    await this._ensureSourceUnique();
     await this.selection.replace(mapper);
   }
   
@@ -551,6 +541,7 @@ export class SelectionUnique<Item extends Storable, Trait extends Indexable> {
    * @param updates The delta
    */
   async update(delta: Partial<Item>): Promise<void> {
+    await this._ensureSourceUnique();
     await this.selection.update(delta);
   }
 
@@ -558,6 +549,7 @@ export class SelectionUnique<Item extends Storable, Trait extends Indexable> {
    * Delete the item from the database.
    */
   async delete(): Promise<void> {
+    await this._ensureSourceUnique();
     await this.selection.delete();
   }
 
@@ -567,6 +559,7 @@ export class SelectionUnique<Item extends Storable, Trait extends Indexable> {
    * @returns The item
    */
   async get(): Promise<Item> {
+    await this._ensureSourceUnique();
     const got = (await this.selection.array())[0];
     if (got === undefined)
       throw Error('No item found');
@@ -579,6 +572,7 @@ export class SelectionUnique<Item extends Storable, Trait extends Indexable> {
    * @returns The item
    */
   async getOr<T = undefined>(alternative: T): Promise<Item | T> {
+    await this._ensureSourceUnique();
     const got = (await this.selection.array())[0];
     if (got === undefined) return alternative;
     return got;

@@ -1,5 +1,5 @@
 
-// TODO: camel case
+import { Awaitable } from './util';
 
 /*-
  * Continuation Monad
@@ -39,7 +39,7 @@ export class Cont<T>  {
    * Unwrap the value from the continuation.
    * Generally, avoid this on nontrivial continuations.
    */
-  get value(): T {
+  unwrap(): T {
     let value!: T;
     this.run(v => value = v);
     return value;
@@ -64,7 +64,7 @@ export class Cont<T>  {
   // but this would fix the value of x, which is not desirable
   bind<S>(f: (value: T) => Cont<S>): Cont<S> {
     if (this.trivial) {
-      return f(this.value);
+      return f(this.unwrap());
     } else {
       return new Cont(k => this.nn_val(x => f(x).nn_val(y => k(y))), false);
     }
@@ -85,33 +85,33 @@ export class Cont<T>  {
  */
 export class AsyncCont<T> {
   
-    private readonly nn_val: <R>(callback: (value: T | Promise<T>) => R) => R;
+    private readonly nn_val: <R>(callback: (value: Awaitable<T>) => R) => R;
     public readonly trivial: boolean;
 
     private constructor(
-        nn_val: <R>(callback: (value: T | Promise<T>) => R) => R,
+        nn_val: <R>(callback: (value: Awaitable<T>) => R) => R,
         trivial: boolean,
     ) {
       this.nn_val = nn_val;
       this.trivial = trivial;
     }
     
-    run<R>(f: (value: T) => R | Promise<R>): R | Promise<R> {
+    run<R>(f: (value: T) => Awaitable<R>): Awaitable<R> {
         return this.nn_val(val => val instanceof Promise ? val.then(f) : f(val));
     }
 
-    get value(): T | Promise<T> {
+    unwrap(): T | Promise<T> {
       let value!: T | Promise<T>;
       // eslint-disable-next-line @typescript-eslint/no-floating-promises
       this.nn_val(v => value = v);
       return value;
     }
 
-    static fromValue<T>(x: T | Promise<T>): AsyncCont<T> {
-        return new AsyncCont(k => k(x), true);
+    static fromValue<T>(x: Awaitable<T>): AsyncCont<T> {
+      return new AsyncCont(k => k(x), true);
     }
 
-    static fromProducer<T>(prod: () => T | Promise<T>): AsyncCont<T> {
+    static fromProducer<T>(prod: () => Awaitable<T>): AsyncCont<T> {
       return new AsyncCont(k => k(prod()), false);
     }
 
@@ -119,7 +119,7 @@ export class AsyncCont<T> {
       return new AsyncCont(func, false);
     }
 
-    map<S>(f: (value: T) => S): AsyncCont<S> {
+    map<S>(f: (value: T) => Awaitable<S>): AsyncCont<S> {
       return new AsyncCont(k => this.nn_val(x => x instanceof Promise ? k(x.then(f)) : k(f(x))), this.trivial);
     }
 

@@ -66,10 +66,10 @@ describe("usage", () => {
     db = new Database<$$>("home");
     await db.upgrade(1, async (genuine: boolean, tx: Transaction<$$>) => {
       const rooms = tx.addStore<Room>("rooms");
-      rooms.addIndex<string>("name", ".name", { unique: true });
-      rooms.addIndex<number>("score", ".score");
-      rooms.addIndex<string>("neighbors", ".neighbors", { explode: true });
-      rooms.addIndex<number>("degree", room => room.neighbors.length);
+      await rooms.addIndex<string>("name", ".name", { unique: true });
+      await rooms.addIndex<number>("score", ".score");
+      await rooms.addIndex<string>("neighbors", ".neighbors", { explode: true });
+      await rooms.addIndex<number>("degree", room => room.neighbors.length);
     });
 
     await db.transact(["rooms"], "rw", async (tx: Transaction<$$>) => {
@@ -140,7 +140,7 @@ describe("usage", () => {
     beforeEach(async () => {
       con = await db.newConnection();
       const tx_k = await con.newTransaction(['rooms'], 'rw');
-      const tx = await tx_k.value; // FIXME
+      const tx = await tx_k.unwrap(); // FIXME
       $ = tx.$;
     });
 

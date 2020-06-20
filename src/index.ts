@@ -1,9 +1,9 @@
 
-import { Dict } from './util';
+import { Storable } from './storable';
+import { Indexable } from './indexable';
 import { AsyncCont } from './cont';
-import { IndexStructure } from './structure';
-import { Storable, StorableRegistry } from './storable';
-import { Indexable, IndexableRegistry } from './indexable';
+import { Awaitable, Awaitable_map } from './util';
+import { StoreSchema, IndexSchema } from './schema';
 import { Query, Selection, SelectionUnique } from './query';
 
 
@@ -25,12 +25,16 @@ export class Index<Item extends Storable, Trait extends Indexable> {
    * Name of the index.
    * Index names are unique for a particular store.
    */
-  name: string;
+  get name(): Awaitable<string> {
+    return Awaitable_map(this._schema_g(), schema => schema.name);
+  }
 
   /**
    * Are the values in this index required to be unique?
    */
-  unique: boolean;
+  get unique(): Awaitable<boolean> {
+    return Awaitable_map(this._schema_g(), schema => schema.unique);
+  }
 
   /**
    * If `explode` is `true`, then items' values for this index are expected to be arrays.
@@ -43,7 +47,9 @@ export class Index<Item extends Storable, Trait extends Indexable> {
    * But if the index *is* exploding, then this same user will match a query
    * for each of `1`, `2`, and `3`, but not a query for `[1, 2, 3]`.
    */
-  explode: boolean;
+  get explode(): Awaitable<boolean> {
+    return Awaitable_map(this._schema_g(), schema => schema.explode);
+  }
 
   /**
    * Indexes come in two flavors: path indexes and derived indexes.
@@ -57,43 +63,37 @@ export class Index<Item extends Storable, Trait extends Indexable> {
    * Then we would index by the function `(item: Array) => item.length !== new Set(item).size` (or a more efficient alternative).
    * This function is stored in [[Index.trait_getter]].
    */
-  kind: 'path' | 'derived';
+  get kind(): Awaitable<'path' | 'derived'> {
+    return Awaitable_map(this._schema_g(), schema => schema.kind);
+  }
 
   /**
    * If `this.kind === 'path'`, return the trait path.
    */
-  trait_path?: string;
+  get trait_path(): Awaitable<undefined | string> {
+    return Awaitable_map(this._schema_g(), schema => schema.path);
+  }
 
   /**
    * If `this.kind === 'derived'`, return the trait computing function.
    */
-  trait_getter?: (item: Item) => Trait;
+  get trait_getter(): Awaitable<undefined | ((item: Item) => Trait)> {
+    return Awaitable_map(this._schema_g(), schema => schema.getter);
+  }
 
-  _sibling_structures: Dict<IndexStructure<Item>>;
+
   _idb_index_k: AsyncCont<IDBIndex>;
-  _storables: StorableRegistry;
-  _indexables: IndexableRegistry;
+  _schema_g: () => Awaitable<IndexSchema<Item, Trait>>;
+  _parent_schema_g: () => Awaitable<StoreSchema<Item>>;
 
   constructor(args: {
     idb_index_k: AsyncCont<IDBIndex>;
-    name: string;
-    structure: IndexStructure<Item, Trait>;
-    // vvv The value of sibling_structures should include the structure for this index as well
-    sibling_structures: Dict<IndexStructure<Item>>;
-    storables: StorableRegistry;
-    indexables: IndexableRegistry;
+    schema_g: () => Awaitable<IndexSchema<Item, Trait>>;
+    parent_schema_g: () => Awaitable<StoreSchema<Item>>;
   }) {
-    this.name = args.name;
-    this.unique = args.structure.unique;
-    this.explode = args.structure.explode;
-    this.kind = args.structure.kind;
-    this.trait_path = args.structure.path;
-    this.trait_getter = args.structure.getter;
-
     this._idb_index_k = args.idb_index_k;
-    this._sibling_structures = args.sibling_structures;
-    this._storables = args.storables;
-    this._indexables = args.indexables;
+    this._schema_g = args.schema_g;
+    this._parent_schema_g = args.parent_schema_g;
   }
 
   /**
@@ -141,9 +141,7 @@ export class Index<Item extends Storable, Trait extends Indexable> {
     return new Selection({
       source: this,
       query: query,
-      index_structures: this._sibling_structures,
-      storables: this._storables,
-      indexables: this._indexables,
+      store_schema_g: this._parent_schema_g,
     });
   }
 
@@ -155,9 +153,7 @@ export class Index<Item extends Storable, Trait extends Indexable> {
     return new SelectionUnique({
       source: this,
       selected_trait: trait,
-      index_structures: this._sibling_structures,
-      storables: this._storables,
-      indexables: this._indexables,
+      store_schema_g: this._parent_schema_g,
     });
   }
 

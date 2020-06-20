@@ -4,7 +4,7 @@ import { clone } from 'true-clone';
 import { Store } from './store';
 import { AsyncCont } from './cont';
 import { some, Dict } from './util';
-import { StoreStructure } from './structure';
+import { DatabaseSchema } from './schema';
 import { IndexableRegistry } from './indexable';
 import { Storable, StorableRegistry } from './storable';
 
@@ -79,7 +79,7 @@ export class Transaction<$$ = {}> {
    * Also see {@page Serialization and Custom Types}.
    */
   get storables(): StorableRegistry {
-    return this._storables;
+    return this._schema.storables;
   }
 
   /**
@@ -88,7 +88,7 @@ export class Transaction<$$ = {}> {
    * Also see {@page Serialization and Custom Types}.
    */
   get indexables(): IndexableRegistry {
-    return this._indexables;
+    return this._schema.indexables;
   }
 
   /**
@@ -98,19 +98,14 @@ export class Transaction<$$ = {}> {
    */
   $: $$;
 
-  _substructures: Dict<StoreStructure>;
-  _storables: StorableRegistry;
-  _indexables: IndexableRegistry;
-
   _idb_tx: IDBTransaction;
   _idb_db: IDBDatabase;
+  _schema: DatabaseSchema;
 
   constructor(args: {
     idb_tx: IDBTransaction;
+    schema: DatabaseSchema;
     genuine: boolean;
-    substructures: Dict<StoreStructure>;
-    storables: StorableRegistry;
-    indexables: IndexableRegistry;
   }) {
 
     this.genuine = args.genuine;
@@ -118,19 +113,15 @@ export class Transaction<$$ = {}> {
     this._idb_tx = args.idb_tx;
     this._idb_db = this._idb_tx.db;
 
-    // Clone structure so that changes are sandboxed in case of e.g. .abort()
-    this._substructures = clone(args.substructures);
-    this._storables = clone(args.storables);
-    this._indexables = clone(args.indexables);
+    // Clone schema so that, if a migration occurs, then
+    // changes are sandboxed in case of e.g. .abort()
+    this._schema = clone(args.schema);
 
     this.stores = {};
-    for (const store_name of Object.keys(this._substructures)) {
-      const idb_store = this._idb_tx.objectStore(store_name);
+    for (const store_name of Object.keys(this._schema.stores)) {
       const store = new Store({
-        idb_store_k: AsyncCont.fromValue(idb_store),
-        structure: some(this._substructures[store_name]),
-        storables: this._storables,
-        indexables: this._indexables,
+        idb_store_k: AsyncCont.fromValue(this._idb_tx.objectStore(store_name)),
+        schema_g: () => some(this._schema.stores[store_name]),
       });
       this.stores[store_name] = store;
     }
@@ -197,20 +188,20 @@ export class Transaction<$$ = {}> {
 
     this._idb_db.createObjectStore(store_name, { keyPath: 'id', autoIncrement: true });
 
-    const store_structure = {
+    const store_schema = {
       name: store_name,
       indexes: { },
+      storables: this._schema.storables,
+      indexables: this._schema.indexables,
     };
 
     const store = new Store<Item>({
       idb_store_k: AsyncCont.fromValue(this._idb_tx.objectStore(store_name)),
-      structure: store_structure,
-      storables: this._storables,
-      indexables: this._indexables,
+      schema_g: () => store_schema,
     });
 
-    this._substructures[store_name] = store_structure;
-    this.stores[store_name] = store as any as Store<Storable>;
+    this._schema.stores[store_name] = store_schema;
+    this.stores[store_name] = store as any;
 
     return store;
 
@@ -225,7 +216,7 @@ export class Transaction<$$ = {}> {
    */
   removeStore(name: string): void {
     this._idb_db.deleteObjectStore(name);
-    delete this._substructures[name];
+    delete this._schema.stores[name];
     delete this.stores[name];
   }
 

@@ -2,12 +2,12 @@
 import { Store } from './store';
 import { AsyncCont } from './cont';
 import { Connection } from './connection';
-import { StoreStructure } from './structure';
+import { DatabaseSchema } from './schema';
+import { newIndexableRegistry } from './indexable';
 import { Transaction, TransactionMode } from './transaction';
-import { IndexableRegistry, newIndexableRegistry } from './indexable';
-import { some, invoke, Dict, DOMStringList_to_Array } from './util';
+import { Storable, newStorableRegistry } from './storable';
+import { some, Awaitable, Awaitable_map } from './util';
 import { JineBlockedError, JineInternalError, mapError } from './errors';
-import { Storable, newStorableRegistry, StorableRegistry } from './storable';
 
 async function getDbVersion(db_name: string): Promise<number> {
   /* Return current database version number. Returns an integer greater than or
@@ -73,11 +73,8 @@ export class Database<$$ = {}> {
    * close the transaction, and close the connection.
    */
   $: $$;
-  
-  _substructures: Dict<StoreStructure>;
-  _storables: StorableRegistry;
-  _indexables: IndexableRegistry;
 
+  _schema: DatabaseSchema;
   _migrations: Record<number, (genuine: boolean, tx: Transaction<$$>) => Promise<void>>;
 
   constructor(name: string) {
@@ -86,39 +83,39 @@ export class Database<$$ = {}> {
 
     this.name = name;
     this.version = null;
-
-    this._substructures = {};
-    this._storables = newStorableRegistry();
-    this._indexables = newIndexableRegistry();
-
+    this._schema = {
+      name: this.name,
+      stores: {},
+      storables: newStorableRegistry(),
+      indexables: newIndexableRegistry(),
+    };
     this._migrations = {};
 
-    const self = this;
     this.$ = <$$> new Proxy({}, {
-      get(_target: {}, prop: string | number | symbol) {
+      get: (_target: {}, prop: string | number | symbol) => {
         if (typeof prop === 'string') {
           const store_name = prop;
-          // vvv Mimic missing key returning undefined
-          if (!(store_name in self._substructures)) return undefined;
 
-          const idb_conn_k = AsyncCont.fromProducer(async () => await self._newIdbConn());
+          // TODO: this doesn't close the connection
+          const idb_conn_k = AsyncCont.fromProducer(async () => await this._newIdbConn());
           const idb_store_k = idb_conn_k.map(idb_conn => {
             // TODO: how to tell what mode? cant hardcode readwrie
             const idb_tx = idb_conn.transaction([store_name], 'readwrite');
             const idb_store = idb_tx.objectStore(store_name);
             return idb_store;
           });
-          const store = new Store({
-            idb_store_k: idb_store_k,
-            structure: some(self._substructures[store_name]),
-            storables: self._storables,
-            indexables: self._indexables,
-          });
 
-          return store;
+          return new Store({
+            idb_store_k: idb_store_k,
+            schema_g: () => Awaitable_map(this._getSchema(), schema => some(schema.stores[store_name])),
+          });
         }
       }
     });
+  }
+
+  _getSchema(): Awaitable<DatabaseSchema> {
+    return Awaitable_map(this._ensureInitialized(), () => this._schema);
   }
 
   /**
@@ -142,6 +139,11 @@ export class Database<$$ = {}> {
    */
   get initialized(): boolean {
     return this.version !== null;
+  }
+
+  _ensureInitialized(): Awaitable<void> {
+    if (this.initialized) return;
+    return this.initialize();
   }
 
   /**
@@ -172,15 +174,11 @@ export class Database<$$ = {}> {
       Object.keys(this._migrations)
         .map((key: string) => parseInt(key, 10))
         .sort();
+
     for (const version of versions) {
       await this._upgrade(version, this._migrations[version]);
     }
 
-  }
-
-  async _ensureInitialized(): Promise<void> {
-    if (this.initialized) return;
-    await this.initialize();
   }
 
   /**
@@ -244,9 +242,7 @@ export class Database<$$ = {}> {
         const tx = new Transaction<$$>({
           idb_tx: idb_tx,
           genuine: genuine,
-          substructures: this._substructures,
-          storables: this._storables,
-          indexables: this._indexables,
+          schema: this._schema,
         });
 
         // vvv The below looks concerning due to the fact that we don't await the promise.
@@ -260,9 +256,7 @@ export class Database<$$ = {}> {
           // vvv Update structure if stores were added etc
           // TODO: not sure why we still reach here if the tx is .abort()ed
           if (tx.state !== 'aborted') {
-            this._substructures = tx._substructures;
-            this._storables = tx._storables;
-            this._indexables = tx._indexables;
+            this._schema = tx._schema;
             this.version = version;
           }
         });
@@ -279,6 +273,7 @@ export class Database<$$ = {}> {
 
   // TODO: there's a better way to wrap requests and handle errors
   async _newIdbConn(): Promise<IDBDatabase> {
+    await this._ensureInitialized();
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(this.name);
       // vvv upgradeneeded shouldn't fire
@@ -299,13 +294,8 @@ export class Database<$$ = {}> {
   async newConnection(): Promise<Connection<$$>> {
     await this._ensureInitialized();
     return new Connection<$$>({
-      // vvv Yes, we want to `await this._newIdbConn`; this provides the guarantee
-      //     that consumers of the continuation never have to wait
-      // TODO: remove this :)  -- it should cause problems in Selection#asyncIterator
       idb_conn_k: AsyncCont.fromValue(await this._newIdbConn()),
-      substructures: this._substructures,
-      storables: this._storables,
-      indexables: this._indexables,
+      schema_g: async () => await this._getSchema(),
     });
   }
 

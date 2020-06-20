@@ -1,12 +1,11 @@
 
 import { Store } from './store';
 import { AsyncCont } from './cont';
-import { some, Dict } from './util';
-import { StoreStructure } from './structure';
-import { StorableRegistry } from './storable';
-import { IndexableRegistry } from './indexable';
+import { DatabaseSchema } from './schema';
+import { some, Awaitable, Awaitable_map } from './util';
 import { Transaction, TransactionMode, uglifyTransactionMode } from './transaction';
 
+// TODO: replace all util imports with import * as _ from util
 
 /**
  * A connection to a database.
@@ -27,42 +26,31 @@ export class Connection<$$ = {}> {
   $: $$;
 
   _idb_conn_k: AsyncCont<IDBDatabase>;
-  _substructures: Dict<StoreStructure>;
-  _storables: StorableRegistry;
-  _indexables: IndexableRegistry;
+  _schema_g: () => Awaitable<DatabaseSchema>;
 
   constructor(args: {
     idb_conn_k: AsyncCont<IDBDatabase>;
-    substructures: Dict<StoreStructure>;
-    storables: StorableRegistry;
-    indexables: IndexableRegistry;
+    schema_g: () => Awaitable<DatabaseSchema>;
   }) {
     this._idb_conn_k = args.idb_conn_k;
-    this._substructures = args.substructures;
-    this._storables = args.storables;
-    this._indexables = args.indexables;
+    this._schema_g = args.schema_g;
 
-    const self = this;
     this.$ = <$$> new Proxy({}, {
-      get(_target: {}, prop: string | number | symbol) {
+      get: (_target: {}, prop: string | number | symbol) => {
         if (typeof prop === 'string') {
           const store_name = prop;
-          // vvv Mimic missing key returning undefined
-          if (!(store_name in self._substructures)) return undefined;
           // vvv TODO: code duplication; below is copy/pasted from database.ts
-          const idb_store_k = self._idb_conn_k.map(idb_conn => {
+          const idb_store_k = this._idb_conn_k.map(idb_conn => {
             // TODO: how to tell what mode? cant hardcode readwrie
             const idb_tx = idb_conn.transaction([store_name], 'readwrite');
             const idb_store = idb_tx.objectStore(store_name);
             return idb_store;
           });
-          const aut_store = new Store({
+          const store = new Store({
             idb_store_k: idb_store_k,
-            structure: some(self._substructures[store_name]),
-            storables: self._storables,
-            indexables: self._indexables,
+            schema_g: () => Awaitable_map(this._schema_g(), schema => some(schema.stores[store_name])),
           });
-          return aut_store;
+          return store;
         }
       }
     });
@@ -76,15 +64,13 @@ export class Connection<$$ = {}> {
    * @returns A new transaction
    */
   newTransaction(stores: Array<string | Store<any>>, tx_mode: TransactionMode): AsyncCont<Transaction<$$>> {
-    const store_names = stores.map(s => typeof s === 'string' ? s : s.name);
-    const idb_tx_mode = uglifyTransactionMode(tx_mode)
-    return this._idb_conn_k.map(idb_conn => {
+    return this._idb_conn_k.map(async idb_conn => {
+      const store_names = await Promise.all(stores.map(s => typeof s === 'string' ? s : s.name));
+      const idb_tx_mode = uglifyTransactionMode(tx_mode)
       return new Transaction<$$>({
         idb_tx: idb_conn.transaction(store_names, idb_tx_mode),
         genuine: true,
-        substructures: this._substructures,
-        storables: this._storables,
-        indexables: this._indexables,
+        schema: await this._schema_g(),
       });
     });
   }
@@ -113,7 +99,7 @@ export class Connection<$$ = {}> {
   // for the case that this._idb_conn_k is not a bound value; however,
   // that is exactly the case where we wouldn't want to .close() the
   // connection.
-  close(): void | Promise<void> {
+  close(): Awaitable<void> {
     return this._idb_conn_k.run(idb_conn => idb_conn.close());
   }
 

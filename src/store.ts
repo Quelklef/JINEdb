@@ -4,11 +4,10 @@ import { Index } from './index';
 import { Storable } from './storable';
 import { mapError } from './errors';
 import { AsyncCont } from './cont';
-import { some, Dict } from './util';
-import { StorableRegistry } from './storable';
 import { Selection, Cursor } from './query';
-import { StoreStructure, IndexStructure } from './structure';
-import { Indexable, IndexableRegistry, NativelyIndexable } from './indexable';
+import { StoreSchema, IndexSchema } from './schema';
+import { Indexable, NativelyIndexable } from './indexable';
+import { some, Dict, Awaitable, Awaitable_map } from './util';
 
 export { StorableRegistry } from './storable';
 export { IndexableRegistry } from './indexable';
@@ -26,17 +25,6 @@ export { IndexableRegistry } from './indexable';
 export class Store<Item extends Storable> {
 
   /**
-   * Store name.
-   * Unique per-[[Database]].
-   */
-  name: string;
-
-  /**
-   * Store [[Index]]es.
-   */
-  indexes: Dict<Index<Item, Indexable>>;
-
-  /**
    * An alias for [[Store.indexes]].
    *
    * The type is `unknown` because the type should be given by the user-defined `$$` type.
@@ -45,47 +33,45 @@ export class Store<Item extends Storable> {
    */
   by: unknown;
 
+  /**
+   * Store name
+   *
+   * Unique per-database
+   */
+  get name(): Awaitable<string> {
+    return Awaitable_map(this._schema_g(), schema => schema.name);
+  }
+
   _idb_store_k: AsyncCont<IDBObjectStore>;
-  _substructures: Dict<IndexStructure<Item>>;
-  _storables: StorableRegistry;
-  _indexables: IndexableRegistry;
+  _schema_g: () => Awaitable<StoreSchema<Item>>;
 
   constructor(args: {
     idb_store_k: AsyncCont<IDBObjectStore>;
-    structure: StoreStructure;
-    storables: StorableRegistry;
-    indexables: IndexableRegistry;
+    schema_g: () => Awaitable<StoreSchema<Item>>;
   }) {
     this._idb_store_k = args.idb_store_k;
-    this._substructures = args.structure.indexes;
-    this._storables = args.storables;
-    this._indexables = args.indexables;
+    this._schema_g = args.schema_g;
 
-    this.name = args.structure.name;
-
-    this.indexes = {};
-    for (const index_name of Object.keys(this._substructures)) {
-      this.indexes[index_name] = new Index({
-        idb_index_k: this._idb_store_k.map(idb_store => idb_store.index(index_name)),
-        name: index_name,
-        structure: some(this._substructures[index_name]),
-        sibling_structures: this._substructures,
-        storables: this._storables,
-        indexables: this._indexables,
-      });
-    }
-
-    this.by = this.indexes as Record<string, Index<Item, Indexable>>;
+    this.by = new Proxy({}, {
+      get: (_target: {}, prop: string | number | symbol) => {
+        if (typeof prop === 'string') {
+          const index_name = prop;
+          return new Index({
+            idb_index_k: this._idb_store_k.map(idb_store => idb_store.index(index_name)),
+            schema_g: async () => some((await this._schema_g()).indexes[index_name]),
+            parent_schema_g: this._schema_g,
+          });
+        }
+      }
+    });
   }
 
   async _mapExistingRows(mapper: (row: Row) => Row): Promise<void> {
-    await this._idb_store_k.run(async idb_store => {
+    return await this._idb_store_k.run(async idb_store => {
       const cursor = new Cursor({
         idb_source: idb_store,
-        index_structures: this._substructures,
         query: 'everything',
-        storables: this._storables,
-        indexables: this._indexables,
+        store_schema: await this._schema_g(),
       });
       for (await cursor.init(); cursor.active; await cursor.step()) {
         await cursor._replaceRow(mapper(cursor._currentRow()));
@@ -97,32 +83,31 @@ export class Store<Item extends Storable> {
    * Add an item to the store.
    */
   async add(item: Item): Promise<void> {
-    return await this._idb_store_k.run(idb_store => {
+    return this._idb_store_k.run(async idb_store => {
+      const schema = await this._schema_g();
       return new Promise((resolve, reject) => {
+
+        const traits: Dict<NativelyIndexable> = {};
+        for (const index_name of Object.keys(schema.indexes)) {
+          const index_schema = some(schema.indexes[index_name]);
+          const trait = index_schema.calc_trait(item);
+          const encoded = schema.indexables.encode(trait, index_schema.explode);
+          const trait_name = index_name;
+          traits[trait_name] = encoded;
+        }
+
         // Don't include the id since it's autoincrement'd
         const row: Omit<Row, 'id'> = {
-          payload: this._storables.encode(item),
-          traits: this._calcTraits(item),
+          payload: schema.storables.encode(item),
+          traits: traits,
         };
 
         const req = idb_store.add(row);
         req.onsuccess = _event => resolve();
         req.onerror = _event => reject(mapError(req.error));
+
       });
     });
-  }
-
-  _calcTraits(item: Item): Dict<NativelyIndexable> {
-    /* Calculate all indexed traits for an item */
-    const traits: Dict<NativelyIndexable> = {};
-    for (const index_name of Object.keys(this._substructures)) {
-      const index_structure = some(this._substructures[index_name]);
-      const trait = index_structure.calc_trait(item);
-      const encoded = this._indexables.encode(trait, index_structure.explode);
-      const trait_name = index_name;
-      traits[trait_name] = encoded;
-    }
-    return traits;
   }
 
   /**
@@ -158,12 +143,13 @@ export class Store<Item extends Storable> {
    * @returns An array with all items in the store.
    */
   async array(): Promise<Array<Item>> {
-    return await this._idb_store_k.run(idb_store => {
+    return this._idb_store_k.run(async idb_store => {
+      const schema = await this._schema_g();
       return new Promise((resolve, reject) => {
         const req = idb_store.getAll();
         req.onsuccess = (event) => {
           const rows = (event.target as any).result as Array<Row>;
-          const items = rows.map(row => this._storables.decode(row.payload) as Item);
+          const items = rows.map(row => schema.storables.decode(row.payload) as Item);
           resolve(items);
         };
         req.onerror = _event => reject(mapError(req.error));
@@ -179,9 +165,7 @@ export class Store<Item extends Storable> {
     return new Selection({
       source: this,
       query: 'everything',
-      index_structures: this._substructures,
-      storables: this._storables,
-      indexables: this._indexables,
+      store_schema_g: this._schema_g,
     });
   }
 
@@ -202,10 +186,17 @@ export class Store<Item extends Storable> {
     options?: { unique?: boolean; explode?: boolean },
   ): Promise<Index<Item, Trait>> {
 
-    // We're gonna cheat a little bit :^)
+    // .addIndex should only be called during a migration, which will
+    // already have a transaction sipplied, meaning that the continuation
+    // should be trivial ...
     if (!this._idb_store_k.trivial)
-      throw Error('Cannot call .addIndex on a Store with a nontrivial continuation');
-    const idb_store = await this._idb_store_k.value;
+      throw Error('Cannot call .addIndex outside of a migration');
+
+    // ... and thus we can unwrap it.
+    const idb_store = await this._idb_store_k.unwrap();
+    // TODO: probably should remove unwrap and just replace it with a .run call
+
+    const schema = await this._schema_g();
 
     if (typeof trait_path_or_getter === 'string') {
       const trait_path = trait_path_or_getter;
@@ -217,36 +208,38 @@ export class Store<Item extends Storable> {
     const unique = options?.unique ?? false;
     const explode = options?.explode ?? false;
 
-    const idb_index = idb_store.createIndex(index_name, `traits.${index_name}`, { unique, multiEntry: explode });
+    const idb_index = idb_store.createIndex(
+      index_name,
+      `traits.${index_name}`,
+      { unique: unique, multiEntry: explode },
+    );
 
-    const index_structure = new IndexStructure({
+    const index_schema = new IndexSchema({
       name: index_name,
       trait_path_or_getter: trait_path_or_getter,
       unique: unique,
       explode: explode,
+      storables: schema.storables,
+      indexables: schema.indexables,
     });
 
     // update existing items if needed
-    if (index_structure.kind === 'derived') {
-      const trait_getter = some(index_structure.getter);
+    if (index_schema.kind === 'derived') {
+      const trait_getter = some(index_schema.getter);
       await this.all()._replaceRows((row: Row) => {
-        const item = this._storables.decode(row.payload) as Item;
-        row.traits[index_name] = this._indexables.encode(trait_getter(item), explode);
+        const item = schema.storables.decode(row.payload) as Item;
+        row.traits[index_name] = schema.indexables.encode(trait_getter(item), explode);
         return row;
       });
     }
 
     const index = new Index<Item, Trait>({
       idb_index_k: AsyncCont.fromValue(idb_index),
-      name: index_name,
-      structure: index_structure,
-      sibling_structures: this._substructures,
-      storables: this._storables,
-      indexables: this._indexables,
+      schema_g: () => index_schema,
+      parent_schema_g: () => schema,
     });
 
-    this._substructures[index_name] = index_structure;
-    this.indexes[index_name] = index;
+    schema.indexes[index_name] = index_schema;
 
     return index;
 
@@ -261,11 +254,18 @@ export class Store<Item extends Storable> {
    */
   async removeIndex(name: string): Promise<void> {
 
+    if (!this._idb_store_k.trivial)
+      throw Error('Cannot call .removeIndex outside of a migration');
+
+    const idb_store = await this._idb_store_k.unwrap();
+
+    const schema = await this._schema_g();
+
     // remove idb index
-    await this._idb_store_k.run(idb_store => idb_store.deleteIndex(name));
+    idb_store.deleteIndex(name);
 
     // update existing rows if needed
-    if (some(this.indexes[name]).kind === 'derived') {
+    if (some(schema.indexes[name]).kind === 'derived') {
       await this.all()._replaceRows((row: Row) => {
         delete row.traits[name];
         return row;
@@ -273,8 +273,7 @@ export class Store<Item extends Storable> {
     }
 
     // remove index from this object
-    delete this._substructures[name];
-    delete this.indexes[name];
+    delete schema.indexes[name];
 
   }
 

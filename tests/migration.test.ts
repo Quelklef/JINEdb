@@ -55,7 +55,8 @@ describe('migration', () => {
     });
 
     await jine.connect(async (conn: any) => {
-      expect(conn.$.strings).toBe(undefined);
+      expect(async () => await conn.$.strings.array())
+        .rejects.toThrow();
     });
 
   });
@@ -77,7 +78,8 @@ describe('migration', () => {
     });
 
     await jine.connect(async (conn: any) => {
-      expect(Object.is(conn.$.strings.by.self, undefined)).toBe(true);
+      expect(async () => await conn.$.strings.by.self.find('whatever'))
+        .rejects.toThrow();
     });
 
   });
@@ -106,8 +108,9 @@ describe('migration', () => {
     });
 
     await jine.connect(async (conn: any) => {
-      expect(conn._storables.isRegistered(SomeClass)).toBe(false);
-      expect(conn._indexables.isRegistered(SomeClass)).toBe(false);
+      const schema = await conn._schema_g();
+      expect(schema.storables.isRegistered(SomeClass)).toBe(false);
+      expect(schema.indexables.isRegistered(SomeClass)).toBe(false);
     });
 
   });

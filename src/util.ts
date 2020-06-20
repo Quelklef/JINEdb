@@ -6,6 +6,15 @@
  */
 export type Dict<V> = Partial<Record<string, V>>;
 
+/** A value that can be `await`-ed to produce a `T` */
+export type Awaitable<T> = T | Promise<T>;
+
+export function Awaitable_map<T, S>(aw: Awaitable<T>, f: (v: T) => Awaitable<S>): Awaitable<S> {
+  if (aw instanceof Promise) return aw.then(v => f(v));
+  const v = aw as T;
+  return f(v);
+}
+
 /**
  * An encoder and decoter for a particular type.
  */
@@ -36,14 +45,6 @@ export function invoke<T>(iife: () => T): T {
   */
 
   return iife();
-}
-
-export function DOMStringList_to_Array(dsl: DOMStringList): Array<string> {
-  const result = [];
-  for (let i = 0; i < dsl.length; i++) {
-    result.push('' + dsl.item(i));
-  }
-  return result;
 }
 
 /*-
