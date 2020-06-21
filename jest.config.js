@@ -8,11 +8,13 @@ module.exports = {
       'sort': 'status'
     }],
   ],
+
     
   projects: [
     {
       displayName: 'test',
       preset: 'ts-jest',
+      testPathIgnorePatterns: ["dist"],
     },
     {
       displayName: 'lint',
