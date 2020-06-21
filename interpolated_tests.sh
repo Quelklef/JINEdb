@@ -78,7 +78,7 @@ echo "Compiling ..."
 tsc || exit 1
 
 # run tests
-testlocs="$(find dist/ | grep '^dist/__interp_test.*\.js$')"
+testlocs="$(find dist/ | grep '__interp_test.*\.js$')"
 while read -r testloc; do
   echo "Running $testloc ..."
   node --trace-warnings --unhandled-rejections=strict "$testloc" && result=ok || result=err
