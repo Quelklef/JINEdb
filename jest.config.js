@@ -1,5 +1,4 @@
 module.exports = {
-  preset: 'ts-jest',
   testEnvironment: 'node',
   reporters: [
     'default',
@@ -9,9 +8,16 @@ module.exports = {
       'sort': 'status'
     }],
   ],
-
-
-  runner: 'jest-runner-eslint',
-  displayName: 'lint',
-  testMatch: ['<rootDir>/tests/**/*.test.ts'],
+    
+  projects: [
+    {
+      displayName: 'test',
+      preset: 'ts-jest',
+    },
+    {
+      displayName: 'lint',
+      runner: 'jest-runner-eslint',
+      testMatch: ['<rootDir>/tests/**/*.test.ts'],
+    },
+  ],
 };
