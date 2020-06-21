@@ -2,11 +2,11 @@
 import { Row } from './row';
 import { Index } from './index';
 import { Storable } from './storable';
-import { mapError } from './errors';
 import { AsyncCont } from './cont';
 import { Selection, Cursor } from './query';
 import { StoreSchema, IndexSchema } from './schema';
 import { Indexable, NativelyIndexable } from './indexable';
+import { JineNoSuchIndexError, mapError } from './errors';
 import { some, Dict, Awaitable, Awaitable_map } from './util';
 
 export { StorableRegistry } from './storable';
@@ -56,8 +56,21 @@ export class Store<Item extends Storable> {
       get: (_target: {}, prop: string | number | symbol) => {
         if (typeof prop === 'string') {
           const index_name = prop;
+          const idb_index_k = this._idb_store_k.map(idb_store => {
+            try {
+              return idb_store.index(index_name);
+            } catch (err) {
+              // TODO: once fake-indexeddb updates, uncomment next line
+              //if (err instanceof DOMException && err.name === 'NotFoundError') {
+              if (err?.name === 'NotFoundError') {
+                throw new JineNoSuchIndexError(`No index named '${index_name}'.`);
+              } else {
+                throw err;
+              }
+            }
+          });
           return new Index({
-            idb_index_k: this._idb_store_k.map(idb_store => idb_store.index(index_name)),
+            idb_index_k: idb_index_k,
             schema_g: async () => some((await this._schema_g()).indexes[index_name]),
             parent_schema_g: this._schema_g,
           });
@@ -186,62 +199,56 @@ export class Store<Item extends Storable> {
     options?: { unique?: boolean; explode?: boolean },
   ): Promise<Index<Item, Trait>> {
 
-    // .addIndex should only be called during a migration, which will
-    // already have a transaction sipplied, meaning that the continuation
-    // should be trivial ...
-    if (!this._idb_store_k.trivial)
-      throw Error('Cannot call .addIndex outside of a migration');
+    return await this._idb_store_k.run(async idb_store => {
 
-    // ... and thus we can unwrap it.
-    const idb_store = await this._idb_store_k.unwrap();
-    // TODO: probably should remove unwrap and just replace it with a .run call
+      const schema = await this._schema_g();
 
-    const schema = await this._schema_g();
+      if (typeof trait_path_or_getter === 'string') {
+        const trait_path = trait_path_or_getter;
+        if (!trait_path.startsWith('.'))
+          throw Error("Trait path must start with '.'");
+        trait_path_or_getter = trait_path.slice(1);
+      }
 
-    if (typeof trait_path_or_getter === 'string') {
-      const trait_path = trait_path_or_getter;
-      if (!trait_path.startsWith('.'))
-        throw Error("Trait path must start with '.'");
-      trait_path_or_getter = trait_path.slice(1);
-    }
+      const unique = options?.unique ?? false;
+      const explode = options?.explode ?? false;
 
-    const unique = options?.unique ?? false;
-    const explode = options?.explode ?? false;
+      const idb_index = idb_store.createIndex(
+        index_name,
+        `traits.${index_name}`,
+        { unique: unique, multiEntry: explode },
+      );
 
-    const idb_index = idb_store.createIndex(
-      index_name,
-      `traits.${index_name}`,
-      { unique: unique, multiEntry: explode },
-    );
-
-    const index_schema = new IndexSchema({
-      name: index_name,
-      trait_path_or_getter: trait_path_or_getter,
-      unique: unique,
-      explode: explode,
-      storables: schema.storables,
-      indexables: schema.indexables,
-    });
-
-    // update existing items if needed
-    if (index_schema.kind === 'derived') {
-      const trait_getter = some(index_schema.getter);
-      await this.all()._replaceRows((row: Row) => {
-        const item = schema.storables.decode(row.payload) as Item;
-        row.traits[index_name] = schema.indexables.encode(trait_getter(item), explode);
-        return row;
+      const index_schema = new IndexSchema({
+        name: index_name,
+        trait_path_or_getter: trait_path_or_getter,
+        unique: unique,
+        explode: explode,
+        storables: schema.storables,
+        indexables: schema.indexables,
       });
-    }
 
-    const index = new Index<Item, Trait>({
-      idb_index_k: AsyncCont.fromValue(idb_index),
-      schema_g: () => index_schema,
-      parent_schema_g: () => schema,
+      // update existing items if needed
+      if (index_schema.kind === 'derived') {
+        const trait_getter = some(index_schema.getter);
+        await this.all()._replaceRows((row: Row) => {
+          const item = schema.storables.decode(row.payload) as Item;
+          row.traits[index_name] = schema.indexables.encode(trait_getter(item), explode);
+          return row;
+        });
+      }
+
+      const index = new Index<Item, Trait>({
+        idb_index_k: AsyncCont.fromValue(idb_index),
+        schema_g: () => index_schema,
+        parent_schema_g: () => schema,
+      });
+
+      schema.indexes[index_name] = index_schema;
+
+      return index;
+
     });
-
-    schema.indexes[index_name] = index_schema;
-
-    return index;
 
   }
 
@@ -254,26 +261,25 @@ export class Store<Item extends Storable> {
    */
   async removeIndex(name: string): Promise<void> {
 
-    if (!this._idb_store_k.trivial)
-      throw Error('Cannot call .removeIndex outside of a migration');
+    return await this._idb_store_k.run(async idb_store => {
 
-    const idb_store = await this._idb_store_k.unwrap();
+      const schema = await this._schema_g();
 
-    const schema = await this._schema_g();
+      // remove idb index
+      idb_store.deleteIndex(name);
 
-    // remove idb index
-    idb_store.deleteIndex(name);
+      // update existing rows if needed
+      if (some(schema.indexes[name]).kind === 'derived') {
+        await this.all()._replaceRows((row: Row) => {
+          delete row.traits[name];
+          return row;
+        });
+      }
 
-    // update existing rows if needed
-    if (some(schema.indexes[name]).kind === 'derived') {
-      await this.all()._replaceRows((row: Row) => {
-        delete row.traits[name];
-        return row;
-      });
-    }
+      // remove index from this object
+      delete schema.indexes[name];
 
-    // remove index from this object
-    delete schema.indexes[name];
+    });
 
   }
 

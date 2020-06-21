@@ -6,6 +6,7 @@ import { AsyncCont } from './cont';
 import { some, Dict } from './util';
 import { DatabaseSchema } from './schema';
 import { IndexableRegistry } from './indexable';
+import { JineNoSuchStoreError } from './errors';
 import { Storable, StorableRegistry } from './storable';
 
 /**
@@ -125,7 +126,34 @@ export class Transaction<$$ = {}> {
       });
       this.stores[store_name] = store;
     }
-    this.$ = this.stores as $$;
+
+    this.$ = <$$> new Proxy({}, {
+      get: (_target: {}, prop: string | number | symbol) => {
+        if (typeof prop === 'string') {
+          const store_name = prop;
+          // Don't get the store immediately, do it lazily.
+          // This is to be consistent with the rest of the API, which is lazy.
+          const getStore = (): IDBObjectStore => {
+            try {
+              return this._idb_tx.objectStore(store_name);
+            } catch (err) {
+              // TODO: this is duplicated code. Transaction should join the ranks of lazy objects
+              // TODO: once fake-indexeddb updates, uncomment next line
+              //if (err instanceof DOMException && err.name === 'NotFoundError') {
+              if (err?.name === 'NotFoundError') {
+                throw new JineNoSuchStoreError(`No store named '${store_name}'.`);
+              } else {
+                throw err;
+              }
+            }
+          }
+          return new Store({
+            idb_store_k: AsyncCont.fromProducer(getStore),
+            schema_g: () => some(this._schema.stores[store_name]),
+          });
+        }
+      }
+    });
 
     this.state = 'active';
     this._idb_tx.addEventListener('abort', () => {

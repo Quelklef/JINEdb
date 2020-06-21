@@ -2,6 +2,7 @@
 import "fake-indexeddb/auto";
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { Database, Connection, Transaction, Store, Index } from "../src/jine";
+import * as jine from '../src/jine';
 import { reset } from "./shared";
 
 type Score = 1 | 2 | 3 | 4 | 5 | 6 | 7;
@@ -154,6 +155,16 @@ describe("usage", () => {
   });
 
   function test_$(): void {
+
+    it("throws on missing store", async () => {
+      await expect(($ as any).MISSING.count())
+        .rejects.toThrow(jine.JineNoSuchStoreError);
+    });
+
+    it("throws on missing index", async () => {
+      await expect(($ as any).rooms.by.MISSING.find('whatever'))
+        .rejects.toThrow(jine.JineNoSuchIndexError);
+    });
 
     it("$.{store}.count()", async () => {
       expect(await $.rooms.count()).toBe(ROOMS.length);

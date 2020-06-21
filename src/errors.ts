@@ -47,6 +47,17 @@ export class JineUnknownError extends JineError { }
 export class JineVersionError extends JineError { }
 
 
+/**
+ * Thrown when you try and access an store that doesn't exist
+ */
+export class JineNoSuchStoreError extends JineError { }
+
+/**
+ * Thrown when you try and access an index that doesn't exist
+ */
+export class JineNoSuchIndexError extends JineError { }
+
+
 
 // === JINE-ONLY ERRORS === //
 

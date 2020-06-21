@@ -11,3 +11,4 @@ export { Indexable, NativelyIndexable } from './indexable';
 
 export { Encodable } from './codec-registry';
 
+export * from './errors';

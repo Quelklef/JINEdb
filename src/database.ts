@@ -98,17 +98,11 @@ export class Database<$$ = {}> {
 
           // TODO: this doesn't close the connection
           const idb_conn_k = AsyncCont.fromProducer(async () => await this._newIdbConn());
-          const idb_store_k = idb_conn_k.map(idb_conn => {
-            // TODO: how to tell what mode? cant hardcode readwrie
-            const idb_tx = idb_conn.transaction([store_name], 'readwrite');
-            const idb_store = idb_tx.objectStore(store_name);
-            return idb_store;
+          const conn = new Connection({
+            idb_conn_k: idb_conn_k,
+            schema_g: () => this._schema,
           });
-
-          return new Store({
-            idb_store_k: idb_store_k,
-            schema_g: () => Awaitable_map(this._getSchema(), schema => some(schema.stores[store_name])),
-          });
+          return (conn.$ as any)[store_name];
         }
       }
     });
