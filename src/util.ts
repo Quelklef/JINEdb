@@ -9,10 +9,9 @@ export type Dict<V> = Partial<Record<string, V>>;
 /** A value that can be `await`-ed to produce a `T` */
 export type Awaitable<T> = T | Promise<T>;
 
-export function Awaitable_map<T, S>(aw: Awaitable<T>, f: (v: T) => Awaitable<S>): Awaitable<S> {
-  if (aw instanceof Promise) return aw.then(v => f(v));
-  const v = aw as T;
-  return f(v);
+export function Awaitable_map<T, S>(a: Awaitable<T>, f: (v: T) => Awaitable<S>): Awaitable<S> {
+  if (a instanceof Promise) return a.then(f);
+  return f(a as T);
 }
 
 /**

@@ -1,5 +1,5 @@
 
-import { Awaitable } from './util';
+import { Awaitable, Awaitable_map } from './util';
 
 /*-
  * Continuation Monad
@@ -19,14 +19,8 @@ export class Cont<T>  {
     return this.nn_val(f);
   }
 
-  /**
-   * Unwrap the value from the continuation.
-   * Generally, avoid this on nontrivial continuations.
-   */
-  unwrap(): T {
-    let value!: T;
-    this.run(v => value = v);
-    return value;
+  unsafe_unwrap(): Awaitable<T> {
+    return this.run(v => v);
   }
 
   /** Monad.return */
@@ -65,39 +59,36 @@ export class Cont<T>  {
  */
 export class AsyncCont<T> {
   
-    private readonly nn_val: <R>(callback: (value: Awaitable<T>) => R) => R;
+    private readonly nn_val: <R>(callback: (value: T) => Awaitable<R>) => Awaitable<R>;
 
     private constructor(
-        nn_val: <R>(callback: (value: Awaitable<T>) => R) => R,
+        nn_val: <R>(callback: (value: T) => Awaitable<R>) => Awaitable<R>,
     ) {
       this.nn_val = nn_val;
     }
     
     run<R>(f: (value: T) => Awaitable<R>): Awaitable<R> {
-        return this.nn_val(val => val instanceof Promise ? val.then(f) : f(val));
+      return this.nn_val(val => Awaitable_map(val, f));
     }
 
-    unwrap(): T | Promise<T> {
-      let value!: T | Promise<T>;
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      this.nn_val(v => value = v);
-      return value;
+    unsafe_unwrap(): Awaitable<T> {
+      return this.run(v => v);
     }
 
     static fromValue<T>(x: Awaitable<T>): AsyncCont<T> {
-      return new AsyncCont(k => k(x));
+      return new AsyncCont(k => Awaitable_map(x, k));
     }
 
     static fromProducer<T>(prod: () => Awaitable<T>): AsyncCont<T> {
-      return new AsyncCont(k => k(prod()));
+      return new AsyncCont(k => Awaitable_map(prod(), k));
     }
 
-    static fromFunc<T>(func: <R>(callback: (value: Promise<T>) => R) => R): AsyncCont<T> {
+    static fromFunc<T>(func: <R>(callback: (value: T) => Awaitable<R>) => Awaitable<R>): AsyncCont<T> {
       return new AsyncCont(func);
     }
 
     map<S>(f: (value: T) => Awaitable<S>): AsyncCont<S> {
-      return new AsyncCont(k => this.nn_val(x => x instanceof Promise ? k(x.then(f)) : k(f(x))));
+      return new AsyncCont(k => this.nn_val(x => Awaitable_map(Awaitable_map(x, f), k)));
     }
 
 }
