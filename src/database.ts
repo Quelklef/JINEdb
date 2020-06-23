@@ -100,7 +100,7 @@ export class Database<$$ = {}> {
           const idb_conn_k = AsyncCont.fromProducer(async () => await this._newIdbConn());
           const conn = new Connection({
             idb_conn_k: idb_conn_k,
-            schema_g: () => this._schema,
+            schema_g: () => this._getSchema(),
           });
           return (conn.$ as any)[store_name];
         }
