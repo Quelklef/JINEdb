@@ -1,6 +1,6 @@
 
-import { Constructor, Codec } from './util';
 import { CodecRegistry, Encodable } from './codec-registry';
+import { Constructor, Codec, isPrimitive } from './util';
 
 // List is according to https://stackoverflow.com/a/22550288/4608364
 /**
@@ -139,11 +139,14 @@ export function newStorableRegistry(): StorableRegistry {
 
 
   result.encode = function(decoded: Storable): NativelyStorable {
-    
+
     const super_encode = CodecRegistry.prototype.encode.bind(this);
 
     // Recursively encode Array, Map, Set, and Object values in order to allow
     // custom-Storable types within these types
+
+    if (isPrimitive(decoded))
+      return super_encode(decoded);
 
     if (decoded instanceof Array) {
       const array = decoded as Array<Storable>;
@@ -161,7 +164,7 @@ export function newStorableRegistry(): StorableRegistry {
       return new Set([...set].map(elem => this.encode(elem)));
     }
 
-    if (Object.getPrototypeOf(decoded).constructor === Object) {
+    if (Object.getPrototypeOf(decoded) === Object.prototype) {
       const object = decoded as Record<string, Storable>;
       const unboxed = {} as Record<string, NativelyStorable>;
       for (const key of Object.keys(object)) {
@@ -180,6 +183,9 @@ export function newStorableRegistry(): StorableRegistry {
     const super_decode = CodecRegistry.prototype.decode.bind(this);
 
     // Recursively decode Array, Map, Set and Object values
+
+    if (isPrimitive(encoded))
+      return super_decode(encoded);
 
     if (encoded instanceof Array) {
       const array = encoded as Array<NativelyStorable>;

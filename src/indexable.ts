@@ -1,6 +1,6 @@
 
-import { Constructor, Codec } from './util';
 import { CodecRegistry, Encodable } from './codec-registry';
+import { Constructor, Codec, isPrimitive } from './util';
 
 // What types are indexable in IndexedDB?
 // [2020-05-25] List is according to https://w3c.github.io/IndexedDB/
@@ -134,6 +134,9 @@ export function newIndexableRegistry(): IndexableRegistry {
     // vvv See [1]
     const super_encode = CodecRegistry.prototype.encode.bind(this);
 
+    if (isPrimitive(decoded))
+      return super_encode(decoded);
+
     // vvv Account for exploding/multiEntry indexes
     if (exploding) {
       const array = decoded as Array<Indexable>;
@@ -157,6 +160,9 @@ export function newIndexableRegistry(): IndexableRegistry {
 
     // vvv See [1]
     const super_decode = CodecRegistry.prototype.decode.bind(this);
+
+    if (isPrimitive(encoded))
+      return super_decode(encoded);
 
     // vvv Account for exploding/multiEntry indexes
     if (exploding) {

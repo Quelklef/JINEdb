@@ -14,6 +14,16 @@ describe('core', () => {
     jine.migration(1, async (_tx: any) => { });
   });
 
+  it("works with natively-storable primitive values", async () => {
+    await jine.upgrade(2, async (genuine: boolean, tx: any) => {
+      tx.addStore('prims');
+    });
+    const vals = new Set([null, undefined, 'string', 10, 3.14]);
+    for (const val of vals)
+      await jine.$.prims.add(val);
+    expect(new Set(await jine.$.prims.array())).toStrictEqual(vals);
+  });
+
   it('works with custom storable types', async () => {
 
     // eslint-disable-next-line @typescript-eslint/class-name-casing

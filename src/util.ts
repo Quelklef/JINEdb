@@ -24,6 +24,10 @@ export type Codec<Decoded, Encoded> = {
 
 export type Constructor = Function;
 
+export function isPrimitive(x: any): boolean {
+  return typeof x !== 'object' || x === null;
+}
+
 export function identity<T>(x: T): T {
   return x;
 }
