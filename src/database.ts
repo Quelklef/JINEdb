@@ -289,7 +289,7 @@ export class Database<$$ = {}> {
     await this._ensureInitialized();
     return new Connection<$$>({
       idb_conn_k: AsyncCont.fromValue(await this._newIdbConn()),
-      schema_g: async () => await this._getSchema(),
+      schema_g: () => this._getSchema(),
     });
   }
 
