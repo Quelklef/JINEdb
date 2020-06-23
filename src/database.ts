@@ -83,12 +83,12 @@ export class Database<$$ = {}> {
 
     this.name = name;
     this.version = null;
-    this._schema = {
+    this._schema = new DatabaseSchema({
       name: this.name,
       stores: {},
       storables: newStorableRegistry(),
       indexables: newIndexableRegistry(),
-    };
+    });
     this._migrations = {};
 
     this.$ = <$$> new Proxy({}, {
@@ -203,7 +203,7 @@ export class Database<$$ = {}> {
   // Will only run a genuine migration if the version is greater than the current db version
   async _upgrade(version: number, callback: (genuine: boolean, tx: Transaction<$$>) => Promise<void>): Promise<void> {
 
-    const genuine = version > some(this.version);
+    const genuine = version > some(this.version, "Cannot upgrade an uninitalized database.");
 
     return new Promise((resolve, reject) => {
 
@@ -232,7 +232,7 @@ export class Database<$$ = {}> {
       };
 
       req.onupgradeneeded = _event => {
-        const idb_tx = some(req.transaction);
+        const idb_tx = some(req.transaction, "Internal error");
         const tx = new Transaction<$$>({
           idb_tx: idb_tx,
           genuine: genuine,

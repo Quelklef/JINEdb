@@ -3,7 +3,7 @@ import { Store } from './store';
 import { AsyncCont } from './cont';
 import { DatabaseSchema } from './schema';
 import { JineNoSuchStoreError } from './errors';
-import { some, Awaitable, Awaitable_map } from './util';
+import { Awaitable, Awaitable_map } from './util';
 import { Transaction, TransactionMode, uglifyTransactionMode } from './transaction';
 
 // TODO: replace all util imports with import * as _ from util
@@ -58,7 +58,7 @@ export class Connection<$$ = {}> {
           });
           const store = new Store({
             idb_store_k: idb_store_k,
-            schema_g: () => Awaitable_map(this._schema_g(), schema => some(schema.stores[store_name])),
+            schema_g: () => Awaitable_map(this._schema_g(), schema => schema.store(store_name)),
           });
           return store;
         }

@@ -1,13 +1,13 @@
 
 import { clone } from 'true-clone';
 
+import { Dict } from './util';
 import { Store } from './store';
 import { AsyncCont } from './cont';
-import { some, Dict } from './util';
-import { DatabaseSchema } from './schema';
 import { IndexableRegistry } from './indexable';
 import { JineNoSuchStoreError } from './errors';
 import { Storable, StorableRegistry } from './storable';
+import { DatabaseSchema, StoreSchema } from './schema';
 
 /**
  * Modes that a transaction can take.
@@ -119,10 +119,10 @@ export class Transaction<$$ = {}> {
     this._schema = clone(args.schema);
 
     this.stores = {};
-    for (const store_name of Object.keys(this._schema.stores)) {
+    for (const store_name of this._schema.store_names) {
       const store = new Store({
         idb_store_k: AsyncCont.fromValue(this._idb_tx.objectStore(store_name)),
-        schema_g: () => some(this._schema.stores[store_name]),
+        schema_g: () => this._schema.store(store_name),
       });
       this.stores[store_name] = store;
     }
@@ -141,7 +141,7 @@ export class Transaction<$$ = {}> {
               // TODO: once fake-indexeddb updates, uncomment next line
               //if (err instanceof DOMException && err.name === 'NotFoundError') {
               if (err?.name === 'NotFoundError') {
-                throw new JineNoSuchStoreError(`No store named '${store_name}'.`);
+                throw new JineNoSuchStoreError(`No store named '${store_name}' (No idb store found).`);
               } else {
                 throw err;
               }
@@ -149,7 +149,7 @@ export class Transaction<$$ = {}> {
           }
           return new Store({
             idb_store_k: AsyncCont.fromProducer(getStore),
-            schema_g: () => some(this._schema.stores[store_name]),
+            schema_g: () => this._schema.store(store_name),
           });
         }
       }
@@ -216,19 +216,19 @@ export class Transaction<$$ = {}> {
 
     this._idb_db.createObjectStore(store_name, { keyPath: 'id', autoIncrement: true });
 
-    const store_schema = {
+    const store_schema = new StoreSchema({
       name: store_name,
       indexes: { },
       storables: this._schema.storables,
       indexables: this._schema.indexables,
-    };
+    });
 
     const store = new Store<Item>({
       idb_store_k: AsyncCont.fromValue(this._idb_tx.objectStore(store_name)),
       schema_g: () => store_schema,
     });
 
-    this._schema.stores[store_name] = store_schema;
+    this._schema.addStore(store_name, store_schema);
     this.stores[store_name] = store as any;
 
     return store;
@@ -244,7 +244,7 @@ export class Transaction<$$ = {}> {
    */
   removeStore(name: string): void {
     this._idb_db.deleteObjectStore(name);
-    delete this._schema.stores[name];
+    this._schema.removeStore(name);
     delete this.stores[name];
   }
 

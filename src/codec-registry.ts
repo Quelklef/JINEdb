@@ -54,8 +54,8 @@ export class CodecRegistry<Encoded, Box extends Encoded> {
     // This is ensured by the type requirement of Encoded | Encodable
 
     if (!already_encoded) {
-      const type_id = some(this._ids.get((val as Object).constructor));
-      const codec = some(this._codecs.get(type_id));
+      const type_id = some(this._ids.get((val as Object).constructor), `Value has unrecognized constructor: ${val}`);
+      const codec = some(this._codecs.get(type_id), `Value's constructor has unrecognized type id '${type_id}': ${val}`);
       const encoded = codec.encode(val as any);
       // use '+' to mark existence of a type id
       const boxed = this._box(encoded, '+' + type_id);
@@ -78,7 +78,7 @@ export class CodecRegistry<Encoded, Box extends Encoded> {
       const boxed = val as Box;
       const [encoded, type_id] = this._unbox(boxed);
       if (type_id.startsWith('-')) return encoded;
-      const codec = some(this._codecs.get(type_id.slice(1)));
+      const codec = some(this._codecs.get(type_id.slice(1)), `Unregocnized type id '${type_id}'`);
       return codec.decode(encoded);
     } else {
       return val;
@@ -92,7 +92,7 @@ export class CodecRegistry<Encoded, Box extends Encoded> {
   async upgrade(id: string, args: Codec<any, Encoded> & { constructor?: Constructor; migrate: () => Promise<void> }): Promise<void> {
     // Replace old constructor with new constructor, if given
     if (args.constructor) {
-      const [old_constructor,] = some([...this._ids.entries()].find(([_key, val]) => val === id));
+      const [old_constructor,] = some([...this._ids.entries()].find(([_key, val]) => val === id), `Cannot find constructor with id '${id}'.`);
       this._ids.delete(old_constructor);
       this._ids.set(args.constructor, id);
     }

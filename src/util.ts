@@ -32,7 +32,7 @@ export function identity<T>(x: T): T {
   return x;
 }
 
-export function some<T>(x: T | null | undefined, error_message?: string): T {
+export function some<T>(x: T | null | undefined, error_message: string | null): T {
   if (x === undefined || x === null) {
     throw Error(error_message ?? `Called some(${x}).`);
   }

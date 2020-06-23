@@ -183,15 +183,25 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     this._assertInitialized();
     this._assertNotExhausted();
   }
+
+  _active_idb_cur(): IDBCursorWithValue {
+    this._assertActive();
+    return some(this._idb_cur, "Internal error");
+  }
+
+  _active_idb_req(): IDBRequest {
+    this._assertActive();
+    return some(this._idb_req, "Internal error");
+  }
   
   _currentRow(): Row {
-    return some(this._idb_cur).value;
+    return this._active_idb_cur().value;
   }
 
   currentItem(): Item {
     // Get the item at the cursor.
-    this._assertActive();
-    const row = some(this._idb_cur).value;
+    const idb_cur = this._active_idb_cur();
+    const row = idb_cur.value;
     return this.store_schema.storables.decode(row.payload) as Item;
   }
 
@@ -200,8 +210,10 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     if (this.exhausted) {
       return Promise.resolve(undefined);
     } else {
-      const req = some(this._idb_req);
-      some(this._idb_cur).continue();
+      const idb_req = this._active_idb_req();
+      const idb_cur = this._active_idb_cur();
+      const req = idb_req;
+      idb_cur.continue();
       return new Promise((resolve, reject) => {
         req.onsuccess = _event => {
           this._idb_cur = req.result;
@@ -243,25 +255,25 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
   }
 
   currentTrait(): Trait {
-    this._assertActive();
-    const encoded = some(this._idb_cur).key as NativelyIndexable;
+    const idb_cur = this._active_idb_cur();
+    const encoded = idb_cur.key as NativelyIndexable;
     return this.store_schema.indexables.decode(encoded, this._sourceIsExploding) as Trait;
   }
 
   async delete(): Promise<void> {
     // Delete the current object
-    this._assertActive();
+    const idb_cur = this._active_idb_cur();
     return new Promise((resolve, reject) => {
-      const req = some(this._idb_cur).delete();
+      const req = idb_cur.delete();
       req.onsuccess = _event => resolve();
       req.onerror = _event => reject(mapError(req.error));
     });
   }
 
   async _replaceRow(new_row: Row): Promise<void> {
-    this._assertActive();
+    const idb_cur = this._active_idb_cur();
     return new Promise((resolve, reject) => {
-      const req = some(this._idb_cur).update(new_row);
+      const req = idb_cur.update(new_row);
       req.onsuccess = _event => resolve();
       req.onerror = _event => reject(mapError(req.error));
     });
@@ -270,15 +282,15 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
   async replace(new_item: Item): Promise<void> {
 
     // Replace the current object with the given object
-    this._assertActive();
-    const row: any = some(this._idb_cur).value;
+    const idb_cur = this._active_idb_cur();
+    const row: any = idb_cur.value;
 
     // update payload
     row.payload = this.store_schema.storables.encode(new_item);
 
     // update traits
-    for (const index_name of Object.keys(this.store_schema.indexes)) {
-      const index_schema = some(this.store_schema.indexes[index_name]);
+    for (const index_name of this.store_schema.index_names) {
+      const index_schema = this.store_schema.index(index_name);
       const trait = index_schema.calc_trait(new_item);
       const encoded = this.store_schema.indexables.encode(trait, index_schema.explode);
       const trait_name = index_name;
@@ -286,7 +298,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     }
 
     return new Promise((resolve, reject) => {
-      const req = some(this._idb_cur).update(row);
+      const req = idb_cur.update(row);
       req.onsuccess = _event => resolve();
       req.onerror = _event => reject(mapError(req.error));
     });

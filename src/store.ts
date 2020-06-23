@@ -7,7 +7,7 @@ import { Selection, Cursor } from './query';
 import { StoreSchema, IndexSchema } from './schema';
 import { Indexable, NativelyIndexable } from './indexable';
 import { JineNoSuchIndexError, mapError } from './errors';
-import { some, Dict, Awaitable, Awaitable_map } from './util';
+import { Dict, Awaitable, Awaitable_map } from './util';
 
 export { StorableRegistry } from './storable';
 export { IndexableRegistry } from './indexable';
@@ -71,7 +71,7 @@ export class Store<Item extends Storable> {
           });
           return new Index({
             idb_index_k: idb_index_k,
-            schema_g: async () => some((await this._schema_g()).indexes[index_name]),
+            schema_g: async () => (await this._schema_g()).index(index_name),
             parent_schema_g: this._schema_g,
           });
         }
@@ -101,8 +101,8 @@ export class Store<Item extends Storable> {
       return new Promise((resolve, reject) => {
 
         const traits: Dict<NativelyIndexable> = {};
-        for (const index_name of Object.keys(schema.indexes)) {
-          const index_schema = some(schema.indexes[index_name]);
+        for (const index_name of schema.index_names) {
+          const index_schema = schema.index(index_name);
           const trait = index_schema.calc_trait(item);
           const encoded = schema.indexables.encode(trait, index_schema.explode);
           const trait_name = index_name;
@@ -230,7 +230,7 @@ export class Store<Item extends Storable> {
 
       // update existing items if needed
       if (index_schema.kind === 'derived') {
-        const trait_getter = some(index_schema.getter);
+        const trait_getter = index_schema.getter;
         await this.all()._replaceRows((row: Row) => {
           const item = schema.storables.decode(row.payload) as Item;
           row.traits[index_name] = schema.indexables.encode(trait_getter(item), explode);
@@ -244,7 +244,7 @@ export class Store<Item extends Storable> {
         parent_schema_g: () => schema,
       });
 
-      schema.indexes[index_name] = index_schema;
+      schema.addIndex(index_name, index_schema);
 
       return index;
 
@@ -269,7 +269,7 @@ export class Store<Item extends Storable> {
       idb_store.deleteIndex(name);
 
       // update existing rows if needed
-      if (some(schema.indexes[name]).kind === 'derived') {
+      if (schema.index(name).kind === 'derived') {
         await this.all()._replaceRows((row: Row) => {
           delete row.traits[name];
           return row;
@@ -277,7 +277,7 @@ export class Store<Item extends Storable> {
       }
 
       // remove index from this object
-      delete schema.indexes[name];
+      schema.removeIndex(name);
 
     });
 
