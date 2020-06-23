@@ -24,6 +24,17 @@ describe('core', () => {
     expect(new Set(await jine.$.prims.array())).toStrictEqual(vals);
   });
 
+  it("works with natively-storable object values", async () => {
+    await jine.upgrade(2, async (genuine: boolean, tx: any) => {
+      tx.addStore('obj');
+    });
+    const d = new Date();
+    const r = /abc/;
+    await jine.$.obj.add(d);
+    await jine.$.obj.add(r);
+    expect(await jine.$.obj.array()).toStrictEqual([d, r]);
+  });
+
   it('works with custom storable types', async () => {
 
     // eslint-disable-next-line @typescript-eslint/class-name-casing

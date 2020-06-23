@@ -204,7 +204,7 @@ export function newStorableRegistry(): StorableRegistry {
     }
 
     // vvv If the encoded value is a PLAIN object, no custom registered type
-    if (encoded instanceof Object && (encoded as any).__JINE_META__.startsWith('-')) {
+    if (encoded instanceof Object && (encoded as any)?.__JINE_META__?.startsWith('-')) {
       const boxed = encoded as Box;
       const unboxed = super_decode(boxed) as Record<string, NativelyStorable>;
       const decoded = {} as Record<string, Storable>;
