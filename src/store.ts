@@ -7,7 +7,7 @@ import { Selection, Cursor } from './query';
 import { StoreSchema, IndexSchema } from './schema';
 import { Indexable, NativelyIndexable } from './indexable';
 import { JineNoSuchIndexError, mapError } from './errors';
-import { Dict, Awaitable, Awaitable_map } from './util';
+import { _try, Dict, Awaitable, Awaitable_map } from './util';
 
 export { StorableRegistry } from './storable';
 export { IndexableRegistry } from './indexable';
@@ -56,19 +56,11 @@ export class Store<Item extends Storable> {
       get: (_target: {}, prop: string | number | symbol) => {
         if (typeof prop === 'string') {
           const index_name = prop;
-          const idb_index_k = this._idb_store_k.map(idb_store => {
-            try {
-              return idb_store.index(index_name);
-            } catch (err) {
-              // TODO: once fake-indexeddb updates, uncomment next line
-              //if (err instanceof DOMException && err.name === 'NotFoundError') {
-              if (err?.name === 'NotFoundError') {
-                throw new JineNoSuchIndexError(`No index named '${index_name}'.`);
-              } else {
-                throw err;
-              }
-            }
-          });
+          const idb_index_k = this._idb_store_k.map(
+            idb_store =>
+              _try(
+                () => idb_store.index(index_name),
+                err => err.name === 'NotFoundError' && new JineNoSuchIndexError(`No index named '${index_name}'.`)));
           return new Index({
             idb_index_k: idb_index_k,
             schema_g: async () => (await this._schema_g()).index(index_name),

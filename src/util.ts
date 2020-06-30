@@ -51,6 +51,30 @@ export function invoke<T>(iife: () => T): T {
 }
 
 /*-
+ * For the following use-case:
+ *
+ * Mapping an error to another error:
+ * // throws a DifferentError instance
+ * _try(
+ *   () => throw Error('err'),
+ *   err => err.name === 'err' && throw DifferentError('err'),
+ * )
+ * // re-throws the original error
+ * _try(
+ *   () => throw Error('err'),
+ *   err => err.name === 'something else' && throw DifferentError('err'),
+ * )
+ */
+export function _try<R>(func: () => R, mapper: (err: Error) => false | Error): R {
+  try {
+    return func();
+  } catch (err) {
+    const mapped =  mapper(err);
+    throw mapped ? mapped : err;
+  }
+}
+
+/*-
  * Oh, boy, am I proud of this function
  *
  * Stack traces are awesome.

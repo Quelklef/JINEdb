@@ -1,9 +1,9 @@
 
 import { clone } from 'true-clone';
 
-import { Dict } from './util';
 import { Store } from './store';
 import { AsyncCont } from './cont';
+import { _try, Dict } from './util';
 import { IndexableRegistry } from './indexable';
 import { JineNoSuchStoreError } from './errors';
 import { Storable, StorableRegistry } from './storable';
@@ -121,17 +121,10 @@ export class Transaction<$$ = {}> {
 
     this.stores = {};
     for (const store_name of args.scope) {
-      let idb_store!: IDBObjectStore;
-      try {
-        idb_store = this._idb_tx.objectStore(store_name);
-      } catch (err) {
-        // TODO: once fake-indexeddb updates
-        if (/* err instanceof DOMException && */ err.name === 'NotFoundError') {
-          throw new JineNoSuchStoreError(`No store named '${store_name}' (no idb store found).`);
-        } else {
-          throw err;
-        }
-      }
+      const idb_store = _try(
+        () => this._idb_tx.objectStore(store_name),
+        err => err.name === 'NotFoundError' && new JineNoSuchStoreError(`No store named '${store_name}' (no idb store found).`),
+      );
       const store = new Store({
         idb_store_k: AsyncCont.fromValue(idb_store),
         schema_g: () => this._schema.store(store_name),
@@ -145,18 +138,12 @@ export class Transaction<$$ = {}> {
           const store_name = prop;
           // Don't get the store immediately, do it lazily.
           // This is to be consistent with the rest of the API, which is lazy.
-          const getStore = (): IDBObjectStore => {
-            try {
-              return this._idb_tx.objectStore(store_name);
-            } catch (err) {
-              // TODO: once fake-indexeddb updates
-              if (/* err instanceof DOMException && */ err.name === 'NotFoundError') {
-                throw new JineNoSuchStoreError(`No store named '${store_name}' (no idb store found).`);
-              } else {
-                throw err;
-              }
-            }
-          }
+          const getStore = (): IDBObjectStore =>
+            _try(
+              () => this._idb_tx.objectStore(store_name),
+              err => err.name === 'NotFoundError' && new JineNoSuchStoreError(`No store named '${store_name}' (no idb store found).`),
+            );
+
           return new Store({
             idb_store_k: AsyncCont.fromProducer(getStore),
             schema_g: () => this._schema.store(store_name),

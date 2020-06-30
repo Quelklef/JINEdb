@@ -3,7 +3,7 @@ import { Store } from './store';
 import { AsyncCont } from './cont';
 import { DatabaseSchema } from './schema';
 import { JineNoSuchStoreError } from './errors';
-import { Awaitable, Awaitable_map } from './util';
+import { _try,  Awaitable, Awaitable_map } from './util';
 import { Transaction, TransactionMode, uglifyTransactionMode } from './transaction';
 
 /**
@@ -39,19 +39,10 @@ export class Connection<$$ = {}> {
         if (typeof prop === 'string') {
           const store_name = prop;
           const idb_store_k = this._idb_conn_k.map(idb_conn => {
-            // TODO: how to tell what mode? cant hardcode readwrie
-            let idb_tx!: IDBTransaction;
-            try {
-              idb_tx = idb_conn.transaction([store_name], 'readwrite');
-            } catch (err) {
-              // TODO: once fake-indexeddb updates, uncomment next line
-              //if (err instanceof DOMException && err.name === 'NotFoundError') {
-              if (err?.name === 'NotFoundError') {
-                throw new JineNoSuchStoreError(`No store named '${store_name}'.`);
-              } else {
-                throw err;
-              }
-            }
+            const idb_tx = _try(
+              () => idb_conn.transaction([store_name], 'readwrite'),
+              err => err.name === 'NotFoundError' && new JineNoSuchStoreError(`No store named '${store_name}'.`),
+            );
             return idb_tx.objectStore(store_name);
           });
           const store = new Store({
