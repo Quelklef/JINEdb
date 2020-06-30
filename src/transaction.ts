@@ -105,6 +105,7 @@ export class Transaction<$$ = {}> {
 
   constructor(args: {
     idb_tx: IDBTransaction;
+    scope: Array<string>;
     schema: DatabaseSchema;
     genuine: boolean;
   }) {
@@ -119,9 +120,20 @@ export class Transaction<$$ = {}> {
     this._schema = clone(args.schema);
 
     this.stores = {};
-    for (const store_name of this._schema.store_names) {
+    for (const store_name of args.scope) {
+      let idb_store!: IDBObjectStore;
+      try {
+        idb_store = this._idb_tx.objectStore(store_name);
+      } catch (err) {
+        // TODO: once fake-indexeddb updates
+        if (/* err instanceof DOMException && */ err.name === 'NotFoundError') {
+          throw new JineNoSuchStoreError(`No store named '${store_name}' (no idb store found).`);
+        } else {
+          throw err;
+        }
+      }
       const store = new Store({
-        idb_store_k: AsyncCont.fromValue(this._idb_tx.objectStore(store_name)),
+        idb_store_k: AsyncCont.fromValue(idb_store),
         schema_g: () => this._schema.store(store_name),
       });
       this.stores[store_name] = store;
@@ -137,11 +149,9 @@ export class Transaction<$$ = {}> {
             try {
               return this._idb_tx.objectStore(store_name);
             } catch (err) {
-              // TODO: this is duplicated code. Transaction should join the ranks of lazy objects
-              // TODO: once fake-indexeddb updates, uncomment next line
-              //if (err instanceof DOMException && err.name === 'NotFoundError') {
-              if (err?.name === 'NotFoundError') {
-                throw new JineNoSuchStoreError(`No store named '${store_name}' (No idb store found).`);
+              // TODO: once fake-indexeddb updates
+              if (/* err instanceof DOMException && */ err.name === 'NotFoundError') {
+                throw new JineNoSuchStoreError(`No store named '${store_name}' (no idb store found).`);
               } else {
                 throw err;
               }

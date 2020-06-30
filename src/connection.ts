@@ -6,8 +6,6 @@ import { JineNoSuchStoreError } from './errors';
 import { Awaitable, Awaitable_map } from './util';
 import { Transaction, TransactionMode, uglifyTransactionMode } from './transaction';
 
-// TODO: replace all util imports with import * as _ from util
-
 /**
  * A connection to a database.
  */
@@ -79,6 +77,7 @@ export class Connection<$$ = {}> {
       const idb_tx_mode = uglifyTransactionMode(tx_mode)
       return new Transaction<$$>({
         idb_tx: idb_conn.transaction(store_names, idb_tx_mode),
+        scope: store_names,
         genuine: true,
         schema: await this._schema_g(),
       });

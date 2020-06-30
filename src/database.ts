@@ -235,6 +235,8 @@ export class Database<$$ = {}> {
         const idb_tx = some(req.transaction, "Internal error");
         const tx = new Transaction<$$>({
           idb_tx: idb_tx,
+          // vvv Versionchange transactions have access to entire db
+          scope: this._schema.store_names,
           genuine: genuine,
           schema: this._schema,
         });

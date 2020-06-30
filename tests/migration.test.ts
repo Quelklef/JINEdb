@@ -44,19 +44,25 @@ describe('migration', () => {
 
     await jine.upgrade(2, async (genuine: boolean, tx: any) => {
       await tx.addStore('strings');
+      await tx.addStore('numbers');
     });
 
     await jine.connect(async (conn: any) => {
       await conn.$.strings.add('s t r i n g');
       expect(await conn.$.strings.array()).toEqual(['s t r i n g']);
+      await conn.$.numbers.add(10);
+      expect(await conn.$.numbers.array()).toEqual([10]);
     });
 
     await jine.upgrade(3, async (genuine: boolean, tx: any) => {
       await tx.removeStore('strings');
+      await tx.removeStore('numbers');
     });
 
     await jine.connect(async (conn: any) => {
       await expect(async () => await conn.$.strings.array())
+        .rejects.toThrow();
+      await expect(async () => await conn.$.numbers.array())
         .rejects.toThrow();
     });
 
