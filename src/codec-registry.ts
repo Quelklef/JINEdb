@@ -78,7 +78,7 @@ export class CodecRegistry<Encoded, Box extends Encoded> {
       const boxed = val as Box;
       const [encoded, type_id] = this._unbox(boxed);
       if (type_id.startsWith('-')) return encoded;
-      const codec = some(this._codecs.get(type_id.slice(1)), `Unregocnized type id '${type_id}'`);
+      const codec = some(this._codecs.get(type_id.slice(1)), `Unrecognized type id '${type_id}'`);
       return codec.decode(encoded);
     } else {
       return val;
