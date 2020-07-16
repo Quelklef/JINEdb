@@ -532,6 +532,8 @@ export class SelectionUnique<Item extends Storable, Trait extends Indexable> {
     });
   }
 
+  // TODO: in the methods of this class, we don't ensure that >0 rows are selected
+
   async _ensureSourceUnique(): Promise<void> {
     if (!await this.source.unique)
       throw Error('Cannot create a SelectionUnique on a non-unique index.');

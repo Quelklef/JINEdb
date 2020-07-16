@@ -175,8 +175,7 @@ export class Transaction<$$ = {}> {
       if (this.state === 'active') this.abort();
       throw ex;
     } finally {
-      if (this.state === 'active' && !this.genuine) this.abort();
-      if (this.state === 'active' && this.genuine) this.commit();
+      if (this.state === 'active') this.commit();
     }
   }
 
@@ -196,8 +195,7 @@ export class Transaction<$$ = {}> {
       if (this.state === 'active') this.abort();
       throw ex;
     } finally {
-      if (this.state === 'active' && !this.genuine) this.abort();
-      if (this.state === 'active' && this.genuine) this.commit();
+      if (this.state === 'active') this.commit();
     }
   }
 
@@ -250,8 +248,6 @@ export class Transaction<$$ = {}> {
    */
   commit(): void {
     /* Commit and end the transaction */
-    if (!this.genuine)
-      throw Error('Cannot commit an ingeuine transaction.');
     // [2020-05-16] For some reason the types don't have IDBTransaction.commit(),
     // but it's in the online docs: https://developer.mozilla.org/en-US/docs/Web/API/IDBTransaction/commit
     (this._idb_tx as any).commit();
