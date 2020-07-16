@@ -219,7 +219,10 @@ export class Database<$$ = {}> {
           : indexedDB.open('__JINE_DUMMY__' + this.name, version)
           ;
 
-      req.onblocked = _event => reject(new JineBlockedError());
+
+      req.onblocked = _event => {
+        reject(new JineBlockedError());
+      };
 
       req.onerror = _event => {
         const idb_error = req.error;
@@ -253,7 +256,8 @@ export class Database<$$ = {}> {
           // TODO: not sure why we still reach here if the tx is .abort()ed
           if (tx.state !== 'aborted') {
             this._schema = tx._schema;
-            this.version = version;
+            if (genuine)
+              this.version = version;
           }
         });
       };
