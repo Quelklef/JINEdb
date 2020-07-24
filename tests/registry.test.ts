@@ -28,6 +28,11 @@ describe('codec registry', () => {
     expect(registry.decode(registry.encode(val))).toEqual(val);
   });
 
+  it('properly handle a recursive instance of the box type', () => {
+    const val = [ ['a'], ['b'], ['c'] ];
+    expect(registry.decode(registry.encode(val))).toEqual(val);
+  });
+
   it("doesn't fuck up with custom types", () => {
 
     class Person {

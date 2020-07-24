@@ -28,11 +28,31 @@ describe('core', () => {
     await jine.upgrade(2, async (genuine: boolean, tx: any) => {
       tx.addStore('obj');
     });
+    const o = { a: 'a', b: 'b' };
     const d = new Date();
     const r = /abc/;
+    await jine.$.obj.add(o);
     await jine.$.obj.add(d);
     await jine.$.obj.add(r);
-    expect(await jine.$.obj.array()).toStrictEqual([d, r]);
+    expect(await jine.$.obj.array()).toStrictEqual([o, d, r]);
+  });
+
+  it("works with recursive instantiations of the storable registry box type", async () => {
+    await jine.upgrade(2, async (genuine: boolean, tx: any) => {
+      tx.addStore('obj');
+    });
+    const o = {
+      x: 1,
+      c: {
+        x: 2,
+        c: {
+          x: 3,
+          c: null,
+        }
+      }
+    };
+    await jine.$.obj.add(o);
+    expect(await jine.$.obj.array()).toStrictEqual([o]);
   });
 
   it('works with custom storable types', async () => {
