@@ -14,6 +14,24 @@ export function Awaitable_map<T, S>(a: Awaitable<T>, f: (v: T) => Awaitable<S>):
   return f(a as T);
 }
 
+const ctx = this as any;
+
+export const ArrayBufferView_constructors: Array<Constructor> = [];
+if (ctx.Int8Array)         ArrayBufferView_constructors.push(ctx.Int8Array);
+if (ctx.Uint8Array)        ArrayBufferView_constructors.push(ctx.Uint8Array);
+if (ctx.Uint8ClampedArray) ArrayBufferView_constructors.push(ctx.Uint8ClampedArray);
+if (ctx.Int16Array)        ArrayBufferView_constructors.push(ctx.Int16Array);
+if (ctx.Uint16Array)       ArrayBufferView_constructors.push(ctx.Uint16Array);
+if (ctx.Int32Array)        ArrayBufferView_constructors.push(ctx.Int32Array);
+if (ctx.Uint32Array)       ArrayBufferView_constructors.push(ctx.Uint32Array);
+if (ctx.Float32Array)      ArrayBufferView_constructors.push(ctx.Float32Array);
+if (ctx.Float64Array)      ArrayBufferView_constructors.push(ctx.Float64Array);
+if (ctx.DataView)          ArrayBufferView_constructors.push(ctx.DataView);
+
+export const ImageBitmap_ImageData_constructors: Array<Constructor> = [];
+if (ctx.ImageBitmap) ImageBitmap_ImageData_constructors.push(ctx.ImageBitmap);
+if (ctx.ImageData)   ImageBitmap_ImageData_constructors.push(ctx.ImageData);
+
 /**
  * An encoder and decoter for a particular type.
  */

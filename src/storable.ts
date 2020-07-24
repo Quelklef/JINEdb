@@ -1,6 +1,7 @@
 
+import { JineError } from './errors';
 import { CodecRegistry, Encodable } from './codec-registry';
-import { Constructor, Codec, isPrimitive } from './util';
+import { Constructor, Codec, isPrimitive, ArrayBufferView_constructors, ImageBitmap_ImageData_constructors} from './util';
 
 // List is according to https://stackoverflow.com/a/22550288/4608364
 /**
@@ -27,6 +28,16 @@ export type NativelyStorable
   | Map<NativelyStorable, NativelyStorable>
   | Set<NativelyStorable>
   ;
+
+const nativelyStorableConstructors: Array<Constructor> = [
+  BigInt, Date, RegExp,
+  Blob,
+  File, FileList,
+  ArrayBuffer,
+  ...ArrayBufferView_constructors,
+  ...ImageBitmap_ImageData_constructors,
+  Object, Array, Map, Set
+];
 
 // works with "plain" objects. I assume that "plain" means string keys.
 // (empty interface is a hack to get TS to work)
@@ -147,6 +158,10 @@ export function newStorableRegistry(): StorableRegistry {
 
     if (isPrimitive(decoded))
       return super_encode(decoded);
+
+    const recognized = decoded?.constructor && nativelyStorableConstructors.includes(decoded.constructor) || this.hasCodec(decoded);
+    if (!recognized)
+      throw new JineError(`Refusing to encode value of unrecognized type '${decoded?.constructor.name}' (did you forget to register it as a custom storable?).`);
 
     if (decoded instanceof Array) {
       const array = decoded as Array<Storable>;

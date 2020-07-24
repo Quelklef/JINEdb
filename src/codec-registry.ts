@@ -52,6 +52,10 @@ export class CodecRegistry<Encoded, Box extends Encoded> {
     // If the item doesn't have a codec, then it must be already encoded.
     const already_encoded = !this.hasCodec(val);
     // This is ensured by the type requirement of Encoded | Encodable
+    
+    // Note that it is this inference is wrong in the case that the
+    // user has told the type system that a custom type has a codec but
+    // has filed to actually supply it.
 
     if (!already_encoded) {
       const type_id = some(this._ids.get((val as Object).constructor), `Value has unrecognized constructor: ${val}`);

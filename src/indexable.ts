@@ -1,6 +1,7 @@
 
+import { JineError } from './errors';
 import { CodecRegistry, Encodable } from './codec-registry';
-import { Constructor, Codec, isPrimitive } from './util';
+import { Constructor, Codec, isPrimitive, ArrayBufferView_constructors } from './util';
 
 // What types are indexable in IndexedDB?
 // [2020-05-25] List is according to https://w3c.github.io/IndexedDB/
@@ -9,12 +10,19 @@ import { Constructor, Codec, isPrimitive } from './util';
  */
 export type NativelyIndexable
   = number  // except for NaN
+  | string
   | Date  // "except where the [[DateValue]] internal slot is NaN."
-  | String
   | ArrayBuffer
   | ArrayBufferView
   | Array<NativelyIndexable>
   ;
+
+const nativelyIndexableConstructors: Array<Constructor> = [
+  Date,
+  ArrayBuffer,
+  ...ArrayBufferView_constructors,
+  Array,
+];
 
 /**
  * Values that can be indexed, i.e. used as traits.
@@ -136,6 +144,10 @@ export function newIndexableRegistry(): IndexableRegistry {
 
     if (isPrimitive(decoded))
       return super_encode(decoded);
+
+    const recognized = decoded?.constructor && (nativelyIndexableConstructors.includes(decoded.constructor) || this.hasCodec(decoded));
+    if (!recognized)
+      throw new JineError(`Refusing to encode value of unrecognized type '${decoded?.constructor.name}' (did you forget to register it as a custom indexable?).`);
 
     // vvv Account for exploding/multiEntry indexes
     if (exploding) {
