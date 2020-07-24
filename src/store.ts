@@ -64,7 +64,7 @@ export class Store<Item extends Storable> {
           return new Index({
             idb_index_k: idb_index_k,
             schema_g: async () => (await this._schema_g()).index(index_name),
-            parent_schema_g: this._schema_g,
+            parent: this,
           });
         }
       }
@@ -233,7 +233,7 @@ export class Store<Item extends Storable> {
       const index = new Index<Item, Trait>({
         idb_index_k: AsyncCont.fromValue(idb_index),
         schema_g: () => index_schema,
-        parent_schema_g: () => schema,
+        parent: this,
       });
 
       schema.addIndex(index_name, index_schema);

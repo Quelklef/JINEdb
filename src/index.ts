@@ -1,9 +1,11 @@
 
+import { Store } from './store';
 import { Storable } from './storable';
 import { Indexable } from './indexable';
 import { AsyncCont } from './cont';
+import { JineError } from './errors';
+import { IndexSchema } from './schema';
 import { Awaitable, Awaitable_map } from './util';
-import { StoreSchema, IndexSchema } from './schema';
 import { Query, Selection, SelectionUnique } from './query';
 
 
@@ -84,16 +86,16 @@ export class Index<Item extends Storable, Trait extends Indexable> {
 
   _idb_index_k: AsyncCont<IDBIndex>;
   _schema_g: () => Awaitable<IndexSchema<Item, Trait>>;
-  _parent_schema_g: () => Awaitable<StoreSchema<Item>>;
+  _parent: Store<Item>;
 
   constructor(args: {
     idb_index_k: AsyncCont<IDBIndex>;
     schema_g: () => Awaitable<IndexSchema<Item, Trait>>;
-    parent_schema_g: () => Awaitable<StoreSchema<Item>>;
+    parent: Store<Item>;
   }) {
     this._idb_index_k = args.idb_index_k;
     this._schema_g = args.schema_g;
-    this._parent_schema_g = args.parent_schema_g;
+    this._parent = args.parent;
   }
 
   /**
@@ -124,6 +126,26 @@ export class Index<Item extends Storable, Trait extends Indexable> {
   }
 
   /**
+   * Update an item if it exists, or add a new one if it doesn't.
+   *
+   * Allowed on unique indexes only.
+   *
+   * @param item The item
+   */
+  async updateOrAdd(item: Item): Promise<void> {
+    const schema = await this._schema_g();
+    if (!schema.unique)
+      throw new JineError(`Cannot call Index#updateOrAdd on non-unique index '${schema.name}'.`);
+    const trait = schema.calc_trait(item);
+    const already_exists = await this.exists(trait);
+    if (already_exists) {
+      await this.selectOne(trait).update(item);
+    } else {
+      await this._parent.add(item);
+    }
+  }
+
+  /**
    * Get an item by trait, or return something else if the item isn't found.
    * Usable on unique indexes only.
    * @param trait The trait to look for
@@ -141,7 +163,7 @@ export class Index<Item extends Storable, Trait extends Indexable> {
     return new Selection({
       source: this,
       query: query,
-      store_schema_g: this._parent_schema_g,
+      store_schema_g: this._parent._schema_g,
     });
   }
 
@@ -153,7 +175,7 @@ export class Index<Item extends Storable, Trait extends Indexable> {
     return new SelectionUnique({
       source: this,
       selected_trait: trait,
-      store_schema_g: this._parent_schema_g,
+      store_schema_g: this._parent._schema_g,
     });
   }
 

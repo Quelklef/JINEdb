@@ -216,6 +216,35 @@ describe("usage", () => {
       
     });
 
+    describe("$.{store}.by.{index}.updateOrAdd()", () => {
+
+      it("updates on existing", async () => {
+        const attic: Room = {
+          name: 'attic',
+          score: 3,
+          neighbors: [],
+        };
+        await $.rooms.by.name.updateOrAdd(attic);
+        expect(await $.rooms.by.name.findOne('attic')).toStrictEqual(attic);
+      });
+
+      it("adds on not existing", async () => {
+        const dungeon: Room = {
+          name: 'dungeon',
+          score: 1,
+          neighbors: ['basement bedroom'],
+        };
+        await $.rooms.by.name.updateOrAdd(dungeon);
+        expect(await $.rooms.by.name.findOne('dungeon')).toStrictEqual(dungeon);
+      });
+
+      it("throws on non-unique index", async () => {
+        const x: Room = { name: 'x', score: 1, neighbors: [] };
+        await expect($.rooms.by.score.updateOrAdd(x))
+          .rejects.toThrow();
+      });
+      
+    });
 
     it("$.{store}.by.{index}.select( * )", async () => {
      const expected = ROOMS;
