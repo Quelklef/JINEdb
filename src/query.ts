@@ -4,6 +4,7 @@ import { Store } from './store';
 import { Index } from './index';
 import { mapError } from './errors';
 import { Storable } from './storable';
+import { AsyncCont } from './cont';
 import { StoreSchema } from './schema';
 import { TransactionMode } from './transaction';
 import { some, Dict, Awaitable } from './util';
@@ -119,9 +120,6 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
 
   readonly store_schema: StoreSchema<Item>;
 
-  // List of filter predicates
-  readonly predicates: Array<(item: Item) => boolean>;
-
   readonly _query: Query<Trait>;
 
   readonly _idb_source: IDBObjectStore | IDBIndex;
@@ -138,7 +136,6 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     this._idb_req = null;
     this._idb_cur = null;
     this.store_schema = args.store_schema;
-    this.predicates = [];
   }
 
   get initialized(): boolean {
@@ -159,9 +156,8 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     return new Promise((resolve, reject) => {
       req.onsuccess = _event => {
         this._idb_cur = req.result;
-        // First item may fail a predicate, advance to one that doesn't
-        this._advanceToNextSatisfactory().then(resolve, reject);
-      }
+        resolve();
+      };
       req.onerror = _event => reject(mapError(req.error));
     });
   }
@@ -205,7 +201,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     return this.store_schema.storables.decode(row.payload) as Item;
   }
 
-  _stepOne(): Promise<void> {
+  step(): Promise<void> {
     this._assertInitialized();
     if (this.exhausted) {
       return Promise.resolve(undefined);
@@ -222,32 +218,6 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
         req.onerror = _event => reject(mapError(req.error));
       });
     }
-  }
-
-  async _advanceToNextSatisfactory(): Promise<void> {
-    if (this.predicates.length === 0)
-     return;
-     
-    for (;;) {
-      if (this.exhausted)
-        break;
-
-      const item = this.currentItem();
-      if (this.predicates.every(p => p(item)))
-        break;
-        
-      await this._stepOne();
-    }
-  }
-
-  async step(): Promise<void> {
-    await this._stepOne();
-    await this._advanceToNextSatisfactory();
-  }
-
-  filter(...predicates: Array<(item: Item) => boolean>): this {
-    this.predicates.push(...predicates);
-    return this;
   }
 
   get _sourceIsExploding(): boolean {
@@ -325,7 +295,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
 
   readonly store_schema_g: () => Awaitable<StoreSchema<Item>>;
 
-  readonly predicates: Array<(item: Item) => boolean>;
+  cursor_k: AsyncCont<Cursor<Item, Trait>>;
 
   constructor(args: {
     source: Store<Item> | Index<Item, Trait>;
@@ -335,33 +305,25 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
     this.source = args.source;
     this.query = args.query;
     this.store_schema_g = args.store_schema_g;
-    this.predicates = [];
-  }
-
-  // TODO: could replace this method with a mapped .source._idb_(store|index)_k
-  async _withCursor<R>(mode: TransactionMode, callback: (cursor: Cursor<Item, Trait>) => Promise<R>): Promise<R> {
 
     const idb_source_k =
       this.source instanceof Store
         ? (this.source as any)._idb_store_k
         : (this.source as any)._idb_index_k;
 
-    const schema = await this.store_schema_g();
-    // TODO: use transactionmode
-    return await idb_source_k.run(async (idb_source: IDBObjectStore | IDBIndex) => {
-      const cursor = new Cursor<Item, Trait>({
+    this.cursor_k = idb_source_k.map(async (idb_source: IDBObjectStore | IDBIndex) => {
+      const schema = await this.store_schema_g();
+      // TODO: use transactionmode
+      return new Cursor<Item, Trait>({
         idb_source: idb_source,
         query: this.query,
         store_schema: schema,
       });
-      cursor.filter(...this.predicates);
-      return await callback(cursor);
     });
-
   }
 
   async _replaceRows(mapper: (row: Row) => Row): Promise<void> {
-    await this._withCursor('rw', async cursor => {
+    await this.cursor_k.run(/*'rw', */async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
         const old_row = cursor._currentRow();
         const new_row = mapper(old_row);
@@ -376,7 +338,32 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
    * @returns this
    */
   filter(...predicates: Array<(item: Item) => boolean>): this {
-    this.predicates.push(...predicates);
+    const bigPred = (item: Item) => predicates.every(pred => pred(item));
+
+    this.cursor_k = this.cursor_k.map(cursor => {
+      const filtered = Object.create(cursor);
+
+      // step until predicate is satisfied
+      async function satisfy(this: typeof cursor) {
+        while (!(this.exhausted || bigPred(this.currentItem()))) {
+          await Cursor.prototype.step.call(this);
+        }
+      }
+
+      filtered.init = async function() {
+        await Cursor.prototype.init.call(this);
+        // In case the first item doesn't satisfy the predicates
+        await satisfy.call(this);
+      }
+
+      filtered.step = async function(this: typeof cursor) {
+        await Cursor.prototype.step.call(this);
+        await satisfy.call(this);
+      }
+
+      return filtered;
+    });
+
     return this;
   }
 
@@ -384,7 +371,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
   * Test if the selection is empty or not.
   */
   async isEmpty(): Promise<boolean> {
-    return await this._withCursor('r', async cursor => {
+    return await this.cursor_k.run(/*'r', */async cursor => {
       await cursor.init();
       return cursor.exhausted;
     });
@@ -396,7 +383,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
    * @param mapper Given an existing item, this function should return the new item.
    */
   async replace(mapper: (item: Item) => Item): Promise<void> {
-    await this._withCursor('rw', async cursor => {
+    await this.cursor_k.run(/*'rw', */async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
         const old_item = cursor.currentItem();
         const new_item = mapper(old_item);
@@ -411,7 +398,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
    * @param updates The delta
    */
   async update(delta: Partial<Item>): Promise<void> {
-    await this._withCursor('rw', async cursor => {
+    await this.cursor_k.run(/*'rw', */async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
         await cursor.update(delta);
       }
@@ -422,7 +409,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
    * Delete the selected items from the database.
    */
   async delete(): Promise<void> {
-    await this._withCursor('rw', async cursor => {
+    await this.cursor_k.run(/*'rw', */async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
         await cursor.delete();
       }
@@ -433,7 +420,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
    * @return The number of selected items.
    */
   async count(): Promise<number> {
-    return await this._withCursor('r', async cursor => {
+    return await this.cursor_k.run(/*'r', */async cursor => {
       let result = 0;
       for (await cursor.init(); cursor.active; await cursor.step()) {
         result++;
@@ -448,7 +435,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
    * @returns The items
    */
   async array(): Promise<Array<Item>> {
-    return await this._withCursor('r', async cursor => {
+    return await this.cursor_k.run(/*'r', */async cursor => {
       const result: Array<Item> = [];
       for (await cursor.init(); cursor.active; await cursor.step()) {
         result.push(cursor.currentItem());
@@ -477,7 +464,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
       = new Promise(resolve => resolve_iterator_done = resolve);
    
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    this._withCursor('r', cursor => {
+    this.cursor_k.run(/*'r', */cursor => {
       resolve_cursor(cursor);
       return new Promise(resolve => {
         const iterator_done = resolve;
