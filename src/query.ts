@@ -6,7 +6,6 @@ import { mapError } from './errors';
 import { Storable } from './storable';
 import { AsyncCont } from './cont';
 import { StoreSchema } from './schema';
-import { TransactionMode } from './transaction';
 import { some, getPropertyDescriptor, Dict, Awaitable } from './util';
 import { Indexable, NativelyIndexable, IndexableRegistry } from './indexable';
 
@@ -346,13 +345,13 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
    * @returns this
    */
   filter(...predicates: Array<(item: Item) => boolean>): this {
-    const bigPred = (item: Item) => predicates.every(pred => pred(item));
+    const bigPred = (item: Item): boolean => predicates.every(pred => pred(item));
 
     this.cursor_k = this.cursor_k.map(cursor => {
       const filtered = Object.create(cursor);
 
       // step until predicate is satisfied
-      function satisfied(this: typeof cursor) {
+      function satisfied(this: typeof cursor): boolean {
         return this.exhausted || bigPred(this.currentItem());
       }
 
