@@ -14,6 +14,11 @@ export function Awaitable_map<T, S>(a: Awaitable<T>, f: (v: T) => Awaitable<S>):
   return f(a as T);
 }
 
+export function getPropertyDescriptor(obj: object, prop: number | symbol | string): null | PropertyDescriptor {
+  if (!obj) return null;
+  return Object.getOwnPropertyDescriptor(obj, prop) || getPropertyDescriptor(Object.getPrototypeOf(obj), prop);
+}
+
 const ctx = this as any;
 
 export const ArrayBufferView_constructors: Array<Constructor> = [];

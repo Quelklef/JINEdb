@@ -7,7 +7,7 @@ import { Storable } from './storable';
 import { AsyncCont } from './cont';
 import { StoreSchema } from './schema';
 import { TransactionMode } from './transaction';
-import { some, Dict, Awaitable } from './util';
+import { some, getPropertyDescriptor, Dict, Awaitable } from './util';
 import { Indexable, NativelyIndexable, IndexableRegistry } from './indexable';
 
 /**
@@ -408,8 +408,38 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
   }
 
   /**
-  * Test if the selection is empty or not.
-  */
+   * Limit the number of items in the selection to the given length
+   *
+   * @param length The length
+   * @return this
+   */
+  limit(length: number): this {
+    this.cursor_k = this.cursor_k.map(cursor => {
+      const limited = Object.create(cursor);
+      let passed = 0;
+      
+      limited.step = async function(this: typeof cursor, ...args: Parameters<(typeof cursor)['step']>) {
+        await cursor.step.call(this, ...args);
+        passed++;
+        if (passed > length)
+          console.warn("[jinedb] .limit()'d selection exceeding max length");
+      };
+
+      const oldExhaustedGetter = some(getPropertyDescriptor(cursor, 'exhausted')?.get, null);
+      Object.defineProperty(limited, 'exhausted', {
+        get() {
+          return passed === length || oldExhaustedGetter.call(this);
+        },
+      });
+      
+      return limited;
+    });
+    return this;
+  }
+
+  /**
+   * Test if the selection is empty or not.
+   */
   async isEmpty(): Promise<boolean> {
     return await this.cursor_k.run(/*'r', */async cursor => {
       await cursor.init();

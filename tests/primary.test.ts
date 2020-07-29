@@ -49,6 +49,7 @@ const ROOMS: Array<Room> = [
   room("laundry room", 4, ["basement main"]),
 ];
 
+// TODO: remove this and include order in testing
 function expectArraySetEq<T>(actual: Array<T>, expected: Array<T>): void {
   // https://stackoverflow.com/a/57428906/4608364
   expect(new Set(actual)).toStrictEqual(new Set(expected));
@@ -326,22 +327,80 @@ describe("usage", () => {
       expect(actual).toStrictEqual(expected);
     });
 
-    it("$.{store}.all().filter().drop()", async () => {
-      const expected = ROOMS.filter(room => room.name.includes("ground")).slice(3);
-      const actual = await $.rooms.all().filter(room => room.name.includes("ground")).drop(3).array();
+    it("$.{store}.all().limit()", async () => {
+      const expected = ROOMS.slice(0, 5);
+      const actual = await $.rooms.all().limit(5).array();
       expect(actual).toStrictEqual(expected);
     });
 
-    it("[bug]", async () => {
-      const expected = ROOMS.filter(room => room.name.includes("ground")).slice(10);
-      const actual = await $.rooms.all().filter(room => room.name.includes("ground")).drop(10).array();
-      expect(actual).toStrictEqual(expected);
-    });
+    describe('combinations', () => {
 
-    it("$.{store}.all().drop().filter()", async () => {
-      const expected = ROOMS.slice(5).filter(room => room.name.includes("ground"));
-      const actual = await $.rooms.all().drop(5).filter(room => room.name.includes("ground")).array();
-      expect(actual).toStrictEqual(expected);
+      it("[bug]", async () => {
+        const expected = ROOMS.filter(room => room.name.includes("ground")).slice(10);
+        const actual = await $.rooms.all().filter(room => room.name.includes("ground")).drop(10).array();
+        expect(actual).toStrictEqual(expected);
+      });
+
+      it("$.{store}.all().filter().drop()", async () => {
+        const expected = ROOMS.filter(room => room.name.includes("ground")).slice(3);
+        const actual = await $.rooms.all().filter(room => room.name.includes("ground")).drop(3).array();
+        expect(actual).toStrictEqual(expected);
+      });
+
+      it("$.{store}.all().drop().filter()", async () => {
+        const expected = ROOMS.slice(5).filter(room => room.name.includes("ground"));
+        const actual = await $.rooms.all().drop(5).filter(room => room.name.includes("ground")).array();
+        expect(actual).toStrictEqual(expected);
+      });
+
+      it("$.{store}.all().filter().limit()", async () => {
+        const expected = ROOMS.filter(room => room.name.includes("ground")).slice(0, 2);
+        const actual = await $.rooms.all().filter(room => room.name.includes("ground")).limit(2).array();
+        expect(actual).toStrictEqual(expected);
+      });
+
+      it("$.{store}.all().limit().filter()", async () => {
+        const expected = ROOMS.slice(0, 10).filter(room => room.name.includes("ground"));
+        const actual = await $.rooms.all().limit(10).filter(room => room.name.includes("ground")).array();
+        expect(actual).toStrictEqual(expected);
+      });
+
+      it("$.{store}.all().drop().limit()", async () => {
+        const expected = ROOMS.slice(5).slice(0, 10);
+        const actual = await $.rooms.all().drop(5).limit(10).array();
+        expect(actual).toStrictEqual(expected);
+      });
+
+      it("$.{store}.all().drop().limit().filter()", async () => {
+        const expected = ROOMS.slice(5).slice(0, 10).filter(room => room.name.includes("ground"));
+        const actual = await $.rooms.all().drop(5).limit(10).filter(room => room.name.includes("ground")).array();
+        expect(actual).toStrictEqual(expected);
+      });
+
+      it("$.{store}.all().filter().drop().limit()", async () => {
+        const expected = ROOMS.filter(room => room.name.includes("ground")).slice(3).slice(0, 2);
+        const actual = await $.rooms.all().filter(room => room.name.includes("ground")).drop(3).limit(2).array();
+        expect(actual).toStrictEqual(expected);
+      });
+
+      it("$.{store}.all().drop().filter().limit()", async () => {
+        const expected = ROOMS.slice(5).filter(room => room.name.includes("ground")).slice(0, 2);
+        const actual = await $.rooms.all().drop(5).filter(room => room.name.includes("ground")).limit(2).array();
+        expect(actual).toStrictEqual(expected);
+      });
+
+      it("$.{store}.all().filter().limit().limit()", async () => {
+        const expected = ROOMS.filter(room => room.name.includes("ground")).slice(0, 2).slice(0, 2);
+        const actual = await $.rooms.all().filter(room => room.name.includes("ground")).limit(2).limit(2).array();
+        expect(actual).toStrictEqual(expected);
+      });
+
+      it("$.{store}.all().limit().filter().limit()", async () => {
+        const expected = ROOMS.slice(0, 10).filter(room => room.name.includes("ground")).slice(0, 2);
+        const actual = await $.rooms.all().limit(10).filter(room => room.name.includes("ground")).limit(2).array();
+        expect(actual).toStrictEqual(expected);
+      });
+
     });
 
     describe("$.{store}.by.{index}.select()[asyncIterator]", () => {
