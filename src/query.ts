@@ -201,7 +201,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     return this.store_schema.storables.decode(row.payload) as Item;
   }
 
-  step(): Promise<void> {
+  step(options?: { toTrait: Trait } | { size: number }): Promise<void> {
     this._assertInitialized();
     if (this.exhausted) {
       return Promise.resolve(undefined);
@@ -209,7 +209,15 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
       const idb_req = this._active_idb_req();
       const idb_cur = this._active_idb_cur();
       const req = idb_req;
-      idb_cur.continue();
+
+      if (options && 'toTrait' in options) {
+        const trait = options.toTrait;
+        const encoded = this.store_schema.indexables.encode(trait, this._sourceIsExploding);
+        idb_cur.continue(encoded);
+      } else {
+        idb_cur.advance(options?.size ?? 1);
+      }
+
       return new Promise((resolve, reject) => {
         req.onsuccess = _event => {
           this._idb_cur = req.result;
@@ -344,26 +352,58 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
       const filtered = Object.create(cursor);
 
       // step until predicate is satisfied
-      async function satisfy(this: typeof cursor) {
-        while (!(this.exhausted || bigPred(this.currentItem()))) {
-          await Cursor.prototype.step.call(this);
-        }
+      function satisfied(this: typeof cursor) {
+        return this.exhausted || bigPred(this.currentItem());
       }
 
       filtered.init = async function() {
-        await Cursor.prototype.init.call(this);
         // In case the first item doesn't satisfy the predicates
-        await satisfy.call(this);
-      }
+        await cursor.init.call(this);
+        while (!satisfied.call(this)) {
+          await cursor.step.call(this);
+        }
+      };
 
-      filtered.step = async function(this: typeof cursor) {
-        await Cursor.prototype.step.call(this);
-        await satisfy.call(this);
-      }
+      filtered.step = async function(
+        this: typeof cursor,
+        options: Parameters<Cursor<Item, Trait>['step']>[0],
+      ) {
+        if (options && 'toTrait' in options) {
+          do {
+            await cursor.step.call(this, options);
+          } while (!satisfied.call(this));
+        } else if (options && 'size' in options) {
+          for (let i = 0; i < options.size; i++)
+            await filtered.step.call(this);
+        } else {
+          // Step one
+          do {
+            await cursor.step.call(this);
+          } while (!satisfied.call(this));
+        }
+      };
 
       return filtered;
     });
 
+    return this;
+  }
+
+  /**
+   * Drop items off of the beginning of a selection
+   *
+   * @param skipCount The number of items to skip
+   * @returns this
+   */
+  drop(count: number): this {
+    this.cursor_k = this.cursor_k.map(cursor => {
+      const modified = Object.create(cursor);
+      modified.init = async function() {
+        await cursor.init.call(this);
+        await cursor.step.call(this, { size: count });
+      };
+      return modified;
+    });
     return this;
   }
 

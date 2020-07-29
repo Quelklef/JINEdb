@@ -51,8 +51,9 @@ const ROOMS: Array<Room> = [
 
 function expectArraySetEq<T>(actual: Array<T>, expected: Array<T>): void {
   // https://stackoverflow.com/a/57428906/4608364
-  expect(actual).toEqual(expect.arrayContaining(expected));
-  expect(expected).toEqual(expect.arrayContaining(actual));
+  expect(new Set(actual)).toStrictEqual(new Set(expected));
+  //expect(actual).toEqual(expect.arrayContaining(expected));
+  //expect(expected).toEqual(expect.arrayContaining(actual));
 }
 
 // TODO: test exploding and derived indexes
@@ -313,10 +314,34 @@ describe("usage", () => {
       expect(attic.score).toBe(1);
     });
 
-    it("$.{store}.by.{index}.select().filter()", async () => {
+    it("$.{store}.all().filter()", async () => {
       const expected = ROOMS.filter(room => room.name.includes("stairway"));
       const actual = await $.rooms.all().filter(room => room.name.includes("stairway")).array();
-      expectArraySetEq(actual, expected);
+      expect(actual).toStrictEqual(expected);
+    });
+
+    it("$.{store}.all().drop()", async () => {
+      const expected = ROOMS.slice(5);
+      const actual = await $.rooms.all().drop(5).array();
+      expect(actual).toStrictEqual(expected);
+    });
+
+    it("$.{store}.all().filter().drop()", async () => {
+      const expected = ROOMS.filter(room => room.name.includes("ground")).slice(3);
+      const actual = await $.rooms.all().filter(room => room.name.includes("ground")).drop(3).array();
+      expect(actual).toStrictEqual(expected);
+    });
+
+    it("[bug]", async () => {
+      const expected = ROOMS.filter(room => room.name.includes("ground")).slice(10);
+      const actual = await $.rooms.all().filter(room => room.name.includes("ground")).drop(10).array();
+      expect(actual).toStrictEqual(expected);
+    });
+
+    it("$.{store}.all().drop().filter()", async () => {
+      const expected = ROOMS.slice(5).filter(room => room.name.includes("ground"));
+      const actual = await $.rooms.all().drop(5).filter(room => room.name.includes("ground")).array();
+      expect(actual).toStrictEqual(expected);
     });
 
     describe("$.{store}.by.{index}.select()[asyncIterator]", () => {
