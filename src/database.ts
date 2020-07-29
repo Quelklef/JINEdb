@@ -9,7 +9,7 @@ import { Storable, newStorableRegistry } from './storable';
 import { some, Awaitable, Awaitable_map } from './util';
 import { JineBlockedError, JineInternalError, mapError } from './errors';
 
-async function getDbVersion(db_name: string): Promise<number> {
+async function getDbVersion(dbName: string): Promise<number> {
   /* Return current database version number. Returns an integer greater than or
   equal to zero. Zero denotes that indexedDB does not have a database with this
   database's name. All other version numbers are given by the underlying idb database
@@ -17,27 +17,41 @@ async function getDbVersion(db_name: string): Promise<number> {
 
   This method does NOT prolong the current transaction. */
 
-  const database_names: Array<string> =
-    // [2020-05-17] types don't include .databases() but docs do:
-    // https://developer.mozilla.org/en-US/docs/Web/API/IDBFactory/databases
-    (await (indexedDB as any).databases() as Array<IDBDatabase>)
-    .map(idb_db => idb_db.name);
+  // The obvious way to implement this is to return 0 if the given name
+  // is not in indexedDB.databases and otherwise run a transaction to
+  // find out.
+  // However, Firefox does not have indexedDB.databases implemented at
+  // the moment (2020-07-29), so instead we'll run a transaction and
+  // return 0 if the upgradeneeded event fired.
 
-  if (!database_names.includes(db_name)) {
-    return 0;
-  } else {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open(db_name);
-      req.onupgradeneeded = _event => reject(new JineInternalError());
-      req.onblocked = _event => reject(new JineBlockedError());
-      req.onsuccess = _event => {
-        const conn = req.result;
-        resolve(conn.version);
-        conn.close();
+  return new Promise((resolve, reject) => {
+    
+    let previouslyExisted = true;
+    
+    const openReq = indexedDB.open(dbName);
+    
+    openReq.onblocked = _event => reject(new JineBlockedError());
+    openReq.onerror = _event => reject(mapError(openReq.error));
+    
+    openReq.onupgradeneeded = _event => {
+      previouslyExisted = false;
+    };
+    
+    openReq.onsuccess = _event => {
+      const conn = openReq.result;
+      const version = previouslyExisted ? conn.version : 0;
+      conn.close();
+
+      if (previouslyExisted) {
+        resolve(version);
+      } else {
+        const delReq = indexedDB.deleteDatabase(dbName);
+        delReq.onerror = _event => reject(mapError(delReq.error));
+        delReq.onsuccess = _event => resolve(version);
       }
-      req.onerror = _event => reject(mapError(req.error));
-    });
-  }
+    };
+    
+  });
 }
 
 
