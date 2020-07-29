@@ -49,13 +49,7 @@ const ROOMS: Array<Room> = [
   room("laundry room", 4, ["basement main"]),
 ];
 
-// TODO: remove this and include order in testing
-function expectArraySetEq<T>(actual: Array<T>, expected: Array<T>): void {
-  // https://stackoverflow.com/a/57428906/4608364
-  expect(new Set(actual)).toStrictEqual(new Set(expected));
-  //expect(actual).toEqual(expect.arrayContaining(expected));
-  //expect(expected).toEqual(expect.arrayContaining(actual));
-}
+const ROOMS_byScore = [...ROOMS].sort((r1, r2) => r1.score - r2.score);
 
 // TODO: test exploding and derived indexes
 
@@ -92,7 +86,7 @@ describe("usage", () => {
         await tx.$.rooms.clear();
         tx.abort();
       });
-      expectArraySetEq(await db.$.rooms.array(), ROOMS);
+      expect(await db.$.rooms.array()).toStrictEqual(ROOMS);
     });
 
     it("aborts on error", async () => {
@@ -104,7 +98,7 @@ describe("usage", () => {
       } catch (err) {
         expect(err).toBe('uh-oh');
       }
-      expectArraySetEq(await db.$.rooms.array(), ROOMS);
+      expect(await db.$.rooms.array()).toStrictEqual(ROOMS);
     });
 
   });
@@ -195,7 +189,7 @@ describe("usage", () => {
     it("$.{store}.by.{index}.find()", async () => {
       const expected = ROOMS.filter(room => room.score === 6);
       const actual = await $.rooms.by.score.find(6);
-      expectArraySetEq(actual, expected);
+      expect(actual).toStrictEqual(expected);
     });
 
     describe("$.{store}.by.{index}.findOne()", () => {
@@ -249,63 +243,63 @@ describe("usage", () => {
     });
 
     it("$.{store}.by.{index}.select( * )", async () => {
-     const expected = ROOMS;
+      const expected = ROOMS;
       const actual = await $.rooms.by.name.select("everything").array();
-      expectArraySetEq(actual, expected);
+      expect(new Set(actual)).toStrictEqual(new Set(expected));
     });
 
     it("$.{store}.by.{index}.select( EQ )", async () => {
-      const expected = ROOMS.filter(room => room.score === 5);
+      const expected = ROOMS_byScore.filter(room => room.score === 5);
       const actual = await $.rooms.by.score.select({ equals: 5 }).array();
-      expectArraySetEq(actual, expected);
+      expect(actual).toStrictEqual(expected);
     });
     
     it("$.{store}.by.{index}.select( GT )", async () => {
-      const expected = ROOMS.filter(room => room.score > 5);
+      const expected = ROOMS_byScore.filter(room => room.score > 5);
       const actual = await $.rooms.by.score.select({ above: 5 }).array();
-      expectArraySetEq(actual, expected);
+      expect(actual).toStrictEqual(expected);
     });
     
     it("$.{store}.by.{index}.select( GE )", async () => {
-      const expected = ROOMS.filter(room => room.score >= 5);
+      const expected = ROOMS_byScore.filter(room => room.score >= 5);
       const actual = await $.rooms.by.score.select({ from: 5 }).array();
-      expectArraySetEq(actual, expected);
+      expect(actual).toStrictEqual(expected);
     });
     
     it("$.{store}.by.{index}.select( LT )", async () => {
-      const expected = ROOMS.filter(room => room.score < 6);
+      const expected = ROOMS_byScore.filter(room => room.score < 6);
       const actual = await $.rooms.by.score.select({ below: 6 }).array();
-      expectArraySetEq(actual, expected);
+      expect(actual).toStrictEqual(expected);
     });
     
     it("$.{store}.by.{index}.select( LE )", async () => {
-      const expected = ROOMS.filter(room => room.score <= 6);
+      const expected = ROOMS_byScore.filter(room => room.score <= 6);
       const actual = await $.rooms.by.score.select({ through: 6 }).array();
-      expectArraySetEq(actual, expected);
+      expect(actual).toStrictEqual(expected);
     });
     
     it("$.{store}.by.{index}.select( GT/LT )", async () => {
-      const expected = ROOMS.filter(room => room.score > 4 && room.score < 7);
+      const expected = ROOMS_byScore.filter(room => room.score > 4 && room.score < 7);
       const actual = await $.rooms.by.score.select({ above: 4, below: 7 }).array();
-      expectArraySetEq(actual, expected);
+      expect(actual).toStrictEqual(expected);
     });
     
     it("$.{store}.by.{index}.select( GT/LE )", async () => {
-      const expected = ROOMS.filter(room => room.score > 4 && room.score <= 6);
+      const expected = ROOMS_byScore.filter(room => room.score > 4 && room.score <= 6);
       const actual = await $.rooms.by.score.select({ above: 4, through: 6 }).array();
-      expectArraySetEq(actual, expected);
+      expect(actual).toStrictEqual(expected);
     });
     
     it("$.{store}.by.{index}.select( GE/LT )", async () => {
-      const expected = ROOMS.filter(room => room.score >= 5  && room.score < 7);
+      const expected = ROOMS_byScore.filter(room => room.score >= 5  && room.score < 7);
       const actual = await $.rooms.by.score.select({ from: 5, below: 7 }).array();
-      expectArraySetEq(actual, expected);
+      expect(actual).toStrictEqual(expected);
     });
     
     it("$.{store}.by.{index}.select( GE/LE )", async () => {
-      const expected = ROOMS.filter(room => room.score >= 5 && room.score <= 6);
+      const expected = ROOMS_byScore.filter(room => room.score >= 5 && room.score <= 6);
       const actual = await $.rooms.by.score.select({ from: 5, through: 6 }).array();
-      expectArraySetEq(actual, expected);
+      expect(actual).toStrictEqual(expected);
     });
 
     it("$.{store}.by.{index}.select().update()", async () => {
@@ -410,7 +404,7 @@ describe("usage", () => {
         for await (const room of $.rooms.all()) {
           rooms.push(room);
         }
-        expectArraySetEq(rooms, ROOMS);
+        expect(rooms).toStrictEqual(ROOMS);
       });
 
       it("throws if there's another mid-iteration operation", async () => {
