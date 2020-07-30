@@ -158,7 +158,7 @@ describe("usage", () => {
     });
 
     it("throws on missing index", async () => {
-      await expect(($ as any).rooms.by.MISSING.find('whatever'))
+      await expect(($ as any).rooms.by.MISSING.get('whatever'))
         .rejects.toThrow(jine.JineNoSuchIndexError);
     });
 
@@ -186,27 +186,27 @@ describe("usage", () => {
       expect(!await $.rooms.by.name.exists("no room here"));
     });
 
-    it("$.{store}.by.{index}.find()", async () => {
+    it("$.{store}.by.{index}.get()", async () => {
       const expected = ROOMS.filter(room => room.score === 6);
-      const actual = await $.rooms.by.score.find(6);
+      const actual = await $.rooms.by.score.get(6);
       expect(actual).toStrictEqual(expected);
     });
 
-    describe("$.{store}.by.{index}.findOne()", () => {
+    describe("$.{store}.by.{index}.getOne()", () => {
 
-      it("finds one", async () => {
+      it("gets one", async () => {
         const expected = ROOMS.find(room => room.name === "bathroom");
-        const actual = await $.rooms.by.name.findOne("bathroom");
+        const actual = await $.rooms.by.name.getOne("bathroom");
         expect(actual).toStrictEqual(expected);
       });
 
       it("throws on failure", async () => {
-        await expect($.rooms.by.name.findOne("no room here"))
+        await expect($.rooms.by.name.getOne("no room here"))
           .rejects.toThrow();
       });
 
       it("throws on non-unique index", async () => {
-        await expect($.rooms.by.score.findOne('whatever' as any))
+        await expect($.rooms.by.score.getOne('whatever' as any))
           .rejects.toThrow();
       });
       
@@ -221,7 +221,7 @@ describe("usage", () => {
           neighbors: [],
         };
         await $.rooms.by.name.updateOrAdd(attic);
-        expect(await $.rooms.by.name.findOne('attic')).toStrictEqual(attic);
+        expect(await $.rooms.by.name.getOne('attic')).toStrictEqual(attic);
       });
 
       it("adds on not existing", async () => {
@@ -231,7 +231,7 @@ describe("usage", () => {
           neighbors: ['basement bedroom'],
         };
         await $.rooms.by.name.updateOrAdd(dungeon);
-        expect(await $.rooms.by.name.findOne('dungeon')).toStrictEqual(dungeon);
+        expect(await $.rooms.by.name.getOne('dungeon')).toStrictEqual(dungeon);
       });
 
       it("throws on non-unique index", async () => {
@@ -305,7 +305,7 @@ describe("usage", () => {
     it("$.{store}.by.{index}.select().update()", async () => {
       // Decided I don"t like the attic
       await $.rooms.by.name.select({ equals: "attic" }).update({ score: 1 });
-      const attic = await $.rooms.by.name.findOne("attic");
+      const attic = await $.rooms.by.name.getOne("attic");
       expect(attic.score).toBe(1);
     });
 

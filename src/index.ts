@@ -106,11 +106,11 @@ export class Index<Item extends Storable, Trait extends Indexable> {
   }
 
   /**
-   * Find all items matching a given trait.
+   * Retrieve all items matching a given trait.
    * @param trait The trait to look for
    * @returns The found items.
    */
-  async find(trait: Trait): Promise<Array<Item>> {
+  async get(trait: Trait): Promise<Array<Item>> {
     return await this.select({ equals: trait }).array();
   }
 
@@ -121,7 +121,7 @@ export class Index<Item extends Storable, Trait extends Indexable> {
    * @param trait The trait to look for
    * @returns The found item.
    */
-  async findOne(trait: Trait): Promise<Item> {
+  async getOne(trait: Trait): Promise<Item> {
     return await this.selectOne(trait).get();
   }
 
@@ -152,7 +152,7 @@ export class Index<Item extends Storable, Trait extends Indexable> {
    * @param alternative The value to return on failure
    * @returns The found item, or alternative value.
    */
-  async findOneOr<T = undefined>(trait: Trait, alternative: T): Promise<Item | T> {
+  async getOneOr<T = undefined>(trait: Trait, alternative: T): Promise<Item | T> {
     return await this.selectOne(trait).getOr(alternative);
   }
 

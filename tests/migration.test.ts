@@ -77,7 +77,7 @@ describe('migration', () => {
 
     await jine.connect(async (conn: any) => {
       await conn.$.strings.add('me!');
-      expect(await conn.$.strings.by.self.find('me!')).toEqual(['me!']);
+      expect(await conn.$.strings.by.self.get('me!')).toEqual(['me!']);
     });
 
     await jine.upgrade(3, async (genuine: boolean, tx: any) => {
