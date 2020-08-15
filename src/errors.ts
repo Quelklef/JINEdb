@@ -92,7 +92,7 @@ export function mapError(error: DOMException | null): JineError | DOMException |
   if (jine_error_type === undefined)
     return error;
 
-  const jine_error = new jine_error_type();
+  const jine_error = new jine_error_type(error.message);
 
   // chrome et al
   if ((error as any).stack) jine_error.stack = (error as any).stack;
