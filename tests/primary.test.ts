@@ -61,14 +61,16 @@ describe("usage", () => {
 
     reset();
 
-    db = new Database<$$>("home");
-
-    await db.upgrade(1, async (genuine: boolean, tx: Transaction<$$>) => {
-      const rooms = tx.addStore<Room>("rooms");
-      await rooms.addIndex<string>("name", ".name", { unique: true });
-      await rooms.addIndex<number>("score", ".score");
-      await rooms.addIndex<string>("neighbors", ".neighbors", { explode: true });
-      await rooms.addIndex<number>("degree", room => room.neighbors.length);
+    db = new Database<$$>("home", {
+      migrations: [
+        async (genuine: boolean, tx: Transaction<$$>) => {
+          const rooms = tx.addStore<Room>("rooms");
+          await rooms.addIndex<string>("name", ".name", { unique: true });
+          await rooms.addIndex<number>("score", ".score");
+          await rooms.addIndex<string>("neighbors", ".neighbors", { explode: true });
+          await rooms.addIndex<number>("degree", room => room.neighbors.length);
+        },
+      ],
     });
 
     await db.transact(["rooms"], "rw", async (tx: Transaction<$$>) => {
@@ -154,12 +156,12 @@ describe("usage", () => {
   function test_$(): void {
 
     it("throws on missing store", async () => {
-      await expect(($ as any).MISSING.count())
+      await expect(() => ($ as any).MISSING.count())
         .rejects.toThrow(jine.JineNoSuchStoreError);
     });
 
     it("throws on missing index", async () => {
-      await expect(($ as any).rooms.by.MISSING.get('whatever'))
+      await expect(() => ($ as any).rooms.by.MISSING.get('whatever'))
         .rejects.toThrow(jine.JineNoSuchIndexError);
     });
 

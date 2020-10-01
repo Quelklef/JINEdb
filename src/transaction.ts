@@ -1,9 +1,9 @@
 
 import { clone } from 'true-clone';
 
+import { Dict } from './util';
 import { Store } from './store';
 import { AsyncCont } from './cont';
-import { _try, Dict } from './util';
 import { JineNoSuchStoreError } from './errors';
 import { DatabaseSchema, StoreSchema } from './schema';
 
@@ -100,13 +100,17 @@ export class Transaction<$$ = {}> {
 
     this.stores = {};
     for (const store_name of args.scope) {
-      const idb_store = _try(
-        () => this._idb_tx.objectStore(store_name),
-        err => err.name === 'NotFoundError' && new JineNoSuchStoreError(`No store named '${store_name}' (no idb store found).`),
-      );
+      let idb_store!: IDBObjectStore;
+      try {
+        idb_store = this._idb_tx.objectStore(store_name);
+      } catch (err) {
+        if (err.name === 'NotFoundError')
+          throw new JineNoSuchStoreError(`No store named '${store_name}' (no idb store found).`);
+        throw err;
+      }
       const store = new Store({
         idb_store_k: AsyncCont.fromValue(idb_store),
-        schema_g: () => this._schema.store(store_name),
+        schema_k: AsyncCont.fromValue(this._schema.store(store_name)),
       });
       this.stores[store_name] = store;
     }
@@ -117,15 +121,19 @@ export class Transaction<$$ = {}> {
           const store_name = prop;
           // Don't get the store immediately, do it lazily.
           // This is to be consistent with the rest of the API, which is lazy.
-          const getStore = (): IDBObjectStore =>
-            _try(
-              () => this._idb_tx.objectStore(store_name),
-              err => err.name === 'NotFoundError' && new JineNoSuchStoreError(`No store named '${store_name}' (no idb store found).`),
-            );
+          const getStore = (): IDBObjectStore => {
+            try {
+              return this._idb_tx.objectStore(store_name);
+            } catch (err) {
+              if (err.name === 'NotFoundError')
+                throw new JineNoSuchStoreError(`No store named '${store_name}' (no idb store found).`);
+              throw err;
+            }
+          }
 
           return new Store({
             idb_store_k: AsyncCont.fromProducer(getStore),
-            schema_g: () => this._schema.store(store_name),
+            schema_k: AsyncCont.fromProducer(() => this._schema.store(store_name)),
           });
         }
       }
@@ -198,7 +206,7 @@ export class Transaction<$$ = {}> {
 
     const store = new Store<Item>({
       idb_store_k: AsyncCont.fromValue(this._idb_tx.objectStore(store_name)),
-      schema_g: () => store_schema,
+      schema_k: AsyncCont.fromValue(store_schema),
     });
 
     this._schema.addStore(store_name, store_schema);

@@ -58,7 +58,7 @@ export class Cont<T>  {
  * non-promise value, it will run synchronously.
  */
 export class AsyncCont<T> {
-  
+
     private readonly nn_val: <R>(callback: (value: T) => Awaitable<R>) => Awaitable<R>;
 
     private constructor(
@@ -66,7 +66,7 @@ export class AsyncCont<T> {
     ) {
       this.nn_val = nn_val;
     }
-    
+
     run<R>(f: (value: T) => Awaitable<R>): Awaitable<R> {
       return this.nn_val(val => Awaitable_map(val, f));
     }
@@ -89,6 +89,16 @@ export class AsyncCont<T> {
 
     map<S>(f: (value: T) => Awaitable<S>): AsyncCont<S> {
       return new AsyncCont(k => this.nn_val(x => Awaitable_map(Awaitable_map(x, f), k)));
+    }
+
+    and<O>(other: AsyncCont<O>): AsyncCont<[T, O]> {
+      return new AsyncCont(async k => {
+        return await this.run(async x => {
+          return await other.run(async y => {
+            return await k([x, y]);
+          });
+        });
+      });
     }
 
 }

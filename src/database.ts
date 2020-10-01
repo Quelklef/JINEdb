@@ -5,10 +5,9 @@ import { Connection } from './connection';
 import { DatabaseSchema } from './schema';
 import { Codec, UserCodec } from './codec';
 import { Transaction, TransactionMode } from './transaction';
-import { some, Awaitable, Awaitable_map } from './util';
 import { JineBlockedError, JineInternalError, mapError } from './errors';
 
-async function getDbVersion(dbName: string): Promise<number> {
+async function getDbVersion(name: string): Promise<number> {
   /* Return current database version number. Returns an integer greater than or
   equal to zero. Zero denotes that indexedDB does not have a database with this
   database's name. All other version numbers are given by the underlying idb database
@@ -27,7 +26,7 @@ async function getDbVersion(dbName: string): Promise<number> {
 
     let previouslyExisted = true;
 
-    const openReq = indexedDB.open(dbName);
+    const openReq = indexedDB.open(name);
 
     openReq.onblocked = _event => reject(new JineBlockedError());
     openReq.onerror = _event => reject(mapError(openReq.error));
@@ -44,7 +43,7 @@ async function getDbVersion(dbName: string): Promise<number> {
       if (previouslyExisted) {
         resolve(version);
       } else {
-        const delReq = indexedDB.deleteDatabase(dbName);
+        const delReq = indexedDB.deleteDatabase(name);
         delReq.onerror = _event => reject(mapError(delReq.error));
         delReq.onsuccess = _event => resolve(version);
       }
@@ -55,10 +54,115 @@ async function getDbVersion(dbName: string): Promise<number> {
 
 
 
+type Migration<$$> = (genuine: boolean, tx: Transaction<$$>) => Promise<void>;
+
+async function runMigrations<$$>(name: string, migrations: Array<Migration<$$>>, userCodecs: Array<UserCodec>): Promise<[number, DatabaseSchema]> {
+  let version = await getDbVersion(name);
+  let schema = new DatabaseSchema({
+    name: name,
+    stores: {},
+    codec: new Codec(userCodecs),
+  });
+
+  // Reset dummy database
+  const dummyName = '__JINE_DUMMY__' + name;
+  await new Promise((resolve, reject) => {
+    const req = indexedDB.deleteDatabase(dummyName);
+    req.onerror = _event => reject(mapError(req.error));
+    req.onsuccess = _event => resolve();
+  });
+
+  for (let idx = 0; idx < migrations.length; idx++) {
+    const migration = migrations[idx]
+    const toVersion = idx + 1;
+    [version, schema] = await runMigration(name, version, schema, migration, toVersion);
+  }
+
+  return [version, schema];
+}
+
+function runMigration<$$>(name: string, version: number, schema: DatabaseSchema, migration: Migration<$$>, toVersion: number): Promise<[number, DatabaseSchema]> {
+
+  const genuine = toVersion > version;
+
+  return new Promise((resolve, reject) => {
+
+    // For genuine transactions, we run it on the actual database
+    // For ingenuine transactions, we run it on a parallel 'dummy' database
+    // which is always reset when the database is initialized.
+    // Thus the migrations run in a dummy environment until we reach the
+    // point that the actual database is at, when they switch to being run
+    // on the actual db.
+    const req =
+      genuine
+        ? indexedDB.open(name, toVersion)
+        : indexedDB.open('__JINE_DUMMY__' + name, toVersion)
+        ;
+
+    req.onblocked = _event => {
+      reject(new JineBlockedError());
+    };
+
+    req.onerror = _event => {
+      const idbError = req.error;
+      if (idbError?.name === 'AbortError') {
+        reject(Error(`[Jine] A migration was aborted! This is not allowed.`));
+      } else {
+        reject(mapError(req.error));
+      }
+    };
+
+    const newVersion = genuine ? toVersion : version;
+    let newSchema = null as null | DatabaseSchema;
+    let upgradeNeededCalled = false;
+
+    req.onupgradeneeded = _event => {
+      upgradeNeededCalled = true;
+
+      if (!req.transaction) throw new JineInternalError();
+      const idbTx = req.transaction;
+      const tx = new Transaction<$$>({
+        idb_tx: idbTx,
+        // vvv Versionchange transactions have access to entire db
+        scope: schema.store_names,
+        genuine: genuine,
+        schema: schema,
+      });
+
+      // vvv The below looks concerning due to the fact that we don't await the promise.
+      //     In fact, it's fine; floating callbacks are natural when working with idb
+      //     (as long as they don't span multiple ticks).
+      //     The 'after' code doesn't come after awaiting the promise, it comes in onsuccess.
+      // eslint-disable-next-line @typescript-eslint/no-floating-promises
+      tx.wrap(async tx => {
+        await migration(genuine, tx);
+
+        // vvv Update structure if stores were added etc
+        // TODO: for some reason, we still reach this line of code when the transaction
+        //       was aborted. I'm not sure why that is?
+        if (tx.state === 'aborted')
+          reject(Error(`[Jine] A migration was aborted! This is not allowed.`));
+        else
+          newSchema = tx._schema;
+      });
+    };
+
+    req.onsuccess = _event => {
+      if (!upgradeNeededCalled) throw new JineInternalError()
+      if (newSchema === null)
+        throw Error(`[Jine] A migration seems to have ended prematurely. Did you mistakenly let the transcation close, e.g. by awaiting something other than a db operation?`);
+      const idbConn = req.result;
+      idbConn.close();
+      resolve([newVersion, newSchema]);
+    };
+
+  });
+}
+
 /**
  * Represents a Database, which houses several item [[Store]]s contain data, queryable by [[Index]]es.
  */
-export class Database<$$ = {}> {
+export class Database<$$> {
 
   /**
    * The name of the database.
@@ -67,12 +171,10 @@ export class Database<$$ = {}> {
   name: string;
 
   /**
-   * The version of the database.
+   * The database version.
    * Database versions are integers greater than zero.
-   *
-   * Null if the database has not yet been initialized.
    */
-  version: number | null;
+  version: Promise<number>;
 
   /**
    * The Database shorthand object.
@@ -87,32 +189,56 @@ export class Database<$$ = {}> {
    */
   $: $$;
 
-  _schema: DatabaseSchema;
-  _migrations: Record<number, (genuine: boolean, tx: Transaction<$$>) => Promise<void>>;
+  /**
+   * Resolves when the database is finished initializing;
+   *
+   * When the database is created, it will immediately begin running migrations.
+   * All database operations will wait for these migrations to finish before actually
+   * taking the action. However, this means that before `await`ing a database operation,
+   * you are *not* guaranteed about the state of the database. Weird things can happen
+   * if, say, you open a new database with the same name while an existing one is
+   * still initializing.
+   *
+   * If there is an issue when migrating, this value will never resolve, and an
+   * error will be printed into the console.
+   *
+   * So, if you need to gaurantee that the database is initialized, but
+   * don't want to do any operations to do this, you can await this attribute.
+   */
+  initialized: Promise<void>;
 
-  constructor(name: string, userCodecs: Array<UserCodec> = []) {
+  _schema: Promise<DatabaseSchema>;
+
+  constructor(name: string, args: { migrations: Array<Migration<$$>>; types?: Array<UserCodec> }) {
     if (name.startsWith("__JINE_DUMMY__"))
       throw new Error("Jine db names may not start with '__JINE_DUMMY__'");
 
+    const versionAndSchemaPromise: Promise<[number, DatabaseSchema]> =
+      runMigrations(name, args.migrations, args.types ?? [])
+      .catch(err => {
+        console.error(`[Jine] There was an error migrating the database:`, err);
+        return new Promise(() => {});  // never resolve so that no db operations can go through
+      });
+
     this.name = name;
-    this.version = null;
-    this._schema = new DatabaseSchema({
-      name: this.name,
-      stores: {},
-      codec: new Codec(userCodecs),
-    });
-    this._migrations = {};
+    this.version = versionAndSchemaPromise.then(([version, _]) => version);
+    this._schema = versionAndSchemaPromise.then(([_, schema]) => schema);
+    this.initialized = versionAndSchemaPromise.then(() => undefined);
 
     this.$ = <$$> new Proxy({}, {
       get: (_target: {}, prop: string | number | symbol) => {
         if (typeof prop === 'string') {
           const store_name = prop;
 
-          // TODO: this doesn't close the connection
-          const idb_conn_k = AsyncCont.fromProducer(async () => await this._newIdbConn());
+          const idb_conn_k = AsyncCont.fromFunc<IDBDatabase>(async callback => {
+            const idbConn = await this._newIdbConn();
+            const result = await callback(idbConn);
+            idbConn.close();
+            return result;
+          });
           const conn = new Connection({
             idb_conn_k: idb_conn_k,
-            schema_g: () => this._getSchema(),
+            schema_k: AsyncCont.fromValue(this._schema),
           });
           return (conn.$ as any)[store_name];
         }
@@ -120,172 +246,9 @@ export class Database<$$ = {}> {
     });
   }
 
-  _getSchema(): Awaitable<DatabaseSchema> {
-    return Awaitable_map(this._ensureInitialized(), () => this._schema);
-  }
-
-  /**
-   * Stage a database migration.
-   *
-   * The migration will be run when the database is initialized.
-   *
-   * @param version The version to upgrade to
-   * @param callback The upgrade function.
-   */
-  migration(version: number, callback: (genuine: boolean, tx: Transaction<$$>) => Promise<void>): void {
-    if (this.initialized)
-      throw Error('Cannot stage a migration on an already-initialized database.');
-    if (version in this._migrations)
-      throw Error(`There is already a staged migration for version ${version}.`);
-    this._migrations[version] = callback;
-  }
-
-  /**
-   * Has the database been initialized?
-   */
-  get initialized(): boolean {
-    return this.version !== null;
-  }
-
-  _ensureInitialized(): Awaitable<void> {
-    if (this.initialized) return;
-    return this.initialize();
-  }
-
-  /**
-   * Initialize the database.
-   *
-   * Typiically you don't need to call this function yourself, as the database will automatically
-   * initialize itself before any operation.
-   *
-   * Database initialization essentially consists of running all migrations and updating internal
-   * state according to the migrations.
-   */
-  async initialize(): Promise<void> {
-
-    if (this.initialized)
-      throw Error('This database has already been initialized.');
-
-    this.version = await getDbVersion(this.name);
-
-    // Reset dummy database
-    const dummy_name = '__JINE_DUMMY__' + this.name;
-    await new Promise((resolve, reject) => {
-      const req = indexedDB.deleteDatabase(dummy_name);
-      req.onerror = _event => reject(mapError(req.error));
-      req.onsuccess = _event => resolve();
-    });
-
-    const versions =
-      Object.keys(this._migrations)
-        .map((key: string) => parseInt(key, 10))
-        .sort();
-
-    for (const version of versions) {
-      await this._upgrade(version, this._migrations[version]);
-    }
-
-  }
-
-  /**
-   * Upgrade the database to a new version.
-   *
-   * Like [[Database.connect]], except that the callback is allowed to update the format of the database,
-   * for instance with [[Transaction.addStore]] and [[StoreActual.addIndex]].
-   *
-   * The callback accepts an extra argument, `genuine`. This value is equal to `tx.genuine` and is `true`
-   * exactly when the upgrade is being done "for real" instead of being used to recalculate database shape.
-   *
-   * Also see {@page Versioning and Migrations}.
-   *
-   * Generally, one should prefer [[Database.migration]] to this method.
-   * However, this method can be useful when fine-grained control is desired.
-   *
-   * The given migration will be run after all staged migrations are run.
-   *
-   * @param version The version to upgrade to
-   * @param callback The upgrade function.
-   */
-  async upgrade(version: number, callback: (genuine: boolean, tx: Transaction<$$>) => Promise<void>): Promise<void> {
-    await this._ensureInitialized();
-    await this._upgrade(version, callback);
-  }
-
-  // Run a database migration
-  // Will only run a genuine migration if the version is greater than the current db version
-  async _upgrade(version: number, callback: (genuine: boolean, tx: Transaction<$$>) => Promise<void>): Promise<void> {
-
-    const genuine = version > some(this.version, "Cannot upgrade an uninitalized database.");
-
-    return new Promise((resolve, reject) => {
-
-      // For genuine transactions, we run it on the actual database
-      // For ingenuine transactions, we run it on a parallel 'dummy' database
-      // which is always reset when the database is initialized.
-      // Thus the migrations run in a dummy environment until we reach the
-      // point that the actual database is at, when they switch to being run
-      // on the actual db.
-      const req =
-        genuine
-          ? indexedDB.open(this.name, version)
-          : indexedDB.open('__JINE_DUMMY__' + this.name, version)
-          ;
-
-
-      req.onblocked = _event => {
-        reject(new JineBlockedError());
-      };
-
-      req.onerror = _event => {
-        const idb_error = req.error;
-        // An .abort call in a versionchange tx should not raise an error
-        if (idb_error?.name === 'AbortError') {
-          resolve();
-        } else {
-          reject(mapError(req.error));
-        }
-      };
-
-      req.onupgradeneeded = _event => {
-        const idb_tx = some(req.transaction, "Internal error");
-        const tx = new Transaction<$$>({
-          idb_tx: idb_tx,
-          // vvv Versionchange transactions have access to entire db
-          scope: this._schema.store_names,
-          genuine: genuine,
-          schema: this._schema,
-        });
-
-        // vvv The below looks concerning due to the fact that we don't await the promise.
-        //     In fact, it's fine; floating callbacks are natural when working with idb
-        //     (as long as they don't span multiple ticks).
-        //     The 'after' code doesn't come after awaiting the promise, it comes in onsuccess.
-        // eslint-disable-next-line @typescript-eslint/no-floating-promises
-        tx.wrap(async tx => {
-          await callback(genuine, tx);
-
-          // vvv Update structure if stores were added etc
-          // TODO: not sure why we still reach here if the tx is .abort()ed
-          if (tx.state !== 'aborted') {
-            this._schema = tx._schema;
-            if (genuine)
-              this.version = version;
-          }
-        });
-      };
-
-      req.onsuccess = _event => {
-        const idb_conn = req.result;
-        idb_conn.close();
-        resolve();
-      };
-
-    });
-  }
-
   // TODO: there's a better way to wrap requests and handle errors
   async _newIdbConn(): Promise<IDBDatabase> {
-    await this._ensureInitialized();
+    await this.initialized;
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(this.name);
       // vvv upgradeneeded shouldn't fire
@@ -304,10 +267,9 @@ export class Database<$$ = {}> {
    * @returns A new connection
    */
   async newConnection(): Promise<Connection<$$>> {
-    await this._ensureInitialized();
     return new Connection<$$>({
       idb_conn_k: AsyncCont.fromValue(await this._newIdbConn()),
-      schema_g: () => this._getSchema(),
+      schema_k: AsyncCont.fromValue(await this._schema),
     });
   }
 
@@ -322,7 +284,6 @@ export class Database<$$ = {}> {
    * @returns The callback result
    */
   async connect<R>(callback: (conn: Connection<$$>) => Promise<R>): Promise<R> {
-    await this._ensureInitialized();
     const conn = await this.newConnection();
     return await conn.wrap(async conn => await callback(conn));
   }
@@ -340,20 +301,10 @@ export class Database<$$ = {}> {
    * ```
    */
   async transact<R>(stores: Array<string | Store<unknown>>, mode: TransactionMode, callback: (tx: Transaction<$$>) => Promise<R>): Promise<R> {
-    await this._ensureInitialized();
-    return await this.connect(async conn =>
-      await conn.transact(stores, mode, async tx =>
-        await callback(tx)));
-  }
-
-  /**
-   * Delete the database.
-   */
-  async destroy(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.deleteDatabase(this.name);
-      req.onerror = _event => reject(mapError(req.error));
-      req.onsuccess = _event => resolve();
+    return await this.connect(async conn => {
+      return await conn.transact(stores, mode, async tx => {
+        return await callback(tx);
+      });
     });
   }
 

@@ -1,6 +1,7 @@
 
 import { W } from 'wrongish';
 
+import { JineInternalError } from './errors';
 import { Constructor, isPrimitive, isInstanceOfStrict } from './util';
 
 /*
@@ -186,7 +187,7 @@ export class Codec {
       return decoded;
     }
 
-    throw Error(`[Jine] I failed to decode a value. This is likely not your fault. Would you mind filing a bug report?`);
+    throw new JineInternalError();
 
   }
 
@@ -263,7 +264,7 @@ export class Codec {
       return decoded;
     }
 
-    throw Error(`[Jine] I failed to decode a value. This is likely not your fault. Would you mind filing a bug report?`);
+    throw new JineInternalError();
 
   }
 

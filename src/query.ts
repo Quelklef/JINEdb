@@ -6,7 +6,7 @@ import { Codec } from './codec';
 import { mapError } from './errors';
 import { AsyncCont } from './cont';
 import { StoreSchema } from './schema';
-import { some, getPropertyDescriptor, Dict, Awaitable } from './util';
+import { some, getPropertyDescriptor, Dict } from './util';
 
 /**
  * Query specification
@@ -299,18 +299,18 @@ export class Selection<Item, Trait> {
   readonly source: Store<Item> | Index<Item, Trait>;
   readonly query: Query<Trait>;
 
-  readonly store_schema_g: () => Awaitable<StoreSchema<Item>>;
+  readonly store_schema_k: AsyncCont<StoreSchema<Item>>;
 
   cursor_k: AsyncCont<Cursor<Item, Trait>>;
 
   constructor(args: {
     source: Store<Item> | Index<Item, Trait>;
     query: Query<Trait>;
-    store_schema_g: () => Awaitable<StoreSchema<Item>>;
+    store_schema_k: AsyncCont<StoreSchema<Item>>;
   }) {
     this.source = args.source;
     this.query = args.query;
-    this.store_schema_g = args.store_schema_g;
+    this.store_schema_k = args.store_schema_k;
 
     const idb_source_k =
       this.source instanceof Store
@@ -318,12 +318,13 @@ export class Selection<Item, Trait> {
         : (this.source as any)._idb_index_k;
 
     this.cursor_k = idb_source_k.map(async (idb_source: IDBObjectStore | IDBIndex) => {
-      const schema = await this.store_schema_g();
-      // TODO: use transactionmode
-      return new Cursor<Item, Trait>({
-        idb_source: idb_source,
-        query: this.query,
-        store_schema: schema,
+      return await this.store_schema_k.run(store_schema => {
+        // TODO: use transactionmode
+        return new Cursor<Item, Trait>({
+          idb_source: idb_source,
+          query: this.query,
+          store_schema: store_schema,
+        });
       });
     });
   }
@@ -577,13 +578,13 @@ export class SelectionUnique<Item, Trait> {
   constructor(args: {
     source: Index<Item, Trait>;
     selected_trait: Trait;
-    store_schema_g: () => Awaitable<StoreSchema<Item>>;
+    store_schema_k: AsyncCont<StoreSchema<Item>>;
   }) {
     this.source = args.source;
     this.selection = new Selection({
       source: args.source,
       query: { equals: args.selected_trait },
-      store_schema_g: args.store_schema_g,
+      store_schema_k: args.store_schema_k,
     });
   }
 

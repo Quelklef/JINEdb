@@ -10,8 +10,7 @@ export type Dict<V> = Partial<Record<string, V>>;
 export type Awaitable<T> = T | Promise<T>;
 
 export function Awaitable_map<T, S>(a: Awaitable<T>, f: (v: T) => Awaitable<S>): Awaitable<S> {
-  if (a instanceof Promise) return a.then(f);
-  return f(a as T);
+  return (a instanceof Promise) ? a.then(f) : f(a);
 }
 
 export function getPropertyDescriptor(obj: object, prop: number | symbol | string): null | PropertyDescriptor {
@@ -55,30 +54,6 @@ export function isInstanceOfStrict<T>(val: any, type: Constructor<T>): val is T 
 export function invoke<T>(func: () => T): T {
   // Better syntax for IIFEs than (() => { ... })()
   return func();
-}
-
-/*-
- * For the following use-case:
- *
- * Mapping an error to another error:
- * // throws a DifferentError instance
- * _try(
- *   () => throw Error('err'),
- *   err => err.name === 'err' && throw DifferentError('err'),
- * )
- * // re-throws the original error
- * _try(
- *   () => throw Error('err'),
- *   err => err.name === 'something else' && throw DifferentError('err'),
- * )
- */
-export function _try<R>(func: () => R, mapper: (err: Error) => false | Error): R {
-  try {
-    return func();
-  } catch (err) {
-    const mapped =  mapper(err);
-    throw mapped ? mapped : err;
-  }
 }
 
 /*-

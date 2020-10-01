@@ -1,9 +1,9 @@
 
 import { Store } from './store';
+import { Awaitable } from './util';
 import { AsyncCont } from './cont';
 import { JineError } from './errors';
 import { IndexSchema } from './schema';
-import { Awaitable, Awaitable_map } from './util';
 import { Query, Selection, SelectionUnique } from './query';
 
 
@@ -26,14 +26,14 @@ export class Index<Item, Trait> {
    * Index names are unique for a particular store.
    */
   get name(): Awaitable<string> {
-    return Awaitable_map(this._schema_g(), schema => schema.name);
+    return this._schema_k.run(schema => schema.name);
   }
 
   /**
    * Are the values in this index required to be unique?
    */
   get unique(): Awaitable<boolean> {
-    return Awaitable_map(this._schema_g(), schema => schema.unique);
+    return this._schema_k.run(schema => schema.unique);
   }
 
   /**
@@ -48,7 +48,7 @@ export class Index<Item, Trait> {
    * for each of `1`, `2`, and `3`, but not a query for `[1, 2, 3]`.
    */
   get explode(): Awaitable<boolean> {
-    return Awaitable_map(this._schema_g(), schema => schema.explode);
+    return this._schema_k.run(schema => schema.explode);
   }
 
   /**
@@ -64,35 +64,35 @@ export class Index<Item, Trait> {
    * This function is stored in [[Index.trait_getter]].
    */
   get kind(): Awaitable<'path' | 'derived'> {
-    return Awaitable_map(this._schema_g(), schema => schema.kind);
+    return this._schema_k.run(schema => schema.kind);
   }
 
   /**
    * If `this.kind === 'path'`, return the trait path.
    */
   get trait_path(): Awaitable<undefined | string> {
-    return Awaitable_map(this._schema_g(), schema => schema.path);
+    return this._schema_k.run(schema => schema.path);
   }
 
   /**
    * If `this.kind === 'derived'`, return the trait computing function.
    */
   get trait_getter(): Awaitable<undefined | ((item: Item) => Trait)> {
-    return Awaitable_map(this._schema_g(), schema => schema.getter);
+    return this._schema_k.run(schema => schema.getter);
   }
 
 
   _idb_index_k: AsyncCont<IDBIndex>;
-  _schema_g: () => Awaitable<IndexSchema<Item, Trait>>;
+  _schema_k: AsyncCont<IndexSchema<Item, Trait>>;
   _parent: Store<Item>;
 
   constructor(args: {
     idb_index_k: AsyncCont<IDBIndex>;
-    schema_g: () => Awaitable<IndexSchema<Item, Trait>>;
+    schema_k: AsyncCont<IndexSchema<Item, Trait>>;
     parent: Store<Item>;
   }) {
     this._idb_index_k = args.idb_index_k;
-    this._schema_g = args.schema_g;
+    this._schema_k = args.schema_k;
     this._parent = args.parent;
   }
 
@@ -131,16 +131,17 @@ export class Index<Item, Trait> {
    * @param item The item
    */
   async updateOrAdd(item: Item): Promise<void> {
-    const schema = await this._schema_g();
-    if (!schema.unique)
-      throw new JineError(`Cannot call Index#updateOrAdd on non-unique index '${schema.name}'.`);
-    const trait = schema.calc_trait(item);
-    const already_exists = await this.exists(trait);
-    if (already_exists) {
-      await this.selectOne(trait).update(item);
-    } else {
-      await this._parent.add(item);
-    }
+    await this._schema_k.run(async schema => {
+      if (!schema.unique)
+        throw new JineError(`Cannot call Index#updateOrAdd on non-unique index '${schema.name}'.`);
+      const trait = schema.calc_trait(item);
+      const already_exists = await this.exists(trait);
+      if (already_exists) {
+        await this.selectOne(trait).update(item);
+      } else {
+        await this._parent.add(item);
+      }
+    });
   }
 
   /**
@@ -161,7 +162,7 @@ export class Index<Item, Trait> {
     return new Selection({
       source: this,
       query: query,
-      store_schema_g: this._parent._schema_g,
+      store_schema_k: this._parent._schema_k,
     });
   }
 
@@ -173,7 +174,7 @@ export class Index<Item, Trait> {
     return new SelectionUnique({
       source: this,
       selected_trait: trait,
-      store_schema_g: this._parent._schema_g,
+      store_schema_k: this._parent._schema_k,
     });
   }
 

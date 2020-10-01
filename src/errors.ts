@@ -69,7 +69,11 @@ export class JineBlockedError extends JineError { }
 /**
  * Jine has a bug!
  */
-export class JineInternalError extends JineError { }
+export class JineInternalError extends JineError {
+  constructor() {
+    super(`[Jine] Encountered an internal error. This likely isn't your fault! Would you mind submitting a bug report?`);
+  }
+}
 
 
 // -- -- -- //
@@ -95,7 +99,8 @@ export function mapError(error: DOMException | null): JineError | DOMException |
   const jine_error = new jine_error_type(error.message);
 
   // chrome et al
-  if ((error as any).stack) jine_error.stack = (error as any).stack;
+  if ((error as any).stack)
+    jine_error.stack = (error as any).stack;
 
   return jine_error;
 

@@ -2,10 +2,10 @@
 import { Row } from './row';
 import { Index } from './index';
 import { AsyncCont } from './cont';
+import { Dict, Awaitable } from './util';
 import { Selection, Cursor } from './query';
 import { StoreSchema, IndexSchema } from './schema';
 import { JineNoSuchIndexError, mapError } from './errors';
-import { _try, Dict, Awaitable, Awaitable_map } from './util';
 
 /**
  * A collection of stored items.
@@ -33,31 +33,40 @@ export class Store<Item> {
    * Unique per-database
    */
   get name(): Awaitable<string> {
-    return Awaitable_map(this._schema_g(), schema => schema.name);
+    return this._schema_k.run(schema => schema.name);
   }
 
   _idb_store_k: AsyncCont<IDBObjectStore>;
-  _schema_g: () => Awaitable<StoreSchema<Item>>;
+  _schema_k: AsyncCont<StoreSchema<Item>>;
 
   constructor(args: {
     idb_store_k: AsyncCont<IDBObjectStore>;
-    schema_g: () => Awaitable<StoreSchema<Item>>;
+    schema_k: AsyncCont<StoreSchema<Item>>;
   }) {
     this._idb_store_k = args.idb_store_k;
-    this._schema_g = args.schema_g;
+    this._schema_k = args.schema_k;
 
     this.by = new Proxy({}, {
       get: (_target: {}, prop: string | number | symbol) => {
         if (typeof prop === 'string') {
           const index_name = prop;
-          const idb_index_k = this._idb_store_k.map(
-            idb_store =>
-              _try(
-                () => idb_store.index(index_name),
-                err => err.name === 'NotFoundError' && new JineNoSuchIndexError(`No index named '${index_name}'.`)));
+          const idb_index_k = this._idb_store_k.map(idb_store => {
+            let idb_index!: IDBIndex;
+
+            try {
+              idb_index = idb_store.index(index_name);
+            } catch (err) {
+              if (err.name === 'NotFoundError')
+                throw new JineNoSuchIndexError(`No index named '${index_name}'.`)
+              throw err
+            }
+
+            return idb_index;
+          });
+
           return new Index({
             idb_index_k: idb_index_k,
-            schema_g: async () => (await this._schema_g()).index(index_name),
+            schema_k: this._schema_k.map(schema => schema.index(index_name)),
             parent: this,
           });
         }
@@ -66,11 +75,11 @@ export class Store<Item> {
   }
 
   async _mapExistingRows(mapper: (row: Row) => Row): Promise<void> {
-    return await this._idb_store_k.run(async idb_store => {
+    return await this._idb_store_k.and(this._schema_k).run(async ([idb_store, schema]) => {
       const cursor = new Cursor({
         idb_source: idb_store,
         query: 'everything',
-        store_schema: await this._schema_g(),
+        store_schema: schema,
       });
       for (await cursor.init(); cursor.active; await cursor.step()) {
         await cursor._replaceRow(mapper(cursor._currentRow()));
@@ -82,8 +91,7 @@ export class Store<Item> {
    * Add an item to the store.
    */
   async add(item: Item): Promise<void> {
-    return this._idb_store_k.run(async idb_store => {
-      const schema = await this._schema_g();
+    return this._idb_store_k.and(this._schema_k).run(async ([idb_store, schema]) => {
       return new Promise((resolve, reject) => {
 
         const traits: Dict<unknown> = {};
@@ -142,8 +150,7 @@ export class Store<Item> {
    * @returns An array with all items in the store.
    */
   async array(): Promise<Array<Item>> {
-    return this._idb_store_k.run(async idb_store => {
-      const schema = await this._schema_g();
+    return this._idb_store_k.and(this._schema_k).run(async ([idb_store, schema]) => {
       return new Promise((resolve, reject) => {
         const req = idb_store.getAll();
         req.onsuccess = (event) => {
@@ -164,7 +171,7 @@ export class Store<Item> {
     return new Selection({
       source: this,
       query: 'everything',
-      store_schema_g: this._schema_g,
+      store_schema_k: this._schema_k,
     });
   }
 
@@ -185,9 +192,7 @@ export class Store<Item> {
     options?: { unique?: boolean; explode?: boolean },
   ): Promise<Index<Item, Trait>> {
 
-    return await this._idb_store_k.run(async idb_store => {
-
-      const schema = await this._schema_g();
+    return await this._idb_store_k.and(this._schema_k).run(async ([idb_store, schema]) => {
 
       if (typeof trait_path_or_getter === 'string') {
         const trait_path = trait_path_or_getter;
@@ -225,7 +230,7 @@ export class Store<Item> {
 
       const index = new Index<Item, Trait>({
         idb_index_k: AsyncCont.fromValue(idb_index),
-        schema_g: () => index_schema,
+        schema_k: AsyncCont.fromValue(index_schema),
         parent: this,
       });
 
@@ -246,9 +251,7 @@ export class Store<Item> {
    */
   async removeIndex(name: string): Promise<void> {
 
-    return await this._idb_store_k.run(async idb_store => {
-
-      const schema = await this._schema_g();
+    return await this._idb_store_k.and(this._schema_k).run(async ([idb_store, schema]) => {
 
       // remove idb index
       idb_store.deleteIndex(name);

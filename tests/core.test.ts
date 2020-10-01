@@ -8,17 +8,14 @@ describe('core', () => {
 
   describe('without custom types', () => {
 
-    let jine!: Database<any>;  // use <any> for convenience
-
-    beforeEach(() => {
-      reset();
-      jine = new Database<any>('jine');
-      jine.migration(1, async (_tx: any) => { });
-    });
-
     it("works with natively-storable primitive values", async () => {
-      await jine.upgrade(2, async (genuine: boolean, tx: any) => {
-        tx.addStore('prims');
+      reset();
+      const jine = new Database<any>('jine', {
+        migrations: [
+          async (genuine: boolean, tx: any) => {
+            tx.addStore('prims');
+          }
+        ],
       });
       const vals = new Set([null, undefined, 'string', 10, 3.14]);
       for (const val of vals)
@@ -27,8 +24,13 @@ describe('core', () => {
     });
 
     it("works with natively-storable object values", async () => {
-      await jine.upgrade(2, async (genuine: boolean, tx: any) => {
-        tx.addStore('obj');
+      reset();
+      const jine = new Database<any>('jine', {
+        migrations: [
+          async (genuine: boolean, tx: any) => {
+            tx.addStore('obj');
+          }
+        ],
       });
       const o = { a: 'a', b: 'b' };
       const d = new Date();
@@ -40,8 +42,13 @@ describe('core', () => {
     });
 
     it("works with recursive instantiations of the storable registry box type", async () => {
-      await jine.upgrade(2, async (genuine: boolean, tx: any) => {
-        tx.addStore('obj');
+      reset();
+      const jine = new Database<any>('jine', {
+        migrations: [
+          async (genuine: boolean, tx: any) => {
+            tx.addStore('obj');
+          }
+        ],
       });
       const o = {
         x: 1,
@@ -70,22 +77,25 @@ describe('core', () => {
     }
 
     reset();
-    const jine = new Database<any>('jine', [
-      {
-        type: MyPair_v1,
-        id: 'MyPair',
-        encode(pair: MyPair_v1): object {
-          return { left: pair.left, right: pair.right };
+    const jine = new Database<any>('jine', {
+      migrations: [
+        async (genuine: boolean, tx: any) => {
+          await tx.addStore('pairs');
         },
-        decode(pair: any): MyPair_v1 {
-          const { left, right } = pair;
-          return new MyPair_v1(left, right);
-        },
-      }
-    ]);
-
-    await jine.upgrade(1, async (genuine: boolean, tx: any) => {
-      tx.addStore('pairs');
+      ],
+      types: [
+        {
+          type: MyPair_v1,
+          id: 'MyPair',
+          encode(pair: MyPair_v1): object {
+            return { left: pair.left, right: pair.right };
+          },
+          decode(pair: any): MyPair_v1 {
+            const { left, right } = pair;
+            return new MyPair_v1(left, right);
+          },
+        }
+      ]
     });
 
     await jine.connect(async (conn: any) => {
@@ -114,7 +124,13 @@ describe('core', () => {
     }
 
     reset();
-    const jine = new Database<any>('jine', [
+    const migrations = [
+      async (genuine: boolean, tx: any) => {
+        const people = tx.addStore('people');
+        await people.addIndex('name', '.name');
+      }
+    ];
+    const types = [
       {
         type: BodyTrait,
         id: 'BodyTrait',
@@ -126,12 +142,8 @@ describe('core', () => {
           return new BodyTrait(['pitiful', 'reasonable', 'impressive'][idx] as BodyRating);
         },
       }
-    ]);
-
-    await jine.upgrade(2, async (genuine: boolean, tx: any) => {
-      const people = tx.addStore('people');
-      await people.addIndex('name', '.name');
-    });
+    ];
+    let jine = new Database<any>('jine', { migrations, types });
 
     await jine.connect(async (conn: any) => {
       await conn.$.people.add({ name: 'me', body: 'reasonable' });
@@ -139,9 +151,10 @@ describe('core', () => {
       expect(await conn.$.people.count()).toBe(2);
     });
 
-    await jine.upgrade(3, async (genuine: boolean, tx: any) => {
+    migrations.push(async (genuine: boolean, tx: any) => {
       await tx.$.people.addIndex('body_rating', (person: Person) => new BodyTrait(person.body));
     });
+    jine = new Database<any>('jine', { migrations, types });
 
     await jine.connect(async (conn: any) => {
       expect(await conn.$.people.by.body_rating.select({ above: new BodyTrait('pitiful') }).count()).toBe(2);
@@ -176,25 +189,28 @@ describe('core', () => {
     ];
 
     reset();
-    const jine = new Database<any>('jine', [
-      {
-        type: MyCustomIndexable,
-        id: 'id',
-        encode(mci: MyCustomIndexable): unknown {
-          return { one: 1, two: 2, three: 3 }[mci.name];
-        },
-        decode(encoded: any): MyCustomIndexable {
-          const actual = encoded as 1 | 2 | 3;
-          return new MyCustomIndexable(['one', 'two', 'three'][actual - 1] as any);
-        },
-      }
-    ]);
-
-    await jine.upgrade(2, async (genuine: boolean, tx: any) => {
-      const itemstore = tx.addStore('itemstore');
-      await itemstore.addIndex('trait', (item: Item) => item.nums.map(n => new MyCustomIndexable(n as any)));
-      for (const item of items)
-        await itemstore.add(item);
+    const jine = new Database<any>('jine', {
+      migrations: [
+        async (genuine: boolean, tx: any) => {
+          const itemstore = tx.addStore('itemstore');
+          await itemstore.addIndex('trait', (item: Item) => item.nums.map(n => new MyCustomIndexable(n as any)));
+          for (const item of items)
+            await itemstore.add(item);
+        }
+      ],
+      types: [
+        {
+          type: MyCustomIndexable,
+          id: 'id',
+          encode(mci: MyCustomIndexable): unknown {
+            return { one: 1, two: 2, three: 3 }[mci.name];
+          },
+          decode(encoded: any): MyCustomIndexable {
+            const actual = encoded as 1 | 2 | 3;
+            return new MyCustomIndexable(['one', 'two', 'three'][actual - 1] as any);
+          },
+        }
+      ]
     });
 
     const got = await jine.$.itemstore.by.trait.select({ above: [new MyCustomIndexable('three'), new MyCustomIndexable('two')] }).array();
@@ -217,21 +233,25 @@ describe('core', () => {
 
     beforeEach(async () => {
       reset();
-      jine = new Database<any>('jine', [
-        {
-          type: MyCustomStorable,
-          id: 'MyCustomStorable',
-          encode(mcs: MyCustomStorable): unknown {
-            return mcs.val;
+      jine = new Database<any>('jine', {
+        migrations: [
+          async (genuine: boolean, tx: any) => {
+            tx.addStore('items');
           },
-          decode(encoded: any): MyCustomStorable {
-            const actual = encoded as string;
-            return new MyCustomStorable(actual);
-          },
-        }
-      ]);
-      await jine.upgrade(2, async (genuine: boolean, tx: any) => {
-        tx.addStore('items');
+        ],
+        types: [
+          {
+            type: MyCustomStorable,
+            id: 'MyCustomStorable',
+            encode(mcs: MyCustomStorable): unknown {
+              return mcs.val;
+            },
+            decode(encoded: any): MyCustomStorable {
+              const actual = encoded as string;
+              return new MyCustomStorable(actual);
+            },
+          }
+        ]
       });
     });
 

@@ -11,9 +11,12 @@ describe('migration (no beforeEach)', () => {
     let db!: Database<any>;
 
     async function setup(): Promise<void> {
-      db = new Database<any>('db');
-      await db.upgrade(1, async (genuine: boolean, tx: any) => {
-        tx.addStore('items');
+      db = new Database<any>('db', {
+        migrations: [
+          async (genuine: boolean, tx: any) => {
+            await tx.addStore('items');
+          },
+        ]
       });
     }
 
@@ -33,19 +36,22 @@ describe('migration (no beforeEach)', () => {
 describe('migration', () => {
 
   let jine!: Database<any>;  // use <any> for convenience
+  let migrations!: Array<any>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     reset();
-    jine = new Database<any>('jine');
-    jine.migration(1, async (_tx: any) => { });
+    migrations = [ async (_tx: any) => { } ];
+    jine = new Database<any>('jine', { migrations });
+    await jine.initialized;
   });
 
   it('allows for adding and removing stores', async () => {
 
-    await jine.upgrade(2, async (genuine: boolean, tx: any) => {
+    migrations.push(async (genuine: boolean, tx: any) => {
       await tx.addStore('strings');
       await tx.addStore('numbers');
     });
+    jine = new Database('jine', { migrations });
 
     await jine.connect(async (conn: any) => {
       await conn.$.strings.add('s t r i n g');
@@ -54,10 +60,11 @@ describe('migration', () => {
       expect(await conn.$.numbers.array()).toEqual([10]);
     });
 
-    await jine.upgrade(3, async (genuine: boolean, tx: any) => {
+    migrations.push(async (genuine: boolean, tx: any) => {
       await tx.removeStore('strings');
       await tx.removeStore('numbers');
     });
+    jine = new Database('jine', { migrations });
 
     await jine.connect(async (conn: any) => {
       await expect(async () => await conn.$.strings.array())
@@ -70,19 +77,21 @@ describe('migration', () => {
 
   it('allows for adding and removing indexes', async () => {
 
-    await jine.upgrade(2, async (genuine: boolean, tx: any) => {
+    migrations.push(async (genuine: boolean, tx: any) => {
       const strings = await tx.addStore('strings');
       await strings.addIndex('self', (x: any) => x);
     });
+    jine = new Database('jine', { migrations });
 
     await jine.connect(async (conn: any) => {
       await conn.$.strings.add('me!');
       expect(await conn.$.strings.by.self.get('me!')).toEqual(['me!']);
     });
 
-    await jine.upgrade(3, async (genuine: boolean, tx: any) => {
+    migrations.push(async (genuine: boolean, tx: any) => {
       await tx.$.strings.removeIndex('self');
     });
+    jine = new Database('jine', { migrations });
 
     await jine.connect(async (conn: any) => {
       await expect(async () => await conn.$.strings.by.self.find('whatever'))
@@ -91,36 +100,17 @@ describe('migration', () => {
 
   });
 
-  it("doesn't throw on .abort()", async () => {
-    await jine.upgrade(2, async (genuine: boolean, tx: any) => {
-      tx.abort();
-    });
+  /*
+  it("throws on .abort()", async () => {
+    async function go(): Promise<void> {
+      migrations.push(async (genuine: boolean, tx: any) => {
+        tx.abort();
+      });
+      jine = new Database('jine', { migrations });
+      await jine.initialized;
+    }
+    await expect(go).rejects.toThrow();
   });
-
-  it("is atomic", async () => {
-
-    await jine.upgrade(2, async (genuine: boolean, tx: any) => {
-      tx.addStore('store');
-      tx.abort();
-    });
-
-    await jine.connect(async (conn: any) => {
-      const schema = await conn._schema_g();
-      expect('store' in schema.stores).toBe(false);
-    });
-
-  });
-
-  it("using Database.$ without calling .initialize, relying on auto-init, works", async () => {
-
-    jine.migration(2, async (genuine: boolean, tx: any) => {
-      await tx.addStore('numbers');
-      await tx.$.numbers.add(1);
-    });
-
-    const got = await jine.$.numbers.array();
-    expect(got).toStrictEqual([1]);
-
-  });
+  */
 
 });
