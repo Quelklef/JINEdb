@@ -3,9 +3,8 @@ import { Store } from './store';
 import { AsyncCont } from './cont';
 import { Connection } from './connection';
 import { DatabaseSchema } from './schema';
-import { newIndexableRegistry } from './indexable';
+import { Codec, UserCodec } from './codec';
 import { Transaction, TransactionMode } from './transaction';
-import { Storable, newStorableRegistry } from './storable';
 import { some, Awaitable, Awaitable_map } from './util';
 import { JineBlockedError, JineInternalError, mapError } from './errors';
 
@@ -25,18 +24,18 @@ async function getDbVersion(dbName: string): Promise<number> {
   // return 0 if the upgradeneeded event fired.
 
   return new Promise((resolve, reject) => {
-    
+
     let previouslyExisted = true;
-    
+
     const openReq = indexedDB.open(dbName);
-    
+
     openReq.onblocked = _event => reject(new JineBlockedError());
     openReq.onerror = _event => reject(mapError(openReq.error));
-    
+
     openReq.onupgradeneeded = _event => {
       previouslyExisted = false;
     };
-    
+
     openReq.onsuccess = _event => {
       const conn = openReq.result;
       const version = previouslyExisted ? conn.version : 0;
@@ -50,7 +49,7 @@ async function getDbVersion(dbName: string): Promise<number> {
         delReq.onsuccess = _event => resolve(version);
       }
     };
-    
+
   });
 }
 
@@ -91,7 +90,7 @@ export class Database<$$ = {}> {
   _schema: DatabaseSchema;
   _migrations: Record<number, (genuine: boolean, tx: Transaction<$$>) => Promise<void>>;
 
-  constructor(name: string) {
+  constructor(name: string, userCodecs: Array<UserCodec> = []) {
     if (name.startsWith("__JINE_DUMMY__"))
       throw new Error("Jine db names may not start with '__JINE_DUMMY__'");
 
@@ -100,8 +99,7 @@ export class Database<$$ = {}> {
     this._schema = new DatabaseSchema({
       name: this.name,
       stores: {},
-      storables: newStorableRegistry(),
-      indexables: newIndexableRegistry(),
+      codec: new Codec(userCodecs),
     });
     this._migrations = {};
 
@@ -341,7 +339,7 @@ export class Database<$$ = {}> {
    * await db.connect(async conn => await conn.transact(tx => ...))
    * ```
    */
-  async transact<R>(stores: Array<string | Store<Storable>>, mode: TransactionMode, callback: (tx: Transaction<$$>) => Promise<R>): Promise<R> {
+  async transact<R>(stores: Array<string | Store<unknown>>, mode: TransactionMode, callback: (tx: Transaction<$$>) => Promise<R>): Promise<R> {
     await this._ensureInitialized();
     return await this.connect(async conn =>
       await conn.transact(stores, mode, async tx =>

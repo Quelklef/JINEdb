@@ -1,17 +1,11 @@
 
 import { Row } from './row';
 import { Index } from './index';
-import { Storable } from './storable';
 import { AsyncCont } from './cont';
 import { Selection, Cursor } from './query';
 import { StoreSchema, IndexSchema } from './schema';
-import { Indexable, NativelyIndexable } from './indexable';
 import { JineNoSuchIndexError, mapError } from './errors';
 import { _try, Dict, Awaitable, Awaitable_map } from './util';
-
-export { StorableRegistry } from './storable';
-export { IndexableRegistry } from './indexable';
-
 
 /**
  * A collection of stored items.
@@ -22,7 +16,7 @@ export { IndexableRegistry } from './indexable';
  *
  * @typeparam Item The type of objects contained in this store.
  */
-export class Store<Item extends Storable> {
+export class Store<Item> {
 
   /**
    * An alias for [[Store.indexes]].
@@ -92,18 +86,18 @@ export class Store<Item extends Storable> {
       const schema = await this._schema_g();
       return new Promise((resolve, reject) => {
 
-        const traits: Dict<NativelyIndexable> = {};
+        const traits: Dict<unknown> = {};
         for (const index_name of schema.index_names) {
           const index_schema = schema.index(index_name);
           const trait = index_schema.calc_trait(item);
-          const encoded = schema.indexables.encode(trait, index_schema.explode);
+          const encoded = schema.codec.encodeTrait(trait, index_schema.explode);
           const trait_name = index_name;
           traits[trait_name] = encoded;
         }
 
         // Don't include the id since it's autoincrement'd
         const row: Omit<Row, 'id'> = {
-          payload: schema.storables.encode(item),
+          payload: schema.codec.encodeItem(item),
           traits: traits,
         };
 
@@ -154,7 +148,7 @@ export class Store<Item extends Storable> {
         const req = idb_store.getAll();
         req.onsuccess = (event) => {
           const rows = (event.target as any).result as Array<Row>;
-          const items = rows.map(row => schema.storables.decode(row.payload) as Item);
+          const items = rows.map(row => schema.codec.decodeItem(row.payload) as Item);
           resolve(items);
         };
         req.onerror = _event => reject(mapError(req.error));
@@ -185,7 +179,7 @@ export class Store<Item extends Storable> {
    * - `unqiue`: enforces unique values for this trait; see [[Index.unique]].
    * - `explode`: see [[Index.explode]].
    */
-  async addIndex<Trait extends Indexable>(
+  async addIndex<Trait>(
     index_name: string,
     trait_path_or_getter: string | ((item: Item) => Trait),
     options?: { unique?: boolean; explode?: boolean },
@@ -216,16 +210,15 @@ export class Store<Item extends Storable> {
         trait_path_or_getter: trait_path_or_getter,
         unique: unique,
         explode: explode,
-        storables: schema.storables,
-        indexables: schema.indexables,
+        codec: schema.codec,
       });
 
       // update existing items if needed
       if (index_schema.kind === 'derived') {
         const trait_getter = index_schema.getter;
         await this.all()._replaceRows((row: Row) => {
-          const item = schema.storables.decode(row.payload) as Item;
-          row.traits[index_name] = schema.indexables.encode(trait_getter(item), explode);
+          const item = schema.codec.decodeItem(row.payload) as Item;
+          row.traits[index_name] = schema.codec.encodeTrait(trait_getter(item), explode);
           return row;
         });
       }

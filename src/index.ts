@@ -1,7 +1,5 @@
 
 import { Store } from './store';
-import { Storable } from './storable';
-import { Indexable } from './indexable';
 import { AsyncCont } from './cont';
 import { JineError } from './errors';
 import { IndexSchema } from './schema';
@@ -21,7 +19,7 @@ import { Query, Selection, SelectionUnique } from './query';
  * @typeparam Item The type of the item stored on the [[Store]] that this indexes is connected to.
  * @typeparam Trait The type of the traits being indexed by.
  */
-export class Index<Item extends Storable, Trait extends Indexable> {
+export class Index<Item, Trait> {
 
   /**
    * Name of the index.

@@ -58,10 +58,11 @@ describe("usage", () => {
   let db!: Database<$$>;
 
   beforeEach(async () => {
-    
+
     reset();
-    
+
     db = new Database<$$>("home");
+
     await db.upgrade(1, async (genuine: boolean, tx: Transaction<$$>) => {
       const rooms = tx.addStore<Room>("rooms");
       await rooms.addIndex<string>("name", ".name", { unique: true });
@@ -75,7 +76,7 @@ describe("usage", () => {
         await tx.$.rooms.add(room);
       }
     });
-    
+
 
   });
 
@@ -106,21 +107,21 @@ describe("usage", () => {
 
 
   // --- --- --- $ --- --- --- //
-  
+
   let $!: $$;
-  
+
   describe("Database.$", () => {
 
     beforeEach(() => {
       $ = db.$;
     });
-    
+
     test_$();
 
   });
-    
+
   describe("Connection.$", () => {
-    
+
     let con!: Connection<$$>;
     beforeEach(async () => {
       con = await db.newConnection();
@@ -209,7 +210,7 @@ describe("usage", () => {
         await expect($.rooms.by.score.getOne('whatever' as any))
           .rejects.toThrow();
       });
-      
+
     });
 
     describe("$.{store}.by.{index}.updateOrAdd()", () => {
@@ -239,7 +240,7 @@ describe("usage", () => {
         await expect($.rooms.by.score.updateOrAdd(x))
           .rejects.toThrow();
       });
-      
+
     });
 
     it("$.{store}.by.{index}.select( * )", async () => {
@@ -253,49 +254,49 @@ describe("usage", () => {
       const actual = await $.rooms.by.score.select({ equals: 5 }).array();
       expect(actual).toStrictEqual(expected);
     });
-    
+
     it("$.{store}.by.{index}.select( GT )", async () => {
       const expected = ROOMS_byScore.filter(room => room.score > 5);
       const actual = await $.rooms.by.score.select({ above: 5 }).array();
       expect(actual).toStrictEqual(expected);
     });
-    
+
     it("$.{store}.by.{index}.select( GE )", async () => {
       const expected = ROOMS_byScore.filter(room => room.score >= 5);
       const actual = await $.rooms.by.score.select({ from: 5 }).array();
       expect(actual).toStrictEqual(expected);
     });
-    
+
     it("$.{store}.by.{index}.select( LT )", async () => {
       const expected = ROOMS_byScore.filter(room => room.score < 6);
       const actual = await $.rooms.by.score.select({ below: 6 }).array();
       expect(actual).toStrictEqual(expected);
     });
-    
+
     it("$.{store}.by.{index}.select( LE )", async () => {
       const expected = ROOMS_byScore.filter(room => room.score <= 6);
       const actual = await $.rooms.by.score.select({ through: 6 }).array();
       expect(actual).toStrictEqual(expected);
     });
-    
+
     it("$.{store}.by.{index}.select( GT/LT )", async () => {
       const expected = ROOMS_byScore.filter(room => room.score > 4 && room.score < 7);
       const actual = await $.rooms.by.score.select({ above: 4, below: 7 }).array();
       expect(actual).toStrictEqual(expected);
     });
-    
+
     it("$.{store}.by.{index}.select( GT/LE )", async () => {
       const expected = ROOMS_byScore.filter(room => room.score > 4 && room.score <= 6);
       const actual = await $.rooms.by.score.select({ above: 4, through: 6 }).array();
       expect(actual).toStrictEqual(expected);
     });
-    
+
     it("$.{store}.by.{index}.select( GE/LT )", async () => {
       const expected = ROOMS_byScore.filter(room => room.score >= 5  && room.score < 7);
       const actual = await $.rooms.by.score.select({ from: 5, below: 7 }).array();
       expect(actual).toStrictEqual(expected);
     });
-    
+
     it("$.{store}.by.{index}.select( GE/LE )", async () => {
       const expected = ROOMS_byScore.filter(room => room.score >= 5 && room.score <= 6);
       const actual = await $.rooms.by.score.select({ from: 5, through: 6 }).array();
@@ -419,9 +420,9 @@ describe("usage", () => {
         };
         await expect(bugged).rejects.toThrow();
       });
-      
+
     });
-      
+
   }
-  
+
 });

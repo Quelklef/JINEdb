@@ -1,58 +1,62 @@
 
 import 'fake-indexeddb/auto';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { Database, Store, Index, Connection, NativelyIndexable, NativelyStorable } from '../src/jine';
+import { Database, Store, Index, Connection } from '../src/jine';
 import { reset } from './shared';
 
 describe('core', () => {
 
-  let jine!: Database<any>;  // use <any> for convenience
+  describe('without custom types', () => {
 
-  beforeEach(() => {
-    reset();
-    jine = new Database<any>('jine');
-    jine.migration(1, async (_tx: any) => { });
-  });
+    let jine!: Database<any>;  // use <any> for convenience
 
-  it("works with natively-storable primitive values", async () => {
-    await jine.upgrade(2, async (genuine: boolean, tx: any) => {
-      tx.addStore('prims');
+    beforeEach(() => {
+      reset();
+      jine = new Database<any>('jine');
+      jine.migration(1, async (_tx: any) => { });
     });
-    const vals = new Set([null, undefined, 'string', 10, 3.14]);
-    for (const val of vals)
-      await jine.$.prims.add(val);
-    expect(new Set(await jine.$.prims.array())).toStrictEqual(vals);
-  });
 
-  it("works with natively-storable object values", async () => {
-    await jine.upgrade(2, async (genuine: boolean, tx: any) => {
-      tx.addStore('obj');
+    it("works with natively-storable primitive values", async () => {
+      await jine.upgrade(2, async (genuine: boolean, tx: any) => {
+        tx.addStore('prims');
+      });
+      const vals = new Set([null, undefined, 'string', 10, 3.14]);
+      for (const val of vals)
+        await jine.$.prims.add(val);
+      expect(new Set(await jine.$.prims.array())).toStrictEqual(vals);
     });
-    const o = { a: 'a', b: 'b' };
-    const d = new Date();
-    const r = /abc/;
-    await jine.$.obj.add(o);
-    await jine.$.obj.add(d);
-    await jine.$.obj.add(r);
-    expect(await jine.$.obj.array()).toStrictEqual([o, d, r]);
-  });
 
-  it("works with recursive instantiations of the storable registry box type", async () => {
-    await jine.upgrade(2, async (genuine: boolean, tx: any) => {
-      tx.addStore('obj');
+    it("works with natively-storable object values", async () => {
+      await jine.upgrade(2, async (genuine: boolean, tx: any) => {
+        tx.addStore('obj');
+      });
+      const o = { a: 'a', b: 'b' };
+      const d = new Date();
+      const r = /abc/;
+      await jine.$.obj.add(o);
+      await jine.$.obj.add(d);
+      await jine.$.obj.add(r);
+      expect(await jine.$.obj.array()).toStrictEqual([o, d, r]);
     });
-    const o = {
-      x: 1,
-      c: {
-        x: 2,
+
+    it("works with recursive instantiations of the storable registry box type", async () => {
+      await jine.upgrade(2, async (genuine: boolean, tx: any) => {
+        tx.addStore('obj');
+      });
+      const o = {
+        x: 1,
         c: {
-          x: 3,
-          c: null,
+          x: 2,
+          c: {
+            x: 3,
+            c: null,
+          }
         }
-      }
-    };
-    await jine.$.obj.add(o);
-    expect(await jine.$.obj.array()).toStrictEqual([o]);
+      };
+      await jine.$.obj.add(o);
+      expect(await jine.$.obj.array()).toStrictEqual([o]);
+    });
+
   });
 
   it('works with custom storable types', async () => {
@@ -65,18 +69,23 @@ describe('core', () => {
       ) { }
     }
 
-    await jine.upgrade(2, async (genuine: boolean, tx: any) => {
-      tx.addStore('pairs');
-
-      tx.storables.register(MyPair_v1, 'MyPair', {
-        encode(pair: MyPair_v1): NativelyStorable {
+    reset();
+    const jine = new Database<any>('jine', [
+      {
+        type: MyPair_v1,
+        id: 'MyPair',
+        encode(pair: MyPair_v1): object {
           return { left: pair.left, right: pair.right };
         },
-        decode(encoded: NativelyStorable): MyPair_v1 {
-          const { left, right } = encoded as any;
+        decode(pair: any): MyPair_v1 {
+          const { left, right } = pair;
           return new MyPair_v1(left, right);
         },
-      });
+      }
+    ]);
+
+    await jine.upgrade(1, async (genuine: boolean, tx: any) => {
+      tx.addStore('pairs');
     });
 
     await jine.connect(async (conn: any) => {
@@ -85,44 +94,6 @@ describe('core', () => {
       const got = await conn.$.pairs.array();
       expect(got).toEqual([pair]);
       expect(got[0].constructor).toBe(MyPair_v1);
-    });
-
-    // eslint-disable-next-line @typescript-eslint/class-name-casing
-    class MyPair_v2 {
-      constructor(
-        public fst: any,
-        public snd: any,
-      ) { }
-    }
-
-    await jine.upgrade(3, async (genuine: boolean, tx: any) => {
-      await tx.storables.upgrade('MyPair', {
-        constructor: MyPair_v2,
-        encode(pair: MyPair_v2): NativelyStorable {
-          return { fst: pair.fst, snd: pair.snd };
-        },
-        decode(encoded: NativelyStorable): MyPair_v2 {
-          const { fst, snd } = encoded as any;
-          return new MyPair_v2(fst, snd);
-        },
-        async migrate() {
-          await tx.$.pairs.all().replace((old: any) => {
-            const pair_v1 = old as MyPair_v1;
-            const pair_v2 = new MyPair_v2(pair_v1.left, pair_v1.right);
-            return pair_v2;
-          });
-        },
-      });
-    });
-
-    await jine.connect(async (conn: any) => {
-      const new_pair = new MyPair_v2('fst', 'snd');
-      conn.$.pairs.add(new_pair);
-      const got = await conn.$.pairs.array();
-      const old_pair = new MyPair_v2('left', 'right');
-      expect(got).toEqual([old_pair, new_pair]);
-      expect(got[0].constructor).toBe(MyPair_v2);
-      expect(got[1].constructor).toBe(MyPair_v2);
     });
 
   });
@@ -136,6 +107,27 @@ describe('core', () => {
       body: BodyRating;
     }
 
+    class BodyTrait {
+      constructor(
+        public body_rating: BodyRating,
+      ) { }
+    }
+
+    reset();
+    const jine = new Database<any>('jine', [
+      {
+        type: BodyTrait,
+        id: 'BodyTrait',
+        encode(it: BodyTrait): unknown {
+          return ['pitiful', 'reasonable', 'impressive'].indexOf(it.body_rating);
+        },
+        decode(encoded: any): BodyTrait {
+          const idx = encoded as number;
+          return new BodyTrait(['pitiful', 'reasonable', 'impressive'][idx] as BodyRating);
+        },
+      }
+    ]);
+
     await jine.upgrade(2, async (genuine: boolean, tx: any) => {
       const people = tx.addStore('people');
       await people.addIndex('name', '.name');
@@ -147,22 +139,7 @@ describe('core', () => {
       expect(await conn.$.people.count()).toBe(2);
     });
 
-    class BodyTrait {
-      constructor(
-        public body_rating: BodyRating,
-      ) { }
-    }
-
     await jine.upgrade(3, async (genuine: boolean, tx: any) => {
-      tx.indexables.register(BodyTrait, 'BodyTrait', {
-        encode(body_trait: BodyTrait): number {
-          return ['pitiful', 'reasonable', 'impressive'].indexOf(body_trait.body_rating);
-        },
-        decode(encoded: NativelyStorable): BodyTrait {
-          const idx = encoded as number;
-          return new BodyTrait(['pitiful', 'reasonable', 'impressive'][idx] as BodyRating);
-        },
-      });
       await tx.$.people.addIndex('body_rating', (person: Person) => new BodyTrait(person.body));
     });
 
@@ -198,16 +175,22 @@ describe('core', () => {
       { nums: [ 'three', 'three' ] },
     ];
 
-    await jine.upgrade(2, async (genuine: boolean, tx: any) => {
-      tx.indexables.register(MyCustomIndexable, 'mci', {
-        encode(mci: MyCustomIndexable): NativelyIndexable {
+    reset();
+    const jine = new Database<any>('jine', [
+      {
+        type: MyCustomIndexable,
+        id: 'id',
+        encode(mci: MyCustomIndexable): unknown {
           return { one: 1, two: 2, three: 3 }[mci.name];
         },
-        decode(encoded: NativelyIndexable): MyCustomIndexable {
+        decode(encoded: any): MyCustomIndexable {
           const actual = encoded as 1 | 2 | 3;
           return new MyCustomIndexable(['one', 'two', 'three'][actual - 1] as any);
         },
-      });
+      }
+    ]);
+
+    await jine.upgrade(2, async (genuine: boolean, tx: any) => {
       const itemstore = tx.addStore('itemstore');
       await itemstore.addIndex('trait', (item: Item) => item.nums.map(n => new MyCustomIndexable(n as any)));
       for (const item of items)
@@ -230,17 +213,24 @@ describe('core', () => {
     const puppy = new MyCustomStorable('puppy');
     const kitten = new MyCustomStorable('kitten');
 
+    let jine!: Database<any>;
+
     beforeEach(async () => {
-      await jine.upgrade(2, async (genuine: boolean, tx: any) => {
-        tx.storables.register(MyCustomStorable, 'mcs', {
-          encode(mcs: MyCustomStorable): NativelyStorable {
+      reset();
+      jine = new Database<any>('jine', [
+        {
+          type: MyCustomStorable,
+          id: 'MyCustomStorable',
+          encode(mcs: MyCustomStorable): unknown {
             return mcs.val;
           },
-          decode(encoded: NativelyStorable): MyCustomStorable {
+          decode(encoded: any): MyCustomStorable {
             const actual = encoded as string;
             return new MyCustomStorable(actual);
           },
-        });
+        }
+      ]);
+      await jine.upgrade(2, async (genuine: boolean, tx: any) => {
         tx.addStore('items');
       });
     });
@@ -254,19 +244,19 @@ describe('core', () => {
     it('allows for Map<MyCustomStorable>', async () => {
       const map = new Map([[puppy, kitten]]);
       await jine.$.items.add(map);
-      expect(await jine.$.items.array()).toStrictEqual([map]);      
+      expect(await jine.$.items.array()).toStrictEqual([map]);
     });
 
     it('allows for Set<MyCustomStorable>', async () => {
       const set = new Set([puppy, kitten]);
       await jine.$.items.add(set);
-      expect(await jine.$.items.array()).toStrictEqual([set]);      
+      expect(await jine.$.items.array()).toStrictEqual([set]);
     });
 
     it('allows for Record<string, MyCustomStorable>', async () => {
       const object = { pup: puppy, kit: kitten };
       await jine.$.items.add(object);
-      expect(await jine.$.items.array()).toStrictEqual([object]);      
+      expect(await jine.$.items.array()).toStrictEqual([object]);
     });
 
   });

@@ -19,23 +19,8 @@ export function getPropertyDescriptor(obj: object, prop: number | symbol | strin
   return Object.getOwnPropertyDescriptor(obj, prop) || getPropertyDescriptor(Object.getPrototypeOf(obj), prop);
 }
 
-const ctx = this as any;
-
-export const ArrayBufferView_constructors: Array<Constructor> = [];
-if (ctx.Int8Array)         ArrayBufferView_constructors.push(ctx.Int8Array);
-if (ctx.Uint8Array)        ArrayBufferView_constructors.push(ctx.Uint8Array);
-if (ctx.Uint8ClampedArray) ArrayBufferView_constructors.push(ctx.Uint8ClampedArray);
-if (ctx.Int16Array)        ArrayBufferView_constructors.push(ctx.Int16Array);
-if (ctx.Uint16Array)       ArrayBufferView_constructors.push(ctx.Uint16Array);
-if (ctx.Int32Array)        ArrayBufferView_constructors.push(ctx.Int32Array);
-if (ctx.Uint32Array)       ArrayBufferView_constructors.push(ctx.Uint32Array);
-if (ctx.Float32Array)      ArrayBufferView_constructors.push(ctx.Float32Array);
-if (ctx.Float64Array)      ArrayBufferView_constructors.push(ctx.Float64Array);
-if (ctx.DataView)          ArrayBufferView_constructors.push(ctx.DataView);
-
-export const ImageBitmap_ImageData_constructors: Array<Constructor> = [];
-if (ctx.ImageBitmap) ImageBitmap_ImageData_constructors.push(ctx.ImageBitmap);
-if (ctx.ImageData)   ImageBitmap_ImageData_constructors.push(ctx.ImageData);
+// Steps around a TS quirk where Record<string, T> doesn't work in union types
+export interface PlainObjectOf<T> extends Record<string, T> { }  // eslint-disable-line @typescript-eslint/no-empty-interface
 
 /**
  * An encoder and decoter for a particular type.
@@ -45,9 +30,9 @@ export type Codec<Decoded, Encoded> = {
   decode: (encoded: Encoded) => Decoded;
 }
 
-export type Constructor = Function;
+export type Constructor<T> = { new(...args: any[]): T };
 
-export function isPrimitive(x: any): boolean {
+export function isPrimitive(x: any): x is (null | undefined | string | number | BigInt | boolean | symbol) {
   return typeof x !== 'object' || x === null;
 }
 
@@ -62,15 +47,14 @@ export function some<T>(x: T | null | undefined, error_message: string | null): 
   return x;
 }
 
-export function invoke<T>(iife: () => T): T {
-  /*
+/* instanceof without inheritance */
+export function isInstanceOfStrict<T>(val: any, type: Constructor<T>): val is T {
+  return val.constructor === type;
+}
 
-  Used to mark an IIFE (immediately invoked
-  function expression).
-
-  */
-
-  return iife();
+export function invoke<T>(func: () => T): T {
+  // Better syntax for IIFEs than (() => { ... })()
+  return func();
 }
 
 /*-

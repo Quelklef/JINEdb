@@ -1,7 +1,7 @@
 
 import 'fake-indexeddb/auto';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { Database, Store, Index, Connection, NativelyIndexable, NativelyStorable } from '../src/jine';
+import { Database, Store, Index, Connection } from '../src/jine';
 import { reset } from './shared';
 
 describe('migration (no beforeEach)', () => {
@@ -9,7 +9,7 @@ describe('migration (no beforeEach)', () => {
   it('after reloading, jine should be able to reconstruct structure via migrations', async () => {
 
     let db!: Database<any>;
-    
+
     async function setup(): Promise<void> {
       db = new Database<any>('db');
       await db.upgrade(1, async (genuine: boolean, tx: any) => {
@@ -25,9 +25,9 @@ describe('migration (no beforeEach)', () => {
     // session 2
     await setup();
     expect(await db.$.items.array()).toStrictEqual(['item']);
-    
+
   });
-  
+
 });
 
 describe('migration', () => {
@@ -99,25 +99,14 @@ describe('migration', () => {
 
   it("is atomic", async () => {
 
-    class SomeClass { }
-
     await jine.upgrade(2, async (genuine: boolean, tx: any) => {
-      tx.storables.register(SomeClass, 'SomeClass', {
-        encode: (_sc: SomeClass): NativelyStorable => null,
-        decode: (_ns: NativelyStorable): SomeClass => new SomeClass(),
-      });
-      tx.indexables.register(SomeClass, 'SomeClass', {
-        encode: (_sc: SomeClass): NativelyStorable => null,
-        decode: (_ns: NativelyStorable): SomeClass => new SomeClass(),
-      });
-
+      tx.addStore('store');
       tx.abort();
     });
 
     await jine.connect(async (conn: any) => {
       const schema = await conn._schema_g();
-      expect(schema.storables.isRegistered(SomeClass)).toBe(false);
-      expect(schema.indexables.isRegistered(SomeClass)).toBe(false);
+      expect('store' in schema.stores).toBe(false);
     });
 
   });
@@ -125,12 +114,13 @@ describe('migration', () => {
   it("using Database.$ without calling .initialize, relying on auto-init, works", async () => {
 
     jine.migration(2, async (genuine: boolean, tx: any) => {
-      tx.addStore('numbers');
+      await tx.addStore('numbers');
+      await tx.$.numbers.add(1);
     });
 
     const got = await jine.$.numbers.array();
-    expect(got).toStrictEqual([]);
-    
+    expect(got).toStrictEqual([1]);
+
   });
 
 });

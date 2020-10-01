@@ -2,12 +2,11 @@
 import { Row } from './row';
 import { Store } from './store';
 import { Index } from './index';
+import { Codec } from './codec';
 import { mapError } from './errors';
-import { Storable } from './storable';
 import { AsyncCont } from './cont';
 import { StoreSchema } from './schema';
 import { some, getPropertyDescriptor, Dict, Awaitable } from './util';
-import { Indexable, NativelyIndexable, IndexableRegistry } from './indexable';
 
 /**
  * Query specification
@@ -30,7 +29,7 @@ import { Indexable, NativelyIndexable, IndexableRegistry } from './indexable';
  * the query results should be traversed in reverse order, and `unique` marks that
  * duplicated values should be skipped.
  */
-export type Query<Trait extends Indexable>
+export type Query<Trait>
   = 'everything'
   | {
     /** Equality */
@@ -50,7 +49,7 @@ export type Query<Trait extends Indexable>
   };
 
 
-function compileTraitRange<Trait extends Indexable>(query: Query<Trait>, indexables: IndexableRegistry): IDBKeyRange | undefined {
+function compileTraitRange<Trait>(query: Query<Trait>, codec: Codec): IDBKeyRange | undefined {
   /* Conpile an IDBKeyRange object from a Query<Trait>. */
 
   // The implementation isn't elegant, but it's easy to understand
@@ -62,45 +61,45 @@ function compileTraitRange<Trait extends Indexable>(query: Query<Trait>, indexab
 
   if ('equals' in query)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.only(indexables.encode(query.equals!, false));
+    return IDBKeyRange.only(codec.encodeTrait(query.equals!, false));
 
   if ('from' in query && 'through' in query)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.bound(indexables.encode(query.from!, false), indexables.encode(query.through!, false), false, false);
+    return IDBKeyRange.bound(codec.encodeTrait(query.from!, false), codec.encodeTrait(query.through!, false), false, false);
 
   if ('from' in query && 'below' in query)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.bound(indexables.encode(query.from!, false), indexables.encode(query.below!, false), false, true);
+    return IDBKeyRange.bound(codec.encodeTrait(query.from!, false), codec.encodeTrait(query.below!, false), false, true);
 
   if ('above' in query && 'through' in query)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.bound(indexables.encode(query.above!, false), indexables.encode(query.through!, false), true, false);
+    return IDBKeyRange.bound(codec.encodeTrait(query.above!, false), codec.encodeTrait(query.through!, false), true, false);
 
   if ('above' in query && 'below' in query)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.bound(indexables.encode(query.above!, false), indexables.encode(query.below!, false), true, true);
+    return IDBKeyRange.bound(codec.encodeTrait(query.above!, false), codec.encodeTrait(query.below!, false), true, true);
 
   if ('from' in query)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.lowerBound(indexables.encode(query.from!, false), false)
+    return IDBKeyRange.lowerBound(codec.encodeTrait(query.from!, false), false)
 
   if ('above' in query)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.lowerBound(indexables.encode(query.above!, false), true);
+    return IDBKeyRange.lowerBound(codec.encodeTrait(query.above!, false), true);
 
   if ('through' in query)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.upperBound(indexables.encode(query.through!, false), false);
+    return IDBKeyRange.upperBound(codec.encodeTrait(query.through!, false), false);
 
   if ('below' in query)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return IDBKeyRange.upperBound(indexables.encode(query.below!, false), true);
+    return IDBKeyRange.upperBound(codec.encodeTrait(query.below!, false), true);
 
   throw new Error('uh oh');
 
 }
 
-function compileCursorDirection<Trait extends Indexable>(query: Query<Trait>): IDBCursorDirection {
+function compileCursorDirection<Trait>(query: Query<Trait>): IDBCursorDirection {
   if (query === 'everything') return 'next';
   query = query as Omit<Query<Trait>, 'everything'>;
   let result = query.reversed ? 'prev' : 'next';
@@ -109,7 +108,7 @@ function compileCursorDirection<Trait extends Indexable>(query: Query<Trait>): I
 }
 
 
-export class Cursor<Item extends Storable, Trait extends Indexable> {
+export class Cursor<Item, Trait> {
   /* IDBCursor wrapper */
 
   // For use by the API user to monkeypatch in any
@@ -148,7 +147,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
 
   init(): Promise<void> {
     const req = this._idb_source.openCursor(
-      compileTraitRange(this._query, this.store_schema.indexables),
+      compileTraitRange(this._query, this.store_schema.codec),
       compileCursorDirection(this._query),
     );
     this._idb_req = req;
@@ -169,7 +168,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     if (this.exhausted)
       throw Error('Cursor is exhausted and needs a nap.');
   }
-  
+
   get active(): boolean {
     return this.initialized && !this.exhausted;
   }
@@ -188,7 +187,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     this._assertActive();
     return some(this._idb_req, "Internal error");
   }
-  
+
   _currentRow(): Row {
     return this._active_idb_cur().value;
   }
@@ -197,7 +196,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     // Get the item at the cursor.
     const idb_cur = this._active_idb_cur();
     const row = idb_cur.value;
-    return this.store_schema.storables.decode(row.payload) as Item;
+    return this.store_schema.codec.decodeItem(row.payload) as Item;
   }
 
   step(options?: { toTrait: Trait } | { size: number }): Promise<void> {
@@ -211,8 +210,8 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
 
       if (options && 'toTrait' in options) {
         const trait = options.toTrait;
-        const encoded = this.store_schema.indexables.encode(trait, this._sourceIsExploding);
-        idb_cur.continue(encoded);
+        const encoded = this.store_schema.codec.encodeTrait(trait, this._sourceIsExploding);
+        idb_cur.continue(encoded as any);
       } else {
         idb_cur.advance(options?.size ?? 1);
       }
@@ -233,8 +232,8 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
 
   currentTrait(): Trait {
     const idb_cur = this._active_idb_cur();
-    const encoded = idb_cur.key as NativelyIndexable;
-    return this.store_schema.indexables.decode(encoded, this._sourceIsExploding) as Trait;
+    const encoded = idb_cur.key;
+    return this.store_schema.codec.decodeTrait(encoded, this._sourceIsExploding) as Trait;
   }
 
   async delete(): Promise<void> {
@@ -263,13 +262,13 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     const row: any = idb_cur.value;
 
     // update payload
-    row.payload = this.store_schema.storables.encode(new_item);
+    row.payload = this.store_schema.codec.encodeItem(new_item);
 
     // update traits
     for (const index_name of this.store_schema.index_names) {
       const index_schema = this.store_schema.index(index_name);
       const trait = index_schema.calc_trait(new_item);
-      const encoded = this.store_schema.indexables.encode(trait, index_schema.explode);
+      const encoded = this.store_schema.codec.encodeTrait(trait, index_schema.explode);
       const trait_name = index_name;
       row.traits[trait_name] = encoded;
     }
@@ -295,7 +294,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
  * @typeparam Item The type of the items for the parent database
  * @typeparam Trait The type of the trait for the parent index
  */
-export class Selection<Item extends Storable, Trait extends Indexable> {
+export class Selection<Item, Trait> {
 
   readonly source: Store<Item> | Index<Item, Trait>;
   readonly query: Query<Trait>;
@@ -416,7 +415,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
     this.cursor_k = this.cursor_k.map(cursor => {
       const limited = Object.create(cursor);
       let passed = 0;
-      
+
       limited.step = async function(this: typeof cursor, ...args: Parameters<(typeof cursor)['step']>) {
         await cursor.step.call(this, ...args);
         passed++;
@@ -430,7 +429,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
           return passed === length || oldExhaustedGetter.call(this);
         },
       });
-      
+
       return limited;
     });
     return this;
@@ -523,7 +522,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
     // - Beginning or ending of belief in God
     // - Mid-life crisis
     // Proceed at your own risk!
-    
+
     let resolve_cursor: (cursor: Cursor<Item, Trait>) => void;
     const cursor_p: Promise<Cursor<Item, Trait>>
       = new Promise(resolve => resolve_cursor = resolve);
@@ -531,7 +530,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
     let resolve_iterator_done: (iterator_done: () => void) => void;
     const iterator_done_p: Promise<() => void>
       = new Promise(resolve => resolve_iterator_done = resolve);
-   
+
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
     this.cursor_k.run(/*'r', */cursor => {
       resolve_cursor(cursor);
@@ -562,7 +561,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
 
       }
     };
-    
+
   }
 
 }
@@ -570,7 +569,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
 /**
  * Like [[Selection]], but for unique indexes.
  */
-export class SelectionUnique<Item extends Storable, Trait extends Indexable> {
+export class SelectionUnique<Item, Trait> {
 
   readonly selection: Selection<Item, Trait>;
   readonly source: Index<Item, Trait>;
@@ -604,7 +603,7 @@ export class SelectionUnique<Item extends Storable, Trait extends Indexable> {
     await this._ensureSourceUnique();
     await this.selection.replace(mapper);
   }
-  
+
   /**
    * Update the item with a delta
    *
@@ -635,7 +634,7 @@ export class SelectionUnique<Item extends Storable, Trait extends Indexable> {
       throw Error('No item found');
     return got;
   }
-  
+
   /**
    * Get the item from the database, or an alternative value if the item isn't found.
    *

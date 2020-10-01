@@ -1,14 +1,13 @@
 
 import { Dict } from './util';
-import { Storable, StorableRegistry } from './storable';
-import { Indexable, IndexableRegistry } from './indexable';
+import { Codec } from './codec';
 
 import * as err from './errors';
 
 // Precisely, the schema contains the information that is controlled
 // by migrations
 
-export class IndexSchema<Item extends Storable = Storable, Trait extends Indexable = Indexable> {
+export class IndexSchema<Item, Trait> {
   name: string;
   unique: boolean;
   explode: boolean;
@@ -32,23 +31,20 @@ export class IndexSchema<Item extends Storable = Storable, Trait extends Indexab
       throw Error('Cannot get .getter on non-derived index');
     return this.trait_path_or_getter as ((item: Item) => Trait);
   }
-  
-  storables: StorableRegistry;
-  indexables: IndexableRegistry;
+
+  codec: Codec;
 
   constructor(args: {
     name: string;
     unique: boolean;
     explode: boolean;
     trait_path_or_getter: string | ((item: Item) => Trait);
-    storables: StorableRegistry;
-    indexables: IndexableRegistry;
+    codec: Codec;
   }) {
     this.name = args.name;
     this.unique = args.unique;
     this.explode = args.explode;
-    this.storables = args.storables;
-    this.indexables = args.indexables;
+    this.codec = args.codec;
     this.trait_path_or_getter = args.trait_path_or_getter;
   }
 
@@ -61,26 +57,23 @@ export class IndexSchema<Item extends Storable = Storable, Trait extends Indexab
   }
 }
 
-export class StoreSchema<Item extends Storable = Storable> {
+export class StoreSchema<Item> {
   name: string;
-  private indexes: Dict<IndexSchema<Item>>;
+  private indexes: Dict<IndexSchema<Item, unknown>>;
 
-  storables: StorableRegistry;
-  indexables: IndexableRegistry;
+  codec: Codec;
 
   constructor(args: {
     name: string;
-    indexes: Dict<IndexSchema<Item>>;
-    storables: StorableRegistry;
-    indexables: IndexableRegistry;
+    indexes: Dict<IndexSchema<Item, unknown>>;
+    codec: Codec;
   }) {
     this.name = args.name;
     this.indexes = args.indexes;
-    this.storables = args.storables;
-    this.indexables = args.indexables;
+    this.codec = args.codec;
   }
 
-  index(index_name: string): IndexSchema<Item> {
+  index(index_name: string): IndexSchema<Item, unknown> {
     const got = this.indexes[index_name];
     if (got === undefined)
       throw new err.JineNoSuchIndexError(`No index '${index_name}' (schema not found).`);
@@ -91,7 +84,7 @@ export class StoreSchema<Item extends Storable = Storable> {
     return Object.keys(this.indexes);
   }
 
-  addIndex(index_name: string, index_schema: IndexSchema<Item>): void {
+  addIndex(index_name: string, index_schema: IndexSchema<Item, unknown>): void {
     this.indexes[index_name] = index_schema;
   }
 
@@ -102,24 +95,20 @@ export class StoreSchema<Item extends Storable = Storable> {
 
 export class DatabaseSchema {
   name: string;
-  private stores: Dict<StoreSchema>;
-  
-  storables: StorableRegistry;
-  indexables: IndexableRegistry;
+  private stores: Dict<StoreSchema<unknown>>;
+  codec: Codec;
 
   constructor(args: {
     name: string;
-    stores: Dict<StoreSchema>;
-    storables: StorableRegistry;
-    indexables: IndexableRegistry;
+    stores: Dict<StoreSchema<unknown>>;
+    codec: Codec;
   }) {
     this.name = args.name;
     this.stores = args.stores;
-    this.storables = args.storables;
-    this.indexables = args.indexables;
+    this.codec = args.codec;
   }
 
-  store(store_name: string): StoreSchema {
+  store(store_name: string): StoreSchema<unknown> {
     const got = this.stores[store_name];
     if (got === undefined)
       throw new err.JineNoSuchStoreError(`No store '${store_name}' (schema not found).`);
@@ -130,8 +119,8 @@ export class DatabaseSchema {
     return Object.keys(this.stores);
   }
 
-  addStore<Item extends Storable>(store_name: string, store_schema: StoreSchema<Item>): void {
-    this.stores[store_name] = store_schema as StoreSchema;
+  addStore<Item>(store_name: string, store_schema: StoreSchema<Item>): void {
+    this.stores[store_name] = store_schema as StoreSchema<unknown>;
   }
 
   removeStore(store_name: string): void {

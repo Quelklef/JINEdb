@@ -4,9 +4,7 @@ import { clone } from 'true-clone';
 import { Store } from './store';
 import { AsyncCont } from './cont';
 import { _try, Dict } from './util';
-import { IndexableRegistry } from './indexable';
 import { JineNoSuchStoreError } from './errors';
-import { Storable, StorableRegistry } from './storable';
 import { DatabaseSchema, StoreSchema } from './schema';
 
 /**
@@ -49,7 +47,7 @@ export class Transaction<$$ = {}> {
    *
    * For non-programmatic code, [[Transaction.$]] is nicer to use.
    */
-  stores: Dict<Store<Storable>>;
+  stores: Dict<Store<unknown>>;
 
   /**
    * A non-genuine transaction will not allow `.commit()` and will not
@@ -72,25 +70,6 @@ export class Transaction<$$ = {}> {
    * `aborted` - Unsuccessful.
    */
   state: 'active' | 'committed' | 'aborted';
-
-  // TODO: I think these can be modified in non-versionchange transactions, which is not desirable
-  /**
-   * Registry of custom [[Storable]] objects.
-   *
-   * Also see {@page Serialization and Custom Types}.
-   */
-  get storables(): StorableRegistry {
-    return this._schema.storables;
-  }
-
-  /**
-   * Registry of custom [[Indexable]] types.
-   *
-   * Also see {@page Serialization and Custom Types}.
-   */
-  get indexables(): IndexableRegistry {
-    return this._schema.indexables;
-  }
 
   /**
    * Alias for [[Transaction.stores]], but with the user-defined `$$` type.
@@ -207,15 +186,14 @@ export class Transaction<$$ = {}> {
    * @param name The name to give the new store
    * @returns The new store
    */
-  addStore<Item extends Storable>(store_name: string): Store<Item> {
+  addStore<Item>(store_name: string): Store<Item> {
 
     this._idb_db.createObjectStore(store_name, { keyPath: 'id', autoIncrement: true });
 
     const store_schema = new StoreSchema({
       name: store_name,
       indexes: { },
-      storables: this._schema.storables,
-      indexables: this._schema.indexables,
+      codec: this._schema.codec,
     });
 
     const store = new Store<Item>({
