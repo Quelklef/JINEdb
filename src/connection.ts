@@ -3,13 +3,13 @@ import { Store } from './store';
 import { AsyncCont } from './cont';
 import { Awaitable } from './util';
 import { DatabaseSchema } from './schema';
-import { JineNoSuchStoreError } from './errors';
+import { JineNoSuchStoreError, mapError } from './errors';
 import { Transaction, TransactionMode, uglifyTransactionMode } from './transaction';
 
 /**
  * A connection to a database.
  */
-export class Connection<$$ = {}> {
+export class Connection<$$ = unknown> {
 
   /**
    * The Connection shorthand object.
@@ -38,19 +38,8 @@ export class Connection<$$ = {}> {
       get: (_target: {}, prop: string | number | symbol) => {
         if (typeof prop === 'string') {
           const storeName = prop;
-          const idbStoreCont = this._idbConnCont.map(idbConn => {
-            let idbTx!: IDBTransaction;
-            try {
-              idbTx = idbConn.transaction([storeName], 'readwrite');
-            } catch (err) {
-              if (err.name === 'NotFoundError')
-                throw new JineNoSuchStoreError(`No store named '${storeName}'.`);
-              throw err;
-            }
-            return idbTx.objectStore(storeName);
-          });
           const store = new Store({
-            idbStoreCont: idbStoreCont,
+            txCont: this.newTransaction([storeName], 'rw'),  // FIXME: assumes readwrite
             schemaCont: this._schemaCont.map(schema => schema.store(storeName)),
           });
           return store;
@@ -70,8 +59,18 @@ export class Connection<$$ = {}> {
     return AsyncCont.tuple(this._idbConnCont, this._schemaCont).map(async ([idbConn, schema]) => {
       const storeNames = await Promise.all(stores.map(s => typeof s === 'string' ? s : s.name));
       const idbTxMode = uglifyTransactionMode(txMode)
+
+      let idbTx!: IDBTransaction;
+      try {
+        idbTx = idbConn.transaction(storeNames, idbTxMode);
+      } catch (err) {
+        if (err.name === 'NotFoundError')
+          throw new JineNoSuchStoreError(`No store(s) named ${storeNames.join(', ')} found!`);
+        throw mapError(err);
+      }
+
       return new Transaction<$$>({
-        idbTx: idbConn.transaction(storeNames, idbTxMode),
+        idbTx: idbTx,
         scope: storeNames,
         genuine: true,
         schema: schema,

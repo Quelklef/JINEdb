@@ -53,7 +53,7 @@ const ROOMS_byScore = [...ROOMS].sort((r1, r2) => r1.score - r2.score);
 
 // TODO: test exploding and derived indexes
 
-describe("usage", () => {
+describe("primary", () => {
 
   let db!: Database<$$>;
 

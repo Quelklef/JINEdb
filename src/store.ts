@@ -5,7 +5,8 @@ import { AsyncCont } from './cont';
 import { Dict, Awaitable } from './util';
 import { Selection, Cursor } from './query';
 import { StoreSchema, IndexSchema } from './schema';
-import { JineError, JineNoSuchIndexError, mapError } from './errors';
+import { Transaction, prettifyTransactionMode } from './transaction';
+import { JineError, JineNoSuchStoreError, JineTransactionModeError, mapError } from './errors';
 
 /**
  * A collection of stored items.
@@ -36,38 +37,40 @@ export class Store<Item> {
     return this._schemaCont.run(schema => schema.name);
   }
 
+  _parentTxCont: AsyncCont<Transaction>;
   _idbStoreCont: AsyncCont<IDBObjectStore>;
   _schemaCont: AsyncCont<StoreSchema<Item>>;
 
   constructor(args: {
-    idbStoreCont: AsyncCont<IDBObjectStore>;
+    txCont: AsyncCont<Transaction>;
     schemaCont: AsyncCont<StoreSchema<Item>>;
   }) {
-    this._idbStoreCont = args.idbStoreCont;
+    this._parentTxCont = args.txCont;
     this._schemaCont = args.schemaCont;
+
+    this._idbStoreCont = args.txCont.map(async tx => {
+      return await this._schemaCont.run(schema => {
+        const storeName = schema.name;
+        const idbTx = tx._idbTx;
+
+        try {
+          return idbTx.objectStore(storeName);
+        } catch (err) {
+          if (err.name === 'NotFoundError')
+            throw new JineNoSuchStoreError(`No store named '${storeName}' (no idb store found).`);
+          throw mapError(err);
+        }
+      });
+    });
 
     this.by = new Proxy({}, {
       get: (_target: {}, prop: string | number | symbol) => {
         if (typeof prop === 'string') {
           const indexName = prop;
-          const idbIndexCont = this._idbStoreCont.map(idbStore => {
-            let idbIndex!: IDBIndex;
-
-            try {
-              idbIndex = idbStore.index(indexName);
-            } catch (err) {
-              if (err.name === 'NotFoundError')
-                throw new JineNoSuchIndexError(`No index named '${indexName}'.`)
-              throw err
-            }
-
-            return idbIndex;
-          });
-
           return new Index({
-            idbIndexCont: idbIndexCont,
-            schemaCont: this._schemaCont.map(schema => schema.index(indexName)),
-            parent: this,
+            parentStore: this,
+            parentTxCont: this._parentTxCont,
+            schemaCont: this._schemaCont.map(schema => schema.index(indexName) as IndexSchema<Item, any>),
           });
         }
       }
@@ -169,8 +172,8 @@ export class Store<Item> {
    */
   all(): Selection<Item, never> {
     return new Selection({
-      source: this,
       query: 'everything',
+      idbSourceCont: this._idbStoreCont,
       storeSchemaCont: this._schemaCont,
     });
   }
@@ -178,7 +181,7 @@ export class Store<Item> {
   /**
    * Add an index to the store.
    *
-   * Only possible in a `versionchange` transaction, which is given by [[Database.upgrade]].
+   * Only possible in a `ersionchange ('vc') transaction, which is given by [[Database.upgrade]].
    *
    * @param indexName The name to give the new index
    * @param trait The path or function that defines the indexed trait (see [[Index]])
@@ -194,6 +197,10 @@ export class Store<Item> {
 
     return await AsyncCont.tuple(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
 
+      const txMode = prettifyTransactionMode(idbStore.transaction.mode);
+      if (txMode !== 'vc')
+        throw new JineTransactionModeError('Store#addIndex', 'vc', txMode);
+
       if (typeof traitPathOrGetter === 'string') {
         const traitPath = traitPathOrGetter;
         if (!traitPath.startsWith('.'))
@@ -204,7 +211,7 @@ export class Store<Item> {
       const unique = options?.unique ?? false;
       const explode = options?.explode ?? false;
 
-      const idbIndex = idbStore.createIndex(
+      idbStore.createIndex(
         indexName,
         `traits.${indexName}`,
         { unique: unique, multiEntry: explode },
@@ -229,9 +236,9 @@ export class Store<Item> {
       }
 
       const index = new Index<Item, Trait>({
-        idbIndexCont: AsyncCont.fromValue(idbIndex),
+        parentStore: this,
+        parentTxCont: this._parentTxCont,
         schemaCont: AsyncCont.fromValue(indexSchema),
-        parent: this,
       });
 
       schema.addIndex(indexName, indexSchema);
@@ -252,6 +259,10 @@ export class Store<Item> {
   async removeIndex(name: string): Promise<void> {
 
     return await AsyncCont.tuple(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
+
+      const txMode = prettifyTransactionMode(idbStore.transaction.mode);
+      if (txMode !== 'vc')
+        throw new JineTransactionModeError('Store#removeIndex', 'vc', txMode);
 
       // remove idb index
       idbStore.deleteIndex(name);

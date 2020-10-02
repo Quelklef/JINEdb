@@ -1,7 +1,5 @@
 
 import { Row } from './row';
-import { Store } from './store';
-import { Index } from './index';
 import { Codec } from './codec';
 import { AsyncCont } from './cont';
 import { StoreSchema } from './schema';
@@ -296,35 +294,28 @@ export class Cursor<Item, Trait> {
  */
 export class Selection<Item, Trait> {
 
-  readonly source: Store<Item> | Index<Item, Trait>;
   readonly query: Query<Trait>;
 
+  readonly idbSourceCont: AsyncCont<IDBObjectStore> | AsyncCont<IDBIndex>;
   readonly storeSchemaCont: AsyncCont<StoreSchema<Item>>;
 
   cursorCont: AsyncCont<Cursor<Item, Trait>>;
 
   constructor(args: {
-    source: Store<Item> | Index<Item, Trait>;
     query: Query<Trait>;
+    idbSourceCont: AsyncCont<IDBObjectStore> | AsyncCont<IDBIndex>;
     storeSchemaCont: AsyncCont<StoreSchema<Item>>;
   }) {
-    this.source = args.source;
     this.query = args.query;
     this.storeSchemaCont = args.storeSchemaCont;
+    this.idbSourceCont = args.idbSourceCont;
 
-    const idbSourceCont =
-      this.source instanceof Store
-        ? (this.source as any)._idbStoreCont
-        : (this.source as any)._idbIndexCont;
-
-    this.cursorCont = idbSourceCont.map(async (idbSource: IDBObjectStore | IDBIndex) => {
-      return await this.storeSchemaCont.run(storeSchema => {
-        // TODO: use transactionmode
-        return new Cursor<Item, Trait>({
-          idbSource: idbSource,
-          query: this.query,
-          storeSchema: storeSchema,
-        });
+    this.cursorCont = AsyncCont.tuple(this.idbSourceCont, this.storeSchemaCont).map(async ([idbSource, storeSchema]) => {
+      // TODO: use transactionmode
+      return new Cursor<Item, Trait>({
+        idbSource: idbSource,
+        query: this.query,
+        storeSchema: storeSchema,
       });
     });
   }
@@ -573,27 +564,26 @@ export class Selection<Item, Trait> {
 export class SelectionUnique<Item, Trait> {
 
   readonly selection: Selection<Item, Trait>;
-  readonly source: Index<Item, Trait>;
+  readonly idbSourceCont: AsyncCont<IDBIndex>;
 
   constructor(args: {
-    source: Index<Item, Trait>;
     selectedTrait: Trait;
+    idbSourceCont: AsyncCont<IDBIndex>;
     storeSchemaCont: AsyncCont<StoreSchema<Item>>;
   }) {
-    this.source = args.source;
+    this.idbSourceCont = args.idbSourceCont.map(idbIndex => {
+      if (!idbIndex.unique)
+        throw new JineError(`Cannot perform a SelectionUnique operaiton on a non-unique index!`);
+      return idbIndex;
+    });
     this.selection = new Selection({
-      source: args.source,
       query: { equals: args.selectedTrait },
+      idbSourceCont: args.idbSourceCont,
       storeSchemaCont: args.storeSchemaCont,
     });
   }
 
   // TODO: in the methods of this class, we don't ensure that >0 rows are selected
-
-  async _ensureSourceUnique(): Promise<void> {
-    if (!await this.source.unique)
-      throw new JineError('Cannot create a SelectionUnique on a non-unique index.');
-  }
 
   /**
    * Replace the item with a new item.
@@ -601,7 +591,6 @@ export class SelectionUnique<Item, Trait> {
    * @param mapper A function that accepts the old item and returns the new item
    */
   async replace(mapper: (oldItem: Item) => Item): Promise<void> {
-    await this._ensureSourceUnique();
     await this.selection.replace(mapper);
   }
 
@@ -611,7 +600,6 @@ export class SelectionUnique<Item, Trait> {
    * @param updates The delta
    */
   async update(delta: Partial<Item>): Promise<void> {
-    await this._ensureSourceUnique();
     await this.selection.update(delta);
   }
 
@@ -619,7 +607,6 @@ export class SelectionUnique<Item, Trait> {
    * Delete the item from the database.
    */
   async delete(): Promise<void> {
-    await this._ensureSourceUnique();
     await this.selection.delete();
   }
 
@@ -629,7 +616,6 @@ export class SelectionUnique<Item, Trait> {
    * @returns The item
    */
   async get(): Promise<Item> {
-    await this._ensureSourceUnique();
     const got = (await this.selection.array())[0];
     if (got === undefined)
       throw new JineError('No item found');
@@ -642,7 +628,6 @@ export class SelectionUnique<Item, Trait> {
    * @returns The item
    */
   async getOr<T = undefined>(alternative: T): Promise<Item | T> {
-    await this._ensureSourceUnique();
     const got = (await this.selection.array())[0];
     if (got === undefined) return alternative;
     return got;

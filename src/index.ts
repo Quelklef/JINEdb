@@ -2,9 +2,10 @@
 import { Store } from './store';
 import { Awaitable } from './util';
 import { AsyncCont } from './cont';
-import { JineError } from './errors';
 import { IndexSchema } from './schema';
+import { Transaction } from './transaction';
 import { Query, Selection, SelectionUnique } from './query';
+import { JineError, JineTransactionModeError, JineNoSuchIndexError, mapError } from './errors';
 
 
 /**
@@ -82,18 +83,30 @@ export class Index<Item, Trait> {
   }
 
 
+  _parentTxCont: AsyncCont<Transaction>;
   _idbIndexCont: AsyncCont<IDBIndex>;
   _schemaCont: AsyncCont<IndexSchema<Item, Trait>>;
-  _parent: Store<Item>;
+  _parentStore: Store<Item>;
 
   constructor(args: {
-    idbIndexCont: AsyncCont<IDBIndex>;
+    parentStore: Store<Item>;
+    parentTxCont: AsyncCont<Transaction>;
     schemaCont: AsyncCont<IndexSchema<Item, Trait>>;
-    parent: Store<Item>;
   }) {
-    this._idbIndexCont = args.idbIndexCont;
+    this._parentStore = args.parentStore;
+    this._parentTxCont = args.parentTxCont;
     this._schemaCont = args.schemaCont;
-    this._parent = args.parent;
+
+    this._idbIndexCont = AsyncCont.tuple(this._parentStore._idbStoreCont, this._schemaCont).map(([idbStore, schema]) => {
+      const indexName = schema.name;
+      try {
+        return idbStore.index(indexName);
+      } catch (err) {
+        if (err.name === 'NotFoundError')
+          throw new JineNoSuchIndexError(`No index named '${indexName}' (no idb store found).`);
+        throw mapError(err);
+      }
+    });
   }
 
   /**
@@ -131,15 +144,16 @@ export class Index<Item, Trait> {
    * @param item The item
    */
   async updateOrAdd(item: Item): Promise<void> {
-    await this._schemaCont.run(async schema => {
+    await AsyncCont.tuple(this._parentTxCont, this._schemaCont).run(async ([tx, schema]) => {
       if (!schema.unique)
         throw new JineError(`Cannot call Index#updateOrAdd on non-unique index '${schema.name}'.`);
+
       const trait = schema.calcTrait(item);
       const alreadyExists = await this.exists(trait);
       if (alreadyExists) {
         await this.selectOne(trait).update(item);
       } else {
-        await this._parent.add(item);
+        await this._parentStore.add(item);
       }
     });
   }
@@ -160,9 +174,9 @@ export class Index<Item, Trait> {
    */
   select(query: Query<Trait>): Selection<Item, Trait> {
     return new Selection({
-      source: this,
       query: query,
-      storeSchemaCont: this._parent._schemaCont,
+      idbSourceCont: this._idbIndexCont,
+      storeSchemaCont: this._parentStore._schemaCont,
     });
   }
 
@@ -172,9 +186,9 @@ export class Index<Item, Trait> {
    */
   selectOne(trait: Trait): SelectionUnique<Item, Trait> {
     return new SelectionUnique({
-      source: this,
       selectedTrait: trait,
-      storeSchemaCont: this._parent._schemaCont,
+      idbSourceCont: this._idbIndexCont,
+      storeSchemaCont: this._parentStore._schemaCont,
     });
   }
 

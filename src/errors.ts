@@ -49,6 +49,13 @@ export class JineDecodingError extends JineCodecError { }
 /** Thrown when an attempt to open a database is blocked. */
 export class JineBlockedError extends JineError { }
 
+/** Thrown when attemping to do an operation on a transaction of the wrong mode */
+export class JineTransactionModeError extends JineError {
+  constructor(operationName: string, expectedMode: string, actualMode: string) {
+    super(`Cannot call ${operationName} on a '${actualMode}' transaction, only a '${expectedMode}' one.`);
+  }
+}
+
 /** Jine has a bug! */
 export class JineInternalError extends JineError {
   constructor(msg = "") {

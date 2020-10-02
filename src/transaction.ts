@@ -4,7 +4,7 @@ import { clone } from 'true-clone';
 import { Dict } from './util';
 import { Store } from './store';
 import { AsyncCont } from './cont';
-import { JineNoSuchStoreError } from './errors';
+import { JineTransactionModeError } from './errors';
 import { DatabaseSchema, StoreSchema } from './schema';
 
 /**
@@ -40,7 +40,7 @@ export function uglifyTransactionMode(txMode: TransactionMode): IDBTransactionMo
  * Transactions are groups of related database operations.
  * Transactions are atomic: if an error occurs during a transaction, all operations will be cancelled.
  */
-export class Transaction<$$ = {}> {
+export class Transaction<$$ = unknown> {
 
   /**
    * The object stores that the transaction has access to.
@@ -71,6 +71,11 @@ export class Transaction<$$ = {}> {
    */
   state: 'active' | 'committed' | 'aborted';
 
+  /** Transaction mode */
+  get mode(): TransactionMode {
+    return prettifyTransactionMode(this._idbTx.mode);
+  }
+
   /**
    * Alias for [[Transaction.stores]], but with the user-defined `$$` type.
    *
@@ -98,46 +103,24 @@ export class Transaction<$$ = {}> {
     // changes are sandboxed in case of e.g. .abort()
     this._schema = clone(args.schema);
 
-    this.stores = {};
-    for (const storeName of args.scope) {
-      let idbStore!: IDBObjectStore;
-      try {
-        idbStore = this._idbTx.objectStore(storeName);
-      } catch (err) {
-        if (err.name === 'NotFoundError')
-          throw new JineNoSuchStoreError(`No store named '${storeName}' (no idb store found).`);
-        throw err;
-      }
-      const store = new Store({
-        idbStoreCont: AsyncCont.fromValue(idbStore),
-        schemaCont: AsyncCont.fromValue(this._schema.store(storeName)),
-      });
-      this.stores[storeName] = store;
-    }
-
-    this.$ = <$$> new Proxy({}, {
+    const $: Record<string, Store<unknown>> = new Proxy({}, {
       get: (_target: {}, prop: string | number | symbol) => {
         if (typeof prop === 'string') {
           const storeName = prop;
-          // Don't get the store immediately, do it lazily.
-          // This is to be consistent with the rest of the API, which is lazy.
-          const getStore = (): IDBObjectStore => {
-            try {
-              return this._idbTx.objectStore(storeName);
-            } catch (err) {
-              if (err.name === 'NotFoundError')
-                throw new JineNoSuchStoreError(`No store named '${storeName}' (no idb store found).`);
-              throw err;
-            }
-          }
-
-          return new Store({
-            idbStoreCont: AsyncCont.fromProducer(getStore),
+          const store = new Store({
+            txCont: AsyncCont.fromValue(this),
+            // vv Use a producer to keep things lazy. Defers errors to the invokation code.
             schemaCont: AsyncCont.fromProducer(() => this._schema.store(storeName)),
           });
+          return store;
         }
       }
     });
+    this.$ = $ as any as $$;
+
+    this.stores = {};
+    for (const storeName of args.scope)
+      this.stores[storeName] = $[storeName];
 
     this.state = 'active';
     this._idbTx.addEventListener('abort', () => {
@@ -196,6 +179,9 @@ export class Transaction<$$ = {}> {
    */
   addStore<Item>(storeName: string): Store<Item> {
 
+    if (this.mode !== 'vc')
+      throw new JineTransactionModeError('Transaction#addStore', 'vc', this.mode);
+
     this._idbDb.createObjectStore(storeName, { keyPath: 'id', autoIncrement: true });
 
     const storeSchema = new StoreSchema({
@@ -205,7 +191,7 @@ export class Transaction<$$ = {}> {
     });
 
     const store = new Store<Item>({
-      idbStoreCont: AsyncCont.fromValue(this._idbTx.objectStore(storeName)),
+      txCont: AsyncCont.fromValue(this),
       schemaCont: AsyncCont.fromValue(storeSchema),
     });
 
@@ -224,9 +210,14 @@ export class Transaction<$$ = {}> {
    * @param name The name of the store to remove
    */
   removeStore(name: string): void {
+
+    if (this.mode !== 'vc')
+      throw new JineTransactionModeError('Transaction#removeStore', 'vc', this.mode);
+
     this._idbDb.deleteObjectStore(name);
     this._schema.removeStore(name);
     delete this.stores[name];
+
   }
 
   /**
