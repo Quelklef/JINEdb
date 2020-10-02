@@ -1,8 +1,8 @@
 
 import { W } from 'wrongish';
 
-import { JineInternalError } from './errors';
 import { Constructor, isPrimitive, isInstanceOfStrict } from './util';
+import { JineError, JineEncodingError, JineDecodingError, JineInternalError } from './errors';
 
 /*
 
@@ -98,11 +98,11 @@ export class Codec {
   constructor(userCodecs: Array<UserCodec>) {
     const duplicateIds = userCodecs.map(codec => codec.id)[W.duplicates]();
     if (duplicateIds.size > 0)
-      throw Error(`[Jine] You have given me multiple codecs with the same id! This is now allowed. Duplicated id(s): ${[...duplicateIds].join(", ")}.`);
+      throw new JineError(`You have given me multiple codecs with the same id! This is now allowed. Duplicated id(s): ${[...duplicateIds].join(", ")}.`);
 
     const duplicateTypes = userCodecs.map(codec => codec.type)[W.duplicates]();
     if (duplicateTypes.size > 0)
-      throw Error(`[Jine] You have given me multiple codecs for the same type! This is now allowed. Duplicated type(s): ${[...duplicateTypes].join(", ")}.`);
+      throw new JineError(`You have given me multiple codecs for the same type! This is now allowed. Duplicated type(s): ${[...duplicateTypes].join(", ")}.`);
 
     this.userCodecs = userCodecs;
   }
@@ -144,9 +144,9 @@ export class Codec {
 
     if (typeof item === 'object') {
       const asNonNull = item as object;
-      throw Error(`[Jine] I don't know how to store values of type '${asNonNull.constructor.name}'. Did you forget to provide a custom codec?`);
+      throw new JineEncodingError(`I don't know how to store values of type '${asNonNull.constructor.name}'. Did you forget to provide a custom codec?`);
     } else {
-      throw Error(`[Jine] I don't know how to store values of type '${typeof item}'.`);
+      throw new JineEncodingError(`I don't know how to store values of type '${typeof item}'.`);
     }
 
   }
@@ -181,7 +181,7 @@ export class Codec {
 
       const codec = this.userCodecs.find(codec => codec.id === asBox.codecId);
       if (!codec)
-        throw Error(`[Jine] I was unable to find a requested custom codec. It's supposed to have id '${asBox.codecId}'. Did you remove a custom codec recently?`);
+        throw new JineDecodingError(`I was unable to find a requested custom codec. It's supposed to have id '${asBox.codecId}'. Did you remove a custom codec recently?`);
 
       const decoded = codec.decode(asBox.boxedValue);
       return decoded;
@@ -201,7 +201,7 @@ export class Codec {
 
     if (indexIsExploding) {
       if (!(item instanceof Array))
-        throw Error(`[Jine] I was asked to encode a trait for an exploding index, but the given trait was not an array!`);
+        throw new JineEncodingError(`I was asked to encode a trait for an exploding index, but the given trait was not an array!`);
 
       return item.map(elem => this.encodeTrait(elem, false));
     }
@@ -220,11 +220,11 @@ export class Codec {
     }
 
     if (item === null)
-      throw Error(`[Jine] I can't use 'null' to index database items.`);
+      throw new JineEncodingError(`I can't use 'null' to index database items.`);
     else if (typeof item !== 'object')
-      throw Error(`[Jine] I can't use use values of type '${typeof item}' to index database items.`);
+      throw new JineEncodingError(`I can't use use values of type '${typeof item}' to index database items.`);
     else
-      throw Error(`[Jine] I don't know how to use values of the type '${item.constructor.name}' to index database items. Did you forget to provide a custom codec?`);
+      throw new JineEncodingError(`I don't know how to use values of the type '${item.constructor.name}' to index database items. Did you forget to provide a custom codec?`);
 
   }
 
@@ -232,7 +232,7 @@ export class Codec {
 
     if (indexIsExploding) {
       if (!(item instanceof Array))
-        throw Error(`[Jine] I was asked to decoded a trait for an exploding index, but the given trait was not an array!`);
+        throw new JineDecodingError(`I was asked to decoded a trait for an exploding index, but the given trait was not an array!`);
 
       return item.map(elem => this.decodeTrait(elem, false));
     }
@@ -258,7 +258,7 @@ export class Codec {
       const codecId = item[0] as string;
       const codec = this.userCodecs.find(codec => codec.id === codecId);
       if (!codec)
-        throw Error(`[Jine] I was unable to find a requested custom codec. It's supposed to have id '${codecId}'. Did you remove a custom codec recently?`);
+        throw new JineError(`I was unable to find a requested custom codec. It's supposed to have id '${codecId}'. Did you remove a custom codec recently?`);
 
       const decoded = codec.decode(unboxed);
       return decoded;

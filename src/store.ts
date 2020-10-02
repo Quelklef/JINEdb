@@ -5,7 +5,7 @@ import { AsyncCont } from './cont';
 import { Dict, Awaitable } from './util';
 import { Selection, Cursor } from './query';
 import { StoreSchema, IndexSchema } from './schema';
-import { JineNoSuchIndexError, mapError } from './errors';
+import { JineError, JineNoSuchIndexError, mapError } from './errors';
 
 /**
  * A collection of stored items.
@@ -197,7 +197,7 @@ export class Store<Item> {
       if (typeof traitPathOrGetter === 'string') {
         const traitPath = traitPathOrGetter;
         if (!traitPath.startsWith('.'))
-          throw Error("Trait path must start with '.'");
+          throw new JineError("Trait path must start with '.'");
         traitPathOrGetter = traitPath.slice(1);
       }
 

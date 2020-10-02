@@ -3,9 +3,9 @@ import { Row } from './row';
 import { Store } from './store';
 import { Index } from './index';
 import { Codec } from './codec';
-import { mapError } from './errors';
 import { AsyncCont } from './cont';
 import { StoreSchema } from './schema';
+import { JineError, mapError } from './errors';
 import { some, getPropertyDescriptor, Dict } from './util';
 
 /**
@@ -142,7 +142,7 @@ export class Cursor<Item, Trait> {
 
   _assertInitialized(): void {
     if (!this.initialized)
-      throw Error('Cursor must be initialized; please await .init()');
+      throw new JineError('Cursor must be initialized; please await .init()');
   }
 
   init(): Promise<void> {
@@ -166,7 +166,7 @@ export class Cursor<Item, Trait> {
 
   _assertNotExhausted(): void {
     if (this.exhausted)
-      throw Error('Cursor is exhausted and needs a nap.');
+      throw new JineError('Cursor is exhausted and needs a nap.');
   }
 
   get active(): boolean {
@@ -592,7 +592,7 @@ export class SelectionUnique<Item, Trait> {
 
   async _ensureSourceUnique(): Promise<void> {
     if (!await this.source.unique)
-      throw Error('Cannot create a SelectionUnique on a non-unique index.');
+      throw new JineError('Cannot create a SelectionUnique on a non-unique index.');
   }
 
   /**
@@ -632,7 +632,7 @@ export class SelectionUnique<Item, Trait> {
     await this._ensureSourceUnique();
     const got = (await this.selection.array())[0];
     if (got === undefined)
-      throw Error('No item found');
+      throw new JineError('No item found');
     return got;
   }
 

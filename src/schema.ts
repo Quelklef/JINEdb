@@ -1,8 +1,7 @@
 
 import { Dict } from './util';
 import { Codec } from './codec';
-
-import * as err from './errors';
+import { JineError, JineNoSuchStoreError, JineNoSuchIndexError } from './errors';
 
 // Precisely, the schema contains the information that is controlled
 // by migrations
@@ -22,13 +21,13 @@ export class IndexSchema<Item, Trait> {
 
   get path(): string {
     if (this.kind !== 'path')
-      throw Error('Cannot get .path on non-path index');
+      throw new JineError('Cannot get .path on non-path index');
     return this.traitPathOrGetter as string;
   }
 
   get getter(): (item: Item) => Trait {
     if (this.kind !== 'derived')
-      throw Error('Cannot get .getter on non-derived index');
+      throw new JineError('Cannot get .getter on non-derived index');
     return this.traitPathOrGetter as ((item: Item) => Trait);
   }
 
@@ -76,7 +75,7 @@ export class StoreSchema<Item> {
   index(indexName: string): IndexSchema<Item, unknown> {
     const got = this.indexes[indexName];
     if (got === undefined)
-      throw new err.JineNoSuchIndexError(`No index named '${indexName}' (schema not found).`);
+      throw new JineNoSuchIndexError(`No index named '${indexName}' (schema not found).`);
     return got;
   }
 
@@ -111,7 +110,7 @@ export class DatabaseSchema {
   store(storeName: string): StoreSchema<unknown> {
     const got = this.stores[storeName];
     if (got === undefined)
-      throw new err.JineNoSuchStoreError(`No store named '${storeName}' (schema not found).`);
+      throw new JineNoSuchStoreError(`No store named '${storeName}' (schema not found).`);
     return got;
   }
 

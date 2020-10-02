@@ -5,7 +5,7 @@ import { Connection } from './connection';
 import { DatabaseSchema } from './schema';
 import { Codec, UserCodec } from './codec';
 import { Transaction, TransactionMode } from './transaction';
-import { JineBlockedError, JineInternalError, mapError } from './errors';
+import { JineError, JineBlockedError, JineInternalError, mapError } from './errors';
 
 async function getDbVersion(name: string): Promise<number> {
   /* Return current database version number. Returns an integer greater than or
@@ -106,7 +106,7 @@ function runMigration<$$>(name: string, version: number, schema: DatabaseSchema,
     req.onerror = _event => {
       const idbError = req.error;
       if (idbError?.name === 'AbortError') {
-        reject(Error(`[Jine] A migration was aborted! This is not allowed.`));
+        reject(Error(`A migration was aborted! This is not allowed.`));
       } else {
         reject(mapError(req.error));
       }
@@ -141,7 +141,7 @@ function runMigration<$$>(name: string, version: number, schema: DatabaseSchema,
         // TODO: for some reason, we still reach this line of code when the transaction
         //       was aborted. I'm not sure why that is?
         if (tx.state === 'aborted')
-          reject(Error(`[Jine] A migration was aborted! This is not allowed.`));
+          reject(new JineError(`A migration was aborted! This is not allowed.`));
         else
           newSchema = tx._schema;
       });
@@ -150,7 +150,7 @@ function runMigration<$$>(name: string, version: number, schema: DatabaseSchema,
     req.onsuccess = _event => {
       if (!upgradeNeededCalled) throw new JineInternalError()
       if (newSchema === null)
-        throw Error(`[Jine] A migration seems to have ended prematurely. Did you mistakenly let the transcation close, e.g. by awaiting something other than a db operation?`);
+        throw new JineError(`A migration seems to have ended prematurely. Did you mistakenly let the transaction close, e.g. by awaiting something other than a db operation?`);
       const idbConn = req.result;
       idbConn.close();
       resolve([newVersion, newSchema]);
@@ -216,7 +216,7 @@ export class Database<$$> {
     const versionAndSchemaPromise: Promise<[number, DatabaseSchema]> =
       runMigrations(name, args.migrations, args.types ?? [])
       .catch(err => {
-        console.error(`[Jine] There was an error migrating the database:`, err);
+        console.error(`There was an error migrating the database:`, err);
         return new Promise(() => {});  // never resolve so that no db operations can go through
       });
 

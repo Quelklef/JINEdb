@@ -1,77 +1,61 @@
 
 import { Dict } from './util';
 
-/**
- * Parent for all jine-related errors
- */
-export class JineError extends Error { }
-
+/** Superclass for all jine-related errors */
+export class JineError extends Error {
+  constructor(message = '') {
+    super(message ? '[Jine] ' + message : '');
+  }
+}
 
 
 // === SHADOWS OF IDB ERRORS === //
 
-/**
- * From [MDN](https://developer.mozilla.org/en-US/docs/Web/API/IDBRequest/error):
- *
- * > If you abort the transaction, then all requests still in progress receive this error.
- */
+/** Thrown when a transaction is aborted. */
 export class JineAbortError extends JineError { }
 
-/**
- * From [MDN](https://developer.mozilla.org/en-US/docs/Web/API/IDBRequest/error):
- *
- * > If you insert data that doesn't conform to a constraint. It's an exception type for creating stores and indexes. You get this error, for example, if you try to add a new key that already exists in the record.
- */
+/** Thrown when trying to insert data that would invalidate a database constraint, such as causing a unique index to have duplicate values. */
 export class JineConstraintError extends JineError { }
 
 
-/**
- * From [MDN](https://developer.mozilla.org/en-US/docs/Web/API/IDBRequest/error):
- *
- * > If you run out of disk quota and the user declined to grant you more space.
- */
+/** Thrown when the user declines giving more disk space. */
 export class JineQuotaError extends JineError { }
 
-/**
- * From [MDN](https://developer.mozilla.org/en-US/docs/Web/API/IDBRequest/error):
- *
- * > If the operation failed for reasons unrelated to the database itself. A failure due to disk IO errors is such an example.
- */
+/** Thrown when IndexedDB throws an 'UnknownError'. */
 export class JineUnknownError extends JineError { }
 
-/**
- * From [MDN](https://developer.mozilla.org/en-US/docs/Web/API/IDBRequest/error):
- *
- * > If you try to open a database with a version lower than the one it already has.
- */
+/** Thrown when opening a database with a version number lower than its current version */
 export class JineVersionError extends JineError { }
 
-
-/**
- * Thrown when you try and access an store that doesn't exist
- */
+/** Thrown when you try and access an store that doesn't exist */
 export class JineNoSuchStoreError extends JineError { }
 
-/**
- * Thrown when you try and access an index that doesn't exist
- */
+/** Thrown when you try and access an index that doesn't exist */
 export class JineNoSuchIndexError extends JineError { }
 
 
 
 // === JINE-ONLY ERRORS === //
 
-/**
- * Thrown when an attempt to open a database is blocked.
- */
+/** Thrown when there is an ecoding or decoding issue */
+export class JineCodecError extends JineError { }
+
+/** Thrown when unable to encode a value to put it into the database */
+export class JineEncodingError extends JineCodecError { }
+
+/** Thrown when unable to decode a value to take it out of the database */
+export class JineDecodingError extends JineCodecError { }
+
+/** Thrown when an attempt to open a database is blocked. */
 export class JineBlockedError extends JineError { }
 
-/**
- * Jine has a bug!
- */
+/** Jine has a bug! */
 export class JineInternalError extends JineError {
-  constructor() {
-    super(`[Jine] Encountered an internal error. This likely isn't your fault! Would you mind submitting a bug report?`);
+  constructor(msg = "") {
+    super(
+      `Encountered an internal error. This likely isn't your fault! Would you mind submitting a bug report?`
+      + msg ? `Error message: ${msg}` : ''
+    );
   }
 }
 

@@ -1,4 +1,6 @@
 
+import { JineInternalError } from './errors';
+
 // see https://fnune.com/typescript/2019/01/30/typescript-series-1-record-is-usually-not-the-best-choice/
 /**
  *  `Record<string, V>`, but does not assume that a value exists for each key.
@@ -41,7 +43,7 @@ export function identity<T>(x: T): T {
 
 export function some<T>(x: T | null | undefined, errorMessage: string | null): T {
   if (x === undefined || x === null) {
-    throw Error(errorMessage ?? `Called some(${x}).`);
+    throw new JineInternalError(errorMessage ?? `Called some(${x}).`);
   }
   return x;
 }
