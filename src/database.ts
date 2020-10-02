@@ -122,9 +122,9 @@ function runMigration<$$>(name: string, version: number, schema: DatabaseSchema,
       if (!req.transaction) throw new JineInternalError();
       const idbTx = req.transaction;
       const tx = new Transaction<$$>({
-        idb_tx: idbTx,
+        idbTx: idbTx,
         // vvv Versionchange transactions have access to entire db
-        scope: schema.store_names,
+        scope: schema.storeNames,
         genuine: genuine,
         schema: schema,
       });
@@ -182,7 +182,7 @@ export class Database<$$> {
    *
    * An operation such as
    * ```plaintext
-   * await db.$.my_store.add(my_item)
+   * await db.$.myStore.add(myItem)
    * ```
    * will automatically open up a [[Connection]], start a [[Transaction]], run the `.add` operation,
    * close the transaction, and close the connection.
@@ -228,19 +228,19 @@ export class Database<$$> {
     this.$ = <$$> new Proxy({}, {
       get: (_target: {}, prop: string | number | symbol) => {
         if (typeof prop === 'string') {
-          const store_name = prop;
+          const storeName = prop;
 
-          const idb_conn_k = AsyncCont.fromFunc<IDBDatabase>(async callback => {
+          const idbConnCont = AsyncCont.fromFunc<IDBDatabase>(async callback => {
             const idbConn = await this._newIdbConn();
             const result = await callback(idbConn);
             idbConn.close();
             return result;
           });
           const conn = new Connection({
-            idb_conn_k: idb_conn_k,
-            schema_k: AsyncCont.fromValue(this._schema),
+            idbConnCont: idbConnCont,
+            schemaCont: AsyncCont.fromValue(this._schema),
           });
-          return (conn.$ as any)[store_name];
+          return (conn.$ as any)[storeName];
         }
       }
     });
@@ -268,8 +268,8 @@ export class Database<$$> {
    */
   async newConnection(): Promise<Connection<$$>> {
     return new Connection<$$>({
-      idb_conn_k: AsyncCont.fromValue(await this._newIdbConn()),
-      schema_k: AsyncCont.fromValue(await this._schema),
+      idbConnCont: AsyncCont.fromValue(await this._newIdbConn()),
+      schemaCont: AsyncCont.fromValue(await this._schema),
     });
   }
 

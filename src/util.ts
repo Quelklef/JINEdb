@@ -9,7 +9,7 @@ export type Dict<V> = Partial<Record<string, V>>;
 /** A value that can be `await`-ed to produce a `T` */
 export type Awaitable<T> = T | Promise<T>;
 
-export function Awaitable_map<T, S>(a: Awaitable<T>, f: (v: T) => Awaitable<S>): Awaitable<S> {
+export function mapAwaitable<T, S>(a: Awaitable<T>, f: (v: T) => Awaitable<S>): Awaitable<S> {
   return (a instanceof Promise) ? a.then(f) : f(a);
 }
 
@@ -39,9 +39,9 @@ export function identity<T>(x: T): T {
   return x;
 }
 
-export function some<T>(x: T | null | undefined, error_message: string | null): T {
+export function some<T>(x: T | null | undefined, errorMessage: string | null): T {
   if (x === undefined || x === null) {
-    throw Error(error_message ?? `Called some(${x}).`);
+    throw Error(errorMessage ?? `Called some(${x}).`);
   }
   return x;
 }

@@ -12,24 +12,24 @@ export class IndexSchema<Item, Trait> {
   unique: boolean;
   explode: boolean;
 
-  trait_path_or_getter: string | ((item: Item) => Trait);
+  traitPathOrGetter: string | ((item: Item) => Trait);
 
   // path - string
   // derived - function
   get kind(): 'path' | 'derived' {
-    return typeof this.trait_path_or_getter === 'string' ? 'path' : 'derived';
+    return typeof this.traitPathOrGetter === 'string' ? 'path' : 'derived';
   }
 
   get path(): string {
     if (this.kind !== 'path')
       throw Error('Cannot get .path on non-path index');
-    return this.trait_path_or_getter as string;
+    return this.traitPathOrGetter as string;
   }
 
   get getter(): (item: Item) => Trait {
     if (this.kind !== 'derived')
       throw Error('Cannot get .getter on non-derived index');
-    return this.trait_path_or_getter as ((item: Item) => Trait);
+    return this.traitPathOrGetter as ((item: Item) => Trait);
   }
 
   codec: Codec;
@@ -38,17 +38,17 @@ export class IndexSchema<Item, Trait> {
     name: string;
     unique: boolean;
     explode: boolean;
-    trait_path_or_getter: string | ((item: Item) => Trait);
+    traitPathOrGetter: string | ((item: Item) => Trait);
     codec: Codec;
   }) {
     this.name = args.name;
     this.unique = args.unique;
     this.explode = args.explode;
     this.codec = args.codec;
-    this.trait_path_or_getter = args.trait_path_or_getter;
+    this.traitPathOrGetter = args.traitPathOrGetter;
   }
 
-  calc_trait(item: Item): Trait {
+  calcTrait(item: Item): Trait {
     if (this.kind === 'path') {
       return (item as any)[this.path];
     } else {
@@ -73,23 +73,23 @@ export class StoreSchema<Item> {
     this.codec = args.codec;
   }
 
-  index(index_name: string): IndexSchema<Item, unknown> {
-    const got = this.indexes[index_name];
+  index(indexName: string): IndexSchema<Item, unknown> {
+    const got = this.indexes[indexName];
     if (got === undefined)
-      throw new err.JineNoSuchIndexError(`No index named '${index_name}' (schema not found).`);
+      throw new err.JineNoSuchIndexError(`No index named '${indexName}' (schema not found).`);
     return got;
   }
 
-  get index_names(): Array<string> {
+  get indexNames(): Array<string> {
     return Object.keys(this.indexes);
   }
 
-  addIndex(index_name: string, index_schema: IndexSchema<Item, unknown>): void {
-    this.indexes[index_name] = index_schema;
+  addIndex(indexName: string, indexSchema: IndexSchema<Item, unknown>): void {
+    this.indexes[indexName] = indexSchema;
   }
 
-  removeIndex(index_name: string): void {
-    delete this.indexes[index_name];
+  removeIndex(indexName: string): void {
+    delete this.indexes[indexName];
   }
 }
 
@@ -108,22 +108,22 @@ export class DatabaseSchema {
     this.codec = args.codec;
   }
 
-  store(store_name: string): StoreSchema<unknown> {
-    const got = this.stores[store_name];
+  store(storeName: string): StoreSchema<unknown> {
+    const got = this.stores[storeName];
     if (got === undefined)
-      throw new err.JineNoSuchStoreError(`No store named '${store_name}' (schema not found).`);
+      throw new err.JineNoSuchStoreError(`No store named '${storeName}' (schema not found).`);
     return got;
   }
 
-  get store_names(): Array<string> {
+  get storeNames(): Array<string> {
     return Object.keys(this.stores);
   }
 
-  addStore<Item>(store_name: string, store_schema: StoreSchema<Item>): void {
-    this.stores[store_name] = store_schema as StoreSchema<unknown>;
+  addStore<Item>(storeName: string, storeSchema: StoreSchema<Item>): void {
+    this.stores[storeName] = storeSchema as StoreSchema<unknown>;
   }
 
-  removeStore(store_name: string): void {
-    delete this.stores[store_name];
+  removeStore(storeName: string): void {
+    delete this.stores[storeName];
   }
 }

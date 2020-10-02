@@ -83,7 +83,7 @@ export function mapError(error: DOMException | null): JineError | DOMException |
   if (error === null)
     return error;
 
-  const jine_error_types: Dict<typeof JineError> = {
+  const jineErrorTypes: Dict<typeof JineError> = {
     'AbortError'        : JineAbortError,
     'ConstraintError'   : JineConstraintError,
     'QuotaExceededError': JineQuotaError,
@@ -91,18 +91,18 @@ export function mapError(error: DOMException | null): JineError | DOMException |
     'VersionError'      : JineVersionError,
   }
 
-  const jine_error_type = jine_error_types[error.name];
+  const jineErrorType = jineErrorTypes[error.name];
 
-  if (jine_error_type === undefined)
+  if (jineErrorType === undefined)
     return error;
 
-  const jine_error = new jine_error_type(error.message);
+  const jineError = new jineErrorType(error.message);
 
   // chrome et al
   if ((error as any).stack)
-    jine_error.stack = (error as any).stack;
+    jineError.stack = (error as any).stack;
 
-  return jine_error;
+  return jineError;
 
 }
 

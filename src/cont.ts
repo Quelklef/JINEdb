@@ -1,5 +1,5 @@
 
-import { Awaitable, Awaitable_map } from './util';
+import { Awaitable, mapAwaitable } from './util';
 
 /*-
  * Continuation Monad
@@ -7,19 +7,19 @@ import { Awaitable, Awaitable_map } from './util';
 export class Cont<T>  {
 
   /** The wrapped value, expressed as a double-negation under Curry-Howard */
-  private readonly nn_val: <R>(callback: (value: T) => R) => R;
+  private readonly nnVal: <R>(callback: (value: T) => R) => R;
 
   private constructor(
-    nn_val: <R>(callback: (value: T) => R) => R,
+    nnVal: <R>(callback: (value: T) => R) => R,
   ) {
-    this.nn_val = nn_val;
+    this.nnVal = nnVal;
   }
 
   run<R>(f: (value: T) => R): R {
-    return this.nn_val(f);
+    return this.nnVal(f);
   }
 
-  unsafe_unwrap(): Awaitable<T> {
+  unsafeUnwrap(): Awaitable<T> {
     return this.run(v => v);
   }
 
@@ -38,15 +38,15 @@ export class Cont<T>  {
 
   /** Monad.`>>=` */
   // Implementation could just be
-  //   return this.nn_val(x => f(x))
+  //   return this.nnVal(x => f(x))
   // but this would fix the value of x, which is not desirable
   bind<S>(f: (value: T) => Cont<S>): Cont<S> {
-    return new Cont(k => this.nn_val(x => f(x).nn_val(y => k(y))));
+    return new Cont(k => this.nnVal(x => f(x).nnVal(y => k(y))));
   }
 
   /** Functor.fmap */
   map<S>(f: (value: T) => S): Cont<S> {
-    return new Cont(k => this.nn_val(x => k(f(x))));
+    return new Cont(k => this.nnVal(x => k(f(x))));
   }
 
 }
@@ -59,28 +59,28 @@ export class Cont<T>  {
  */
 export class AsyncCont<T> {
 
-    private readonly nn_val: <R>(callback: (value: T) => Awaitable<R>) => Awaitable<R>;
+    private readonly nnVal: <R>(callback: (value: T) => Awaitable<R>) => Awaitable<R>;
 
     private constructor(
-        nn_val: <R>(callback: (value: T) => Awaitable<R>) => Awaitable<R>,
+        nnVal: <R>(callback: (value: T) => Awaitable<R>) => Awaitable<R>,
     ) {
-      this.nn_val = nn_val;
+      this.nnVal = nnVal;
     }
 
     run<R>(f: (value: T) => Awaitable<R>): Awaitable<R> {
-      return this.nn_val(val => Awaitable_map(val, f));
+      return this.nnVal(val => mapAwaitable(val, f));
     }
 
-    unsafe_unwrap(): Awaitable<T> {
+    unsafeUnwrap(): Awaitable<T> {
       return this.run(v => v);
     }
 
     static fromValue<T>(x: Awaitable<T>): AsyncCont<T> {
-      return new AsyncCont(k => Awaitable_map(x, k));
+      return new AsyncCont(k => mapAwaitable(x, k));
     }
 
     static fromProducer<T>(prod: () => Awaitable<T>): AsyncCont<T> {
-      return new AsyncCont(k => Awaitable_map(prod(), k));
+      return new AsyncCont(k => mapAwaitable(prod(), k));
     }
 
     static fromFunc<T>(func: <R>(callback: (value: T) => Awaitable<R>) => Awaitable<R>): AsyncCont<T> {
@@ -88,7 +88,7 @@ export class AsyncCont<T> {
     }
 
     map<S>(f: (value: T) => Awaitable<S>): AsyncCont<S> {
-      return new AsyncCont(k => this.nn_val(x => Awaitable_map(Awaitable_map(x, f), k)));
+      return new AsyncCont(k => this.nnVal(x => mapAwaitable(mapAwaitable(x, f), k)));
     }
 
     and<O>(other: AsyncCont<O>): AsyncCont<[T, O]> {

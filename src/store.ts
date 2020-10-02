@@ -33,40 +33,40 @@ export class Store<Item> {
    * Unique per-database
    */
   get name(): Awaitable<string> {
-    return this._schema_k.run(schema => schema.name);
+    return this._schemaCont.run(schema => schema.name);
   }
 
-  _idb_store_k: AsyncCont<IDBObjectStore>;
-  _schema_k: AsyncCont<StoreSchema<Item>>;
+  _idbStoreCont: AsyncCont<IDBObjectStore>;
+  _schemaCont: AsyncCont<StoreSchema<Item>>;
 
   constructor(args: {
-    idb_store_k: AsyncCont<IDBObjectStore>;
-    schema_k: AsyncCont<StoreSchema<Item>>;
+    idbStoreCont: AsyncCont<IDBObjectStore>;
+    schemaCont: AsyncCont<StoreSchema<Item>>;
   }) {
-    this._idb_store_k = args.idb_store_k;
-    this._schema_k = args.schema_k;
+    this._idbStoreCont = args.idbStoreCont;
+    this._schemaCont = args.schemaCont;
 
     this.by = new Proxy({}, {
       get: (_target: {}, prop: string | number | symbol) => {
         if (typeof prop === 'string') {
-          const index_name = prop;
-          const idb_index_k = this._idb_store_k.map(idb_store => {
-            let idb_index!: IDBIndex;
+          const indexName = prop;
+          const idbIndexCont = this._idbStoreCont.map(idbStore => {
+            let idbIndex!: IDBIndex;
 
             try {
-              idb_index = idb_store.index(index_name);
+              idbIndex = idbStore.index(indexName);
             } catch (err) {
               if (err.name === 'NotFoundError')
-                throw new JineNoSuchIndexError(`No index named '${index_name}'.`)
+                throw new JineNoSuchIndexError(`No index named '${indexName}'.`)
               throw err
             }
 
-            return idb_index;
+            return idbIndex;
           });
 
           return new Index({
-            idb_index_k: idb_index_k,
-            schema_k: this._schema_k.map(schema => schema.index(index_name)),
+            idbIndexCont: idbIndexCont,
+            schemaCont: this._schemaCont.map(schema => schema.index(indexName)),
             parent: this,
           });
         }
@@ -75,11 +75,11 @@ export class Store<Item> {
   }
 
   async _mapExistingRows(mapper: (row: Row) => Row): Promise<void> {
-    return await this._idb_store_k.and(this._schema_k).run(async ([idb_store, schema]) => {
+    return await this._idbStoreCont.and(this._schemaCont).run(async ([idbStore, schema]) => {
       const cursor = new Cursor({
-        idb_source: idb_store,
+        idbSource: idbStore,
         query: 'everything',
-        store_schema: schema,
+        storeSchema: schema,
       });
       for (await cursor.init(); cursor.active; await cursor.step()) {
         await cursor._replaceRow(mapper(cursor._currentRow()));
@@ -91,16 +91,16 @@ export class Store<Item> {
    * Add an item to the store.
    */
   async add(item: Item): Promise<void> {
-    return this._idb_store_k.and(this._schema_k).run(async ([idb_store, schema]) => {
+    return this._idbStoreCont.and(this._schemaCont).run(async ([idbStore, schema]) => {
       return new Promise((resolve, reject) => {
 
         const traits: Dict<unknown> = {};
-        for (const index_name of schema.index_names) {
-          const index_schema = schema.index(index_name);
-          const trait = index_schema.calc_trait(item);
-          const encoded = schema.codec.encodeTrait(trait, index_schema.explode);
-          const trait_name = index_name;
-          traits[trait_name] = encoded;
+        for (const indexName of schema.indexNames) {
+          const indexSchema = schema.index(indexName);
+          const trait = indexSchema.calcTrait(item);
+          const encoded = schema.codec.encodeTrait(trait, indexSchema.explode);
+          const traitName = indexName;
+          traits[traitName] = encoded;
         }
 
         // Don't include the id since it's autoincrement'd
@@ -109,7 +109,7 @@ export class Store<Item> {
           traits: traits,
         };
 
-        const req = idb_store.add(row);
+        const req = idbStore.add(row);
         req.onsuccess = _event => resolve();
         req.onerror = _event => reject(mapError(req.error));
 
@@ -121,9 +121,9 @@ export class Store<Item> {
    * Remove all items from the store.
    */
   async clear(): Promise<void> {
-    return await this._idb_store_k.run(idb_store => {
+    return await this._idbStoreCont.run(idbStore => {
       return new Promise((resolve, reject) => {
-        const req = idb_store.clear();
+        const req = idbStore.clear();
         req.onsuccess = _event => resolve();
         req.onerror = _event => reject(mapError(req.error));
       });
@@ -134,9 +134,9 @@ export class Store<Item> {
    * @return The number of items in the store
    */
   async count(): Promise<number> {
-    return await this._idb_store_k.run(idb_store => {
+    return await this._idbStoreCont.run(idbStore => {
       return new Promise((resolve, reject) => {
-        const req = idb_store.count();
+        const req = idbStore.count();
         req.onsuccess = event => {
           const count = (event.target as any).result as number;
           resolve(count);
@@ -150,9 +150,9 @@ export class Store<Item> {
    * @returns An array with all items in the store.
    */
   async array(): Promise<Array<Item>> {
-    return this._idb_store_k.and(this._schema_k).run(async ([idb_store, schema]) => {
+    return this._idbStoreCont.and(this._schemaCont).run(async ([idbStore, schema]) => {
       return new Promise((resolve, reject) => {
-        const req = idb_store.getAll();
+        const req = idbStore.getAll();
         req.onsuccess = (event) => {
           const rows = (event.target as any).result as Array<Row>;
           const items = rows.map(row => schema.codec.decodeItem(row.payload) as Item);
@@ -171,7 +171,7 @@ export class Store<Item> {
     return new Selection({
       source: this,
       query: 'everything',
-      store_schema_k: this._schema_k,
+      storeSchemaCont: this._schemaCont,
     });
   }
 
@@ -180,61 +180,61 @@ export class Store<Item> {
    *
    * Only possible in a `versionchange` transaction, which is given by [[Database.upgrade]].
    *
-   * @param index_name The name to give the new index
+   * @param indexName The name to give the new index
    * @param trait The path or function that defines the indexed trait (see [[Index]])
    * @param options
    * - `unqiue`: enforces unique values for this trait; see [[Index.unique]].
    * - `explode`: see [[Index.explode]].
    */
   async addIndex<Trait>(
-    index_name: string,
-    trait_path_or_getter: string | ((item: Item) => Trait),
+    indexName: string,
+    traitPathOrGetter: string | ((item: Item) => Trait),
     options?: { unique?: boolean; explode?: boolean },
   ): Promise<Index<Item, Trait>> {
 
-    return await this._idb_store_k.and(this._schema_k).run(async ([idb_store, schema]) => {
+    return await this._idbStoreCont.and(this._schemaCont).run(async ([idbStore, schema]) => {
 
-      if (typeof trait_path_or_getter === 'string') {
-        const trait_path = trait_path_or_getter;
-        if (!trait_path.startsWith('.'))
+      if (typeof traitPathOrGetter === 'string') {
+        const traitPath = traitPathOrGetter;
+        if (!traitPath.startsWith('.'))
           throw Error("Trait path must start with '.'");
-        trait_path_or_getter = trait_path.slice(1);
+        traitPathOrGetter = traitPath.slice(1);
       }
 
       const unique = options?.unique ?? false;
       const explode = options?.explode ?? false;
 
-      const idb_index = idb_store.createIndex(
-        index_name,
-        `traits.${index_name}`,
+      const idbIndex = idbStore.createIndex(
+        indexName,
+        `traits.${indexName}`,
         { unique: unique, multiEntry: explode },
       );
 
-      const index_schema = new IndexSchema({
-        name: index_name,
-        trait_path_or_getter: trait_path_or_getter,
+      const indexSchema = new IndexSchema({
+        name: indexName,
+        traitPathOrGetter: traitPathOrGetter,
         unique: unique,
         explode: explode,
         codec: schema.codec,
       });
 
       // update existing items if needed
-      if (index_schema.kind === 'derived') {
-        const trait_getter = index_schema.getter;
+      if (indexSchema.kind === 'derived') {
+        const traitGetter = indexSchema.getter;
         await this.all()._replaceRows((row: Row) => {
           const item = schema.codec.decodeItem(row.payload) as Item;
-          row.traits[index_name] = schema.codec.encodeTrait(trait_getter(item), explode);
+          row.traits[indexName] = schema.codec.encodeTrait(traitGetter(item), explode);
           return row;
         });
       }
 
       const index = new Index<Item, Trait>({
-        idb_index_k: AsyncCont.fromValue(idb_index),
-        schema_k: AsyncCont.fromValue(index_schema),
+        idbIndexCont: AsyncCont.fromValue(idbIndex),
+        schemaCont: AsyncCont.fromValue(indexSchema),
         parent: this,
       });
 
-      schema.addIndex(index_name, index_schema);
+      schema.addIndex(indexName, indexSchema);
 
       return index;
 
@@ -251,10 +251,10 @@ export class Store<Item> {
    */
   async removeIndex(name: string): Promise<void> {
 
-    return await this._idb_store_k.and(this._schema_k).run(async ([idb_store, schema]) => {
+    return await this._idbStoreCont.and(this._schemaCont).run(async ([idbStore, schema]) => {
 
       // remove idb index
-      idb_store.deleteIndex(name);
+      idbStore.deleteIndex(name);
 
       // update existing rows if needed
       if (schema.index(name).kind === 'derived') {

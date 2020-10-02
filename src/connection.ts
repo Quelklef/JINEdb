@@ -17,41 +17,41 @@ export class Connection<$$ = {}> {
    *
    * An operation such as
    * ```plaintext
-   * await conn.$.my_store.add(my_item)
+   * await conn.$.myStore.add(myitem)
    * ```
    * will automatically open start a [[Transaction]], run the `.add` operation,
    * then close the transaction.
    */
   $: $$;
 
-  _idb_conn_k: AsyncCont<IDBDatabase>;
-  _schema_k: AsyncCont<DatabaseSchema>;
+  _idbConnCont: AsyncCont<IDBDatabase>;
+  _schemaCont: AsyncCont<DatabaseSchema>;
 
   constructor(args: {
-    idb_conn_k: AsyncCont<IDBDatabase>;
-    schema_k: AsyncCont<DatabaseSchema>;
+    idbConnCont: AsyncCont<IDBDatabase>;
+    schemaCont: AsyncCont<DatabaseSchema>;
   }) {
-    this._idb_conn_k = args.idb_conn_k;
-    this._schema_k = args.schema_k;
+    this._idbConnCont = args.idbConnCont;
+    this._schemaCont = args.schemaCont;
 
     this.$ = <$$> new Proxy({}, {
       get: (_target: {}, prop: string | number | symbol) => {
         if (typeof prop === 'string') {
-          const store_name = prop;
-          const idb_store_k = this._idb_conn_k.map(idb_conn => {
-            let idb_tx!: IDBTransaction;
+          const storeName = prop;
+          const idbStoreCont = this._idbConnCont.map(idbConn => {
+            let idbTx!: IDBTransaction;
             try {
-              idb_tx = idb_conn.transaction([store_name], 'readwrite');
+              idbTx = idbConn.transaction([storeName], 'readwrite');
             } catch (err) {
               if (err.name === 'NotFoundError')
-                throw new JineNoSuchStoreError(`No store named '${store_name}'.`);
+                throw new JineNoSuchStoreError(`No store named '${storeName}'.`);
               throw err;
             }
-            return idb_tx.objectStore(store_name);
+            return idbTx.objectStore(storeName);
           });
           const store = new Store({
-            idb_store_k: idb_store_k,
-            schema_k: this._schema_k.map(schema => schema.store(store_name)),
+            idbStoreCont: idbStoreCont,
+            schemaCont: this._schemaCont.map(schema => schema.store(storeName)),
           });
           return store;
         }
@@ -66,13 +66,13 @@ export class Connection<$$ = {}> {
    * @param mode The transaction mode.
    * @returns A new transaction
    */
-  newTransaction(stores: Array<string | Store<any>>, tx_mode: TransactionMode): AsyncCont<Transaction<$$>> {
-    return this._idb_conn_k.and(this._schema_k).map(async ([idb_conn, schema]) => {
-      const store_names = await Promise.all(stores.map(s => typeof s === 'string' ? s : s.name));
-      const idb_tx_mode = uglifyTransactionMode(tx_mode)
+  newTransaction(stores: Array<string | Store<any>>, txMode: TransactionMode): AsyncCont<Transaction<$$>> {
+    return this._idbConnCont.and(this._schemaCont).map(async ([idbConn, schema]) => {
+      const storeNames = await Promise.all(stores.map(s => typeof s === 'string' ? s : s.name));
+      const idbTxMode = uglifyTransactionMode(txMode)
       return new Transaction<$$>({
-        idb_tx: idb_conn.transaction(store_names, idb_tx_mode),
-        scope: store_names,
+        idbTx: idbConn.transaction(storeNames, idbTxMode),
+        scope: storeNames,
         genuine: true,
         schema: schema,
       });
@@ -92,19 +92,19 @@ export class Connection<$$ = {}> {
     mode: TransactionMode,
     callback: (tx: Transaction<$$>) => Promise<R>,
   ): Promise<R> {
-    const nn_tx = this.newTransaction(stores, mode);
-    return nn_tx.run(tx => tx.wrap(callback));
+    const txCont = this.newTransaction(stores, mode);
+    return txCont.run(tx => tx.wrap(callback));
   }
 
   /**
    * Close the connection to the database.
    */
   // TODO: technically, this must return a Promise<void> to account
-  // for the case that this._idb_conn_k is not a bound value; however,
+  // for the case that this._idbConnCont is not a bound value; however,
   // that is exactly the case where we wouldn't want to .close() the
   // connection.
   close(): Awaitable<void> {
-    return this._idb_conn_k.run(idb_conn => idb_conn.close());
+    return this._idbConnCont.run(idbConn => idbConn.close());
   }
 
   /**

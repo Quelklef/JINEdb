@@ -18,20 +18,20 @@ import { DatabaseSchema, StoreSchema } from './schema';
  */
 export type TransactionMode = 'r' | 'rw' | 'vc';
 
-export function prettifyTransactionMode(idb_tx_mode: IDBTransactionMode): TransactionMode {
+export function prettifyTransactionMode(idbTxMode: IDBTransactionMode): TransactionMode {
   return {
     readonly: 'r',
     readwrite: 'rw',
     versionchange: 'vc',
-  }[idb_tx_mode] as TransactionMode;
+  }[idbTxMode] as TransactionMode;
 }
 
-export function uglifyTransactionMode(tx_mode: TransactionMode): IDBTransactionMode {
+export function uglifyTransactionMode(txMode: TransactionMode): IDBTransactionMode {
   return {
     r: 'readonly',
     rw: 'readwrite',
     vc: 'versionchange',
-  }[tx_mode] as IDBTransactionMode;
+  }[txMode] as IDBTransactionMode;
 }
 
 /**
@@ -78,12 +78,12 @@ export class Transaction<$$ = {}> {
    */
   $: $$;
 
-  _idb_tx: IDBTransaction;
-  _idb_db: IDBDatabase;
+  _idbTx: IDBTransaction;
+  _idbDb: IDBDatabase;
   _schema: DatabaseSchema;
 
   constructor(args: {
-    idb_tx: IDBTransaction;
+    idbTx: IDBTransaction;
     scope: Array<string>;
     schema: DatabaseSchema;
     genuine: boolean;
@@ -91,62 +91,62 @@ export class Transaction<$$ = {}> {
 
     this.genuine = args.genuine;
 
-    this._idb_tx = args.idb_tx;
-    this._idb_db = this._idb_tx.db;
+    this._idbTx = args.idbTx;
+    this._idbDb = this._idbTx.db;
 
     // Clone schema so that, if a migration occurs, then
     // changes are sandboxed in case of e.g. .abort()
     this._schema = clone(args.schema);
 
     this.stores = {};
-    for (const store_name of args.scope) {
-      let idb_store!: IDBObjectStore;
+    for (const storeName of args.scope) {
+      let idbStore!: IDBObjectStore;
       try {
-        idb_store = this._idb_tx.objectStore(store_name);
+        idbStore = this._idbTx.objectStore(storeName);
       } catch (err) {
         if (err.name === 'NotFoundError')
-          throw new JineNoSuchStoreError(`No store named '${store_name}' (no idb store found).`);
+          throw new JineNoSuchStoreError(`No store named '${storeName}' (no idb store found).`);
         throw err;
       }
       const store = new Store({
-        idb_store_k: AsyncCont.fromValue(idb_store),
-        schema_k: AsyncCont.fromValue(this._schema.store(store_name)),
+        idbStoreCont: AsyncCont.fromValue(idbStore),
+        schemaCont: AsyncCont.fromValue(this._schema.store(storeName)),
       });
-      this.stores[store_name] = store;
+      this.stores[storeName] = store;
     }
 
     this.$ = <$$> new Proxy({}, {
       get: (_target: {}, prop: string | number | symbol) => {
         if (typeof prop === 'string') {
-          const store_name = prop;
+          const storeName = prop;
           // Don't get the store immediately, do it lazily.
           // This is to be consistent with the rest of the API, which is lazy.
           const getStore = (): IDBObjectStore => {
             try {
-              return this._idb_tx.objectStore(store_name);
+              return this._idbTx.objectStore(storeName);
             } catch (err) {
               if (err.name === 'NotFoundError')
-                throw new JineNoSuchStoreError(`No store named '${store_name}' (no idb store found).`);
+                throw new JineNoSuchStoreError(`No store named '${storeName}' (no idb store found).`);
               throw err;
             }
           }
 
           return new Store({
-            idb_store_k: AsyncCont.fromProducer(getStore),
-            schema_k: AsyncCont.fromProducer(() => this._schema.store(store_name)),
+            idbStoreCont: AsyncCont.fromProducer(getStore),
+            schemaCont: AsyncCont.fromProducer(() => this._schema.store(storeName)),
           });
         }
       }
     });
 
     this.state = 'active';
-    this._idb_tx.addEventListener('abort', () => {
+    this._idbTx.addEventListener('abort', () => {
       this.state = 'aborted';
     });
-    this._idb_tx.addEventListener('error', () => {
+    this._idbTx.addEventListener('error', () => {
       this.state = 'aborted';
     });
-    this._idb_tx.addEventListener('complete', () => {
+    this._idbTx.addEventListener('complete', () => {
       this.state = 'committed';
     });
 
@@ -194,23 +194,23 @@ export class Transaction<$$ = {}> {
    * @param name The name to give the new store
    * @returns The new store
    */
-  addStore<Item>(store_name: string): Store<Item> {
+  addStore<Item>(storeName: string): Store<Item> {
 
-    this._idb_db.createObjectStore(store_name, { keyPath: 'id', autoIncrement: true });
+    this._idbDb.createObjectStore(storeName, { keyPath: 'id', autoIncrement: true });
 
-    const store_schema = new StoreSchema({
-      name: store_name,
+    const storeSchema = new StoreSchema({
+      name: storeName,
       indexes: { },
       codec: this._schema.codec,
     });
 
     const store = new Store<Item>({
-      idb_store_k: AsyncCont.fromValue(this._idb_tx.objectStore(store_name)),
-      schema_k: AsyncCont.fromValue(store_schema),
+      idbStoreCont: AsyncCont.fromValue(this._idbTx.objectStore(storeName)),
+      schemaCont: AsyncCont.fromValue(storeSchema),
     });
 
-    this._schema.addStore(store_name, store_schema);
-    this.stores[store_name] = store as any;
+    this._schema.addStore(storeName, storeSchema);
+    this.stores[storeName] = store as any;
 
     return store;
 
@@ -224,7 +224,7 @@ export class Transaction<$$ = {}> {
    * @param name The name of the store to remove
    */
   removeStore(name: string): void {
-    this._idb_db.deleteObjectStore(name);
+    this._idbDb.deleteObjectStore(name);
     this._schema.removeStore(name);
     delete this.stores[name];
   }
@@ -236,7 +236,7 @@ export class Transaction<$$ = {}> {
     /* Commit and end the transaction */
     // [2020-05-16] For some reason the types don't have IDBTransaction.commit(),
     // but it's in the online docs: https://developer.mozilla.org/en-US/docs/Web/API/IDBTransaction/commit
-    (this._idb_tx as any).commit();
+    (this._idbTx as any).commit();
     this.state = 'committed';
   }
 
@@ -244,7 +244,7 @@ export class Transaction<$$ = {}> {
    * Abort the transaction, cancelling all staged changes.
    */
   abort(): void {
-    this._idb_tx.abort();
+    this._idbTx.abort();
     this.state = 'aborted';
   }
 

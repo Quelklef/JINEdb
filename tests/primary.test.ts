@@ -141,7 +141,7 @@ describe("usage", () => {
     beforeEach(async () => {
       con = await db.newConnection();
       const tx_k = await con.newTransaction(['rooms'], 'rw');
-      const tx = await tx_k.unsafe_unwrap(); // FIXME
+      const tx = await tx_k.unsafeUnwrap(); // FIXME
       $ = tx.$;
     });
 

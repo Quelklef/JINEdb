@@ -116,28 +116,28 @@ export class Cursor<Item, Trait> {
   // TODO: replicate on other classes.
   my: Dict<any> = {};
 
-  readonly store_schema: StoreSchema<Item>;
+  readonly storeSchema: StoreSchema<Item>;
 
   readonly _query: Query<Trait>;
 
-  readonly _idb_source: IDBObjectStore | IDBIndex;
-  _idb_req: IDBRequest | null;
-  _idb_cur: IDBCursorWithValue | null;
+  readonly _idbSource: IDBObjectStore | IDBIndex;
+  _idbReq: IDBRequest | null;
+  _idbCur: IDBCursorWithValue | null;
 
   constructor(args: {
-    idb_source: IDBIndex | IDBObjectStore;
+    idbSource: IDBIndex | IDBObjectStore;
     query: Query<Trait>;
-    store_schema: StoreSchema<Item>;
+    storeSchema: StoreSchema<Item>;
   }) {
     this._query = args.query;
-    this._idb_source = args.idb_source;
-    this._idb_req = null;
-    this._idb_cur = null;
-    this.store_schema = args.store_schema;
+    this._idbSource = args.idbSource;
+    this._idbReq = null;
+    this._idbCur = null;
+    this.storeSchema = args.storeSchema;
   }
 
   get initialized(): boolean {
-    return this._idb_req !== null;
+    return this._idbReq !== null;
   }
 
   _assertInitialized(): void {
@@ -146,14 +146,14 @@ export class Cursor<Item, Trait> {
   }
 
   init(): Promise<void> {
-    const req = this._idb_source.openCursor(
-      compileTraitRange(this._query, this.store_schema.codec),
+    const req = this._idbSource.openCursor(
+      compileTraitRange(this._query, this.storeSchema.codec),
       compileCursorDirection(this._query),
     );
-    this._idb_req = req;
+    this._idbReq = req;
     return new Promise((resolve, reject) => {
       req.onsuccess = _event => {
-        this._idb_cur = req.result;
+        this._idbCur = req.result;
         resolve();
       };
       req.onerror = _event => reject(mapError(req.error));
@@ -161,7 +161,7 @@ export class Cursor<Item, Trait> {
   }
 
   get exhausted(): boolean {
-    return this.initialized && this._idb_cur === null;
+    return this.initialized && this._idbCur === null;
   }
 
   _assertNotExhausted(): void {
@@ -178,25 +178,25 @@ export class Cursor<Item, Trait> {
     this._assertNotExhausted();
   }
 
-  _active_idb_cur(): IDBCursorWithValue {
+  _activeIdbCur(): IDBCursorWithValue {
     this._assertActive();
-    return some(this._idb_cur, "Internal error");
+    return some(this._idbCur, "Internal error");
   }
 
-  _active_idb_req(): IDBRequest {
+  _activeIdbReq(): IDBRequest {
     this._assertActive();
-    return some(this._idb_req, "Internal error");
+    return some(this._idbReq, "Internal error");
   }
 
   _currentRow(): Row {
-    return this._active_idb_cur().value;
+    return this._activeIdbCur().value;
   }
 
   currentItem(): Item {
     // Get the item at the cursor.
-    const idb_cur = this._active_idb_cur();
-    const row = idb_cur.value;
-    return this.store_schema.codec.decodeItem(row.payload) as Item;
+    const idbCur = this._activeIdbCur();
+    const row = idbCur.value;
+    return this.storeSchema.codec.decodeItem(row.payload) as Item;
   }
 
   step(options?: { toTrait: Trait } | { size: number }): Promise<void> {
@@ -204,21 +204,21 @@ export class Cursor<Item, Trait> {
     if (this.exhausted) {
       return Promise.resolve(undefined);
     } else {
-      const idb_req = this._active_idb_req();
-      const idb_cur = this._active_idb_cur();
-      const req = idb_req;
+      const idbReq = this._activeIdbReq();
+      const idbCur = this._activeIdbCur();
+      const req = idbReq;
 
       if (options && 'toTrait' in options) {
         const trait = options.toTrait;
-        const encoded = this.store_schema.codec.encodeTrait(trait, this._sourceIsExploding);
-        idb_cur.continue(encoded as any);
+        const encoded = this.storeSchema.codec.encodeTrait(trait, this._sourceIsExploding);
+        idbCur.continue(encoded as any);
       } else {
-        idb_cur.advance(options?.size ?? 1);
+        idbCur.advance(options?.size ?? 1);
       }
 
       return new Promise((resolve, reject) => {
         req.onsuccess = _event => {
-          this._idb_cur = req.result;
+          this._idbCur = req.result;
           resolve();
         };
         req.onerror = _event => reject(mapError(req.error));
@@ -227,54 +227,54 @@ export class Cursor<Item, Trait> {
   }
 
   get _sourceIsExploding(): boolean {
-    return this._idb_source instanceof IDBIndex && this._idb_source.multiEntry;
+    return this._idbSource instanceof IDBIndex && this._idbSource.multiEntry;
   }
 
   currentTrait(): Trait {
-    const idb_cur = this._active_idb_cur();
-    const encoded = idb_cur.key;
-    return this.store_schema.codec.decodeTrait(encoded, this._sourceIsExploding) as Trait;
+    const idbCur = this._activeIdbCur();
+    const encoded = idbCur.key;
+    return this.storeSchema.codec.decodeTrait(encoded, this._sourceIsExploding) as Trait;
   }
 
   async delete(): Promise<void> {
     // Delete the current object
-    const idb_cur = this._active_idb_cur();
+    const idbCur = this._activeIdbCur();
     return new Promise((resolve, reject) => {
-      const req = idb_cur.delete();
+      const req = idbCur.delete();
       req.onsuccess = _event => resolve();
       req.onerror = _event => reject(mapError(req.error));
     });
   }
 
-  async _replaceRow(new_row: Row): Promise<void> {
-    const idb_cur = this._active_idb_cur();
+  async _replaceRow(newRow: Row): Promise<void> {
+    const idbCur = this._activeIdbCur();
     return new Promise((resolve, reject) => {
-      const req = idb_cur.update(new_row);
+      const req = idbCur.update(newRow);
       req.onsuccess = _event => resolve();
       req.onerror = _event => reject(mapError(req.error));
     });
   }
 
-  async replace(new_item: Item): Promise<void> {
+  async replace(newItem: Item): Promise<void> {
 
     // Replace the current object with the given object
-    const idb_cur = this._active_idb_cur();
-    const row: any = idb_cur.value;
+    const idbCur = this._activeIdbCur();
+    const row: any = idbCur.value;
 
     // update payload
-    row.payload = this.store_schema.codec.encodeItem(new_item);
+    row.payload = this.storeSchema.codec.encodeItem(newItem);
 
     // update traits
-    for (const index_name of this.store_schema.index_names) {
-      const index_schema = this.store_schema.index(index_name);
-      const trait = index_schema.calc_trait(new_item);
-      const encoded = this.store_schema.codec.encodeTrait(trait, index_schema.explode);
-      const trait_name = index_name;
-      row.traits[trait_name] = encoded;
+    for (const indexName of this.storeSchema.indexNames) {
+      const indexSchema = this.storeSchema.index(indexName);
+      const trait = indexSchema.calcTrait(newItem);
+      const encoded = this.storeSchema.codec.encodeTrait(trait, indexSchema.explode);
+      const traitName = indexName;
+      row.traits[traitName] = encoded;
     }
 
     return new Promise((resolve, reject) => {
-      const req = idb_cur.update(row);
+      const req = idbCur.update(row);
       req.onsuccess = _event => resolve();
       req.onerror = _event => reject(mapError(req.error));
     });
@@ -299,42 +299,42 @@ export class Selection<Item, Trait> {
   readonly source: Store<Item> | Index<Item, Trait>;
   readonly query: Query<Trait>;
 
-  readonly store_schema_k: AsyncCont<StoreSchema<Item>>;
+  readonly storeSchemaCont: AsyncCont<StoreSchema<Item>>;
 
-  cursor_k: AsyncCont<Cursor<Item, Trait>>;
+  cursorCont: AsyncCont<Cursor<Item, Trait>>;
 
   constructor(args: {
     source: Store<Item> | Index<Item, Trait>;
     query: Query<Trait>;
-    store_schema_k: AsyncCont<StoreSchema<Item>>;
+    storeSchemaCont: AsyncCont<StoreSchema<Item>>;
   }) {
     this.source = args.source;
     this.query = args.query;
-    this.store_schema_k = args.store_schema_k;
+    this.storeSchemaCont = args.storeSchemaCont;
 
-    const idb_source_k =
+    const idbSourceCont =
       this.source instanceof Store
-        ? (this.source as any)._idb_store_k
-        : (this.source as any)._idb_index_k;
+        ? (this.source as any)._idbStoreCont
+        : (this.source as any)._idbIndexCont;
 
-    this.cursor_k = idb_source_k.map(async (idb_source: IDBObjectStore | IDBIndex) => {
-      return await this.store_schema_k.run(store_schema => {
+    this.cursorCont = idbSourceCont.map(async (idbSource: IDBObjectStore | IDBIndex) => {
+      return await this.storeSchemaCont.run(storeSchema => {
         // TODO: use transactionmode
         return new Cursor<Item, Trait>({
-          idb_source: idb_source,
+          idbSource: idbSource,
           query: this.query,
-          store_schema: store_schema,
+          storeSchema: storeSchema,
         });
       });
     });
   }
 
   async _replaceRows(mapper: (row: Row) => Row): Promise<void> {
-    await this.cursor_k.run(/*'rw', */async cursor => {
+    await this.cursorCont.run(/*'rw', */async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
-        const old_row = cursor._currentRow();
-        const new_row = mapper(old_row);
-        await cursor._replaceRow(new_row);
+        const oldRow = cursor._currentRow();
+        const newRow = mapper(oldRow);
+        await cursor._replaceRow(newRow);
       }
     });
   }
@@ -347,7 +347,7 @@ export class Selection<Item, Trait> {
   filter(...predicates: Array<(item: Item) => boolean>): this {
     const bigPred = (item: Item): boolean => predicates.every(pred => pred(item));
 
-    this.cursor_k = this.cursor_k.map(cursor => {
+    this.cursorCont = this.cursorCont.map(cursor => {
       const filtered = Object.create(cursor);
 
       // step until predicate is satisfied
@@ -395,7 +395,7 @@ export class Selection<Item, Trait> {
    * @returns this
    */
   drop(count: number): this {
-    this.cursor_k = this.cursor_k.map(cursor => {
+    this.cursorCont = this.cursorCont.map(cursor => {
       const modified = Object.create(cursor);
       modified.init = async function() {
         await cursor.init.call(this);
@@ -413,7 +413,7 @@ export class Selection<Item, Trait> {
    * @return this
    */
   limit(length: number): this {
-    this.cursor_k = this.cursor_k.map(cursor => {
+    this.cursorCont = this.cursorCont.map(cursor => {
       const limited = Object.create(cursor);
       let passed = 0;
 
@@ -440,7 +440,7 @@ export class Selection<Item, Trait> {
    * Test if the selection is empty or not.
    */
   async isEmpty(): Promise<boolean> {
-    return await this.cursor_k.run(/*'r', */async cursor => {
+    return await this.cursorCont.run(/*'r', */async cursor => {
       await cursor.init();
       return cursor.exhausted;
     });
@@ -452,11 +452,11 @@ export class Selection<Item, Trait> {
    * @param mapper Given an existing item, this function should return the new item.
    */
   async replace(mapper: (item: Item) => Item): Promise<void> {
-    await this.cursor_k.run(/*'rw', */async cursor => {
+    await this.cursorCont.run(/*'rw', */async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
-        const old_item = cursor.currentItem();
-        const new_item = mapper(old_item);
-        await cursor.replace(new_item);
+        const oldItem = cursor.currentItem();
+        const newItem = mapper(oldItem);
+        await cursor.replace(newItem);
       }
     });
   }
@@ -467,7 +467,7 @@ export class Selection<Item, Trait> {
    * @param updates The delta
    */
   async update(delta: Partial<Item>): Promise<void> {
-    await this.cursor_k.run(/*'rw', */async cursor => {
+    await this.cursorCont.run(/*'rw', */async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
         await cursor.update(delta);
       }
@@ -478,7 +478,7 @@ export class Selection<Item, Trait> {
    * Delete the selected items from the database.
    */
   async delete(): Promise<void> {
-    await this.cursor_k.run(/*'rw', */async cursor => {
+    await this.cursorCont.run(/*'rw', */async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
         await cursor.delete();
       }
@@ -489,7 +489,7 @@ export class Selection<Item, Trait> {
    * @return The number of selected items.
    */
   async count(): Promise<number> {
-    return await this.cursor_k.run(/*'r', */async cursor => {
+    return await this.cursorCont.run(/*'r', */async cursor => {
       let result = 0;
       for (await cursor.init(); cursor.active; await cursor.step()) {
         result++;
@@ -504,7 +504,7 @@ export class Selection<Item, Trait> {
    * @returns The items
    */
   async array(): Promise<Array<Item>> {
-    return await this.cursor_k.run(/*'r', */async cursor => {
+    return await this.cursorCont.run(/*'r', */async cursor => {
       const result: Array<Item> = [];
       for (await cursor.init(); cursor.active; await cursor.step()) {
         result.push(cursor.currentItem());
@@ -524,35 +524,35 @@ export class Selection<Item, Trait> {
     // - Mid-life crisis
     // Proceed at your own risk!
 
-    let resolve_cursor: (cursor: Cursor<Item, Trait>) => void;
-    const cursor_p: Promise<Cursor<Item, Trait>>
-      = new Promise(resolve => resolve_cursor = resolve);
+    let resolveCursor: (cursor: Cursor<Item, Trait>) => void;
+    const cursorPromise: Promise<Cursor<Item, Trait>>
+      = new Promise(resolve => resolveCursor = resolve);
 
-    let resolve_iterator_done: (iterator_done: () => void) => void;
-    const iterator_done_p: Promise<() => void>
-      = new Promise(resolve => resolve_iterator_done = resolve);
+    let resolveIteratorDone: (iteratorDone: () => void) => void;
+    const iteratorDonePromise: Promise<() => void>
+      = new Promise(resolve => resolveIteratorDone = resolve);
 
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    this.cursor_k.run(/*'r', */cursor => {
-      resolve_cursor(cursor);
+    this.cursorCont.run(/*'r', */cursor => {
+      resolveCursor(cursor);
       return new Promise(resolve => {
-        const iterator_done = resolve;
-        resolve_iterator_done(iterator_done);
+        const iteratorDone = resolve;
+        resolveIteratorDone(iteratorDone);
       });
     });
 
     return {
       async next(): Promise<IteratorResult<Item>> {
 
-        const iterator_done = await iterator_done_p;
-        const cursor = await cursor_p;
+        const iteratorDone = await iteratorDonePromise;
+        const cursor = await cursorPromise;
 
         if (!cursor.initialized)
           await cursor.init();
 
         if (cursor.exhausted) {
           const result: IteratorResult<Item> = { done: true, value: undefined };
-          iterator_done();
+          iteratorDone();
           return result;
         } else {
           const result: IteratorResult<Item> = { done: false, value: cursor.currentItem() };
@@ -577,14 +577,14 @@ export class SelectionUnique<Item, Trait> {
 
   constructor(args: {
     source: Index<Item, Trait>;
-    selected_trait: Trait;
-    store_schema_k: AsyncCont<StoreSchema<Item>>;
+    selectedTrait: Trait;
+    storeSchemaCont: AsyncCont<StoreSchema<Item>>;
   }) {
     this.source = args.source;
     this.selection = new Selection({
       source: args.source,
-      query: { equals: args.selected_trait },
-      store_schema_k: args.store_schema_k,
+      query: { equals: args.selectedTrait },
+      storeSchemaCont: args.storeSchemaCont,
     });
   }
 
@@ -600,7 +600,7 @@ export class SelectionUnique<Item, Trait> {
    *
    * @param mapper A function that accepts the old item and returns the new item
    */
-  async replace(mapper: (old_item: Item) => Item): Promise<void> {
+  async replace(mapper: (oldItem: Item) => Item): Promise<void> {
     await this._ensureSourceUnique();
     await this.selection.replace(mapper);
   }
