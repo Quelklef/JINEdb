@@ -3,8 +3,8 @@ import { Dict } from './util';
 
 /** Superclass for all jine-related errors */
 export class JineError extends Error {
-  constructor(message = '') {
-    super(message ? '[Jine] ' + message : '');
+  constructor(message?: string) {
+    super(message === undefined ? '' : '[Jine] ' + message);
   }
 }
 
@@ -28,40 +28,47 @@ export class JineUnknownError extends JineError { }
 export class JineVersionError extends JineError { }
 
 /** Thrown when you try and access an store that doesn't exist */
-export class JineNoSuchStoreError extends JineError { }
+export class JineNoSuchStoreError extends JineError {
+  constructor(args: { storeName: string } | { oneOfStoreNames: Array<string> }) {
+    if ('storeName' in args)
+      super(`I was asked to operate on an store called '${args.storeName}', but I could not find one.`);
+    else
+      super(`I was asked to operate on the stores '${args.oneOfStoreNames.join(', ')}', but I was unable to find at least one.`);
+  }
+}
 
 /** Thrown when you try and access an index that doesn't exist */
-export class JineNoSuchIndexError extends JineError { }
-
+export class JineNoSuchIndexError extends JineError {
+  constructor(args: { indexName: string }) {
+    super(`I was asked to operate on an index called '${args.indexName}', but I could not find one.`);
+  }
+}
 
 
 // === JINE-ONLY ERRORS === //
 
-/** Thrown when there is an ecoding or decoding issue */
-export class JineCodecError extends JineError { }
-
 /** Thrown when unable to encode a value to put it into the database */
-export class JineEncodingError extends JineCodecError { }
+export class JineEncodingError extends JineError { }
 
 /** Thrown when unable to decode a value to take it out of the database */
-export class JineDecodingError extends JineCodecError { }
+export class JineDecodingError extends JineError { }
 
 /** Thrown when an attempt to open a database is blocked. */
 export class JineBlockedError extends JineError { }
 
 /** Thrown when attemping to do an operation on a transaction of the wrong mode */
 export class JineTransactionModeError extends JineError {
-  constructor(operationName: string, expectedMode: string, actualMode: string) {
-    super(`Cannot call ${operationName} on a '${actualMode}' transaction, only a '${expectedMode}' one.`);
+  constructor(args: { operationName: string; expectedMode: string; actualMode: string }) {
+    super(`Cannot call ${args.operationName} on a '${args.actualMode}' transaction, only a '${args.expectedMode}' one.`);
   }
 }
 
 /** Jine has a bug! */
 export class JineInternalError extends JineError {
-  constructor(msg = "") {
+  constructor(issue?: string) {
     super(
       `Encountered an internal error. This likely isn't your fault! Would you mind submitting a bug report?`
-      + msg ? `Error message: ${msg}` : ''
+      + issue === undefined ? '' : `Error message: ${issue}`
     );
   }
 }

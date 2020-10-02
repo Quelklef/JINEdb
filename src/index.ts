@@ -5,7 +5,7 @@ import { AsyncCont } from './cont';
 import { IndexSchema } from './schema';
 import { Transaction } from './transaction';
 import { Query, Selection, SelectionUnique } from './query';
-import { JineError, JineTransactionModeError, JineNoSuchIndexError, mapError } from './errors';
+import { JineError, JineNoSuchIndexError, mapError } from './errors';
 
 
 /**
@@ -103,7 +103,7 @@ export class Index<Item, Trait> {
         return idbStore.index(indexName);
       } catch (err) {
         if (err.name === 'NotFoundError')
-          throw new JineNoSuchIndexError(`No index named '${indexName}' (no idb store found).`);
+          throw new JineNoSuchIndexError({ indexName });
         throw mapError(err);
       }
     });
@@ -144,7 +144,7 @@ export class Index<Item, Trait> {
    * @param item The item
    */
   async updateOrAdd(item: Item): Promise<void> {
-    await AsyncCont.tuple(this._parentTxCont, this._schemaCont).run(async ([tx, schema]) => {
+    await this._schemaCont.run(async schema => {
       if (!schema.unique)
         throw new JineError(`Cannot call Index#updateOrAdd on non-unique index '${schema.name}'.`);
 

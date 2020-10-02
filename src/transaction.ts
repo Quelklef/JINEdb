@@ -180,7 +180,7 @@ export class Transaction<$$ = unknown> {
   addStore<Item>(storeName: string): Store<Item> {
 
     if (this.mode !== 'vc')
-      throw new JineTransactionModeError('Transaction#addStore', 'vc', this.mode);
+      throw new JineTransactionModeError({ operationName: 'Transaction#addStore', expectedMode: 'vc', actualMode: this.mode });
 
     this._idbDb.createObjectStore(storeName, { keyPath: 'id', autoIncrement: true });
 
@@ -212,7 +212,7 @@ export class Transaction<$$ = unknown> {
   removeStore(name: string): void {
 
     if (this.mode !== 'vc')
-      throw new JineTransactionModeError('Transaction#removeStore', 'vc', this.mode);
+      throw new JineTransactionModeError({ operationName: 'Transaction#removeStore', expectedMode: 'vc', actualMode: this.mode });
 
     this._idbDb.deleteObjectStore(name);
     this._schema.removeStore(name);

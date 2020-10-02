@@ -65,7 +65,7 @@ export class Connection<$$ = unknown> {
         idbTx = idbConn.transaction(storeNames, idbTxMode);
       } catch (err) {
         if (err.name === 'NotFoundError')
-          throw new JineNoSuchStoreError(`No store(s) named ${storeNames.join(', ')} found!`);
+          throw new JineNoSuchStoreError({ oneOfStoreNames: storeNames });
         throw mapError(err);
       }
 

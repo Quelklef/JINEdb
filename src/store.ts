@@ -57,7 +57,7 @@ export class Store<Item> {
           return idbTx.objectStore(storeName);
         } catch (err) {
           if (err.name === 'NotFoundError')
-            throw new JineNoSuchStoreError(`No store named '${storeName}' (no idb store found).`);
+            throw new JineNoSuchStoreError({ storeName });
           throw mapError(err);
         }
       });
@@ -199,7 +199,7 @@ export class Store<Item> {
 
       const txMode = prettifyTransactionMode(idbStore.transaction.mode);
       if (txMode !== 'vc')
-        throw new JineTransactionModeError('Store#addIndex', 'vc', txMode);
+        throw new JineTransactionModeError({ operationName: 'Store#addIndex', expectedMode: 'vc', actualMode: txMode });
 
       if (typeof traitPathOrGetter === 'string') {
         const traitPath = traitPathOrGetter;
@@ -262,7 +262,7 @@ export class Store<Item> {
 
       const txMode = prettifyTransactionMode(idbStore.transaction.mode);
       if (txMode !== 'vc')
-        throw new JineTransactionModeError('Store#removeIndex', 'vc', txMode);
+        throw new JineTransactionModeError({ operationName: 'Store#removeIndex', expectedMode: 'vc', actualMode: txMode });
 
       // remove idb index
       idbStore.deleteIndex(name);

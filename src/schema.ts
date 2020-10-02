@@ -75,7 +75,7 @@ export class StoreSchema<Item> {
   index(indexName: string): IndexSchema<Item, unknown> {
     const got = this.indexes[indexName];
     if (got === undefined)
-      throw new JineNoSuchIndexError(`No index named '${indexName}' (schema not found).`);
+      throw new JineNoSuchIndexError({ indexName });
     return got;
   }
 
@@ -110,7 +110,7 @@ export class DatabaseSchema {
   store(storeName: string): StoreSchema<unknown> {
     const got = this.stores[storeName];
     if (got === undefined)
-      throw new JineNoSuchStoreError(`No store named '${storeName}' (schema not found).`);
+      throw new JineNoSuchStoreError({ storeName });
     return got;
   }
 
