@@ -67,7 +67,7 @@ export class Connection<$$ = {}> {
    * @returns A new transaction
    */
   newTransaction(stores: Array<string | Store<any>>, txMode: TransactionMode): AsyncCont<Transaction<$$>> {
-    return this._idbConnCont.and(this._schemaCont).map(async ([idbConn, schema]) => {
+    return AsyncCont.tuple(this._idbConnCont, this._schemaCont).map(async ([idbConn, schema]) => {
       const storeNames = await Promise.all(stores.map(s => typeof s === 'string' ? s : s.name));
       const idbTxMode = uglifyTransactionMode(txMode)
       return new Transaction<$$>({

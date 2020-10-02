@@ -75,7 +75,7 @@ export class Store<Item> {
   }
 
   async _mapExistingRows(mapper: (row: Row) => Row): Promise<void> {
-    return await this._idbStoreCont.and(this._schemaCont).run(async ([idbStore, schema]) => {
+    return await AsyncCont.tuple(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
       const cursor = new Cursor({
         idbSource: idbStore,
         query: 'everything',
@@ -91,7 +91,7 @@ export class Store<Item> {
    * Add an item to the store.
    */
   async add(item: Item): Promise<void> {
-    return this._idbStoreCont.and(this._schemaCont).run(async ([idbStore, schema]) => {
+    return AsyncCont.tuple(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
       return new Promise((resolve, reject) => {
 
         const traits: Dict<unknown> = {};
@@ -150,7 +150,7 @@ export class Store<Item> {
    * @returns An array with all items in the store.
    */
   async array(): Promise<Array<Item>> {
-    return this._idbStoreCont.and(this._schemaCont).run(async ([idbStore, schema]) => {
+    return AsyncCont.tuple(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
       return new Promise((resolve, reject) => {
         const req = idbStore.getAll();
         req.onsuccess = (event) => {
@@ -192,7 +192,7 @@ export class Store<Item> {
     options?: { unique?: boolean; explode?: boolean },
   ): Promise<Index<Item, Trait>> {
 
-    return await this._idbStoreCont.and(this._schemaCont).run(async ([idbStore, schema]) => {
+    return await AsyncCont.tuple(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
 
       if (typeof traitPathOrGetter === 'string') {
         const traitPath = traitPathOrGetter;
@@ -251,13 +251,14 @@ export class Store<Item> {
    */
   async removeIndex(name: string): Promise<void> {
 
-    return await this._idbStoreCont.and(this._schemaCont).run(async ([idbStore, schema]) => {
+    return await AsyncCont.tuple(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
 
       // remove idb index
       idbStore.deleteIndex(name);
 
       // update existing rows if needed
-      if (schema.index(name).kind === 'derived') {
+      const indexSchema = schema.index(name);
+      if (indexSchema.kind === 'derived') {
         await this.all()._replaceRows((row: Row) => {
           delete row.traits[name];
           return row;

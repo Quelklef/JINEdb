@@ -91,14 +91,23 @@ export class AsyncCont<T> {
       return new AsyncCont(k => this.nnVal(x => mapAwaitable(mapAwaitable(x, f), k)));
     }
 
-    and<O>(other: AsyncCont<O>): AsyncCont<[T, O]> {
-      return new AsyncCont(async k => {
-        return await this.run(async x => {
-          return await other.run(async y => {
-            return await k([x, y]);
-          });
-        });
-      });
+    /*-
+     * Construct a product continuation
+     *
+     * The code
+     *   AsyncCont.tuple(aCont, bCont, cCont).run( ([a, b, c]) => { ... } )
+     * is equivalent to
+     *   aCont.run(a => bCont.run(b => cCont.run(c => { ... } )))
+     */
+    static tuple<Ts extends Array<AsyncCont<unknown>>>(...conts: Ts):
+      AsyncCont<{ [Index in keyof Ts]: Ts[Index] extends AsyncCont<infer X> ? X : never }>
+    {
+      if (conts.length === 0) {
+        return new AsyncCont(k => k([] as any));
+      } else {
+        const [headCont, ...restConts] = conts;
+        return headCont.map(async headVal => await AsyncCont.tuple(...restConts).run(restVals => [headVal, ...restVals])) as any;
+      }
     }
 
 }
