@@ -3,7 +3,7 @@ import { clone } from 'true-clone';
 
 import { Dict } from './util';
 import { Store } from './store';
-import { AsyncCont } from './cont';
+import { PACont } from './cont';
 import { JineTransactionModeError } from './errors';
 import { DatabaseSchema, StoreSchema } from './schema';
 
@@ -108,9 +108,9 @@ export class Transaction<$$ = unknown> {
         if (typeof prop === 'string') {
           const storeName = prop;
           const store = new Store({
-            txCont: AsyncCont.fromValue(this),
+            txCont: PACont.fromValue(this),
             // vv Use a producer to keep things lazy. Defers errors to the invokation code.
-            schemaCont: AsyncCont.fromProducer(() => this._schema.store(storeName)),
+            schemaCont: PACont.fromProducer(() => this._schema.store(storeName)),
           });
           return store;
         }
@@ -191,8 +191,8 @@ export class Transaction<$$ = unknown> {
     });
 
     const store = new Store<Item>({
-      txCont: AsyncCont.fromValue(this),
-      schemaCont: AsyncCont.fromValue(storeSchema),
+      txCont: PACont.fromValue(this),
+      schemaCont: PACont.fromValue(storeSchema),
     });
 
     this._schema.addStore(storeName, storeSchema);

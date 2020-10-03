@@ -1,7 +1,7 @@
 
 import { Row } from './row';
 import { Index } from './index';
-import { AsyncCont } from './cont';
+import { PACont } from './cont';
 import { Dict, Awaitable } from './util';
 import { Selection, Cursor } from './query';
 import { StoreSchema, IndexSchema } from './schema';
@@ -37,13 +37,13 @@ export class Store<Item> {
     return this._schemaCont.run(schema => schema.name);
   }
 
-  _parentTxCont: AsyncCont<Transaction>;
-  _idbStoreCont: AsyncCont<IDBObjectStore>;
-  _schemaCont: AsyncCont<StoreSchema<Item>>;
+  _parentTxCont: PACont<Transaction>;
+  _idbStoreCont: PACont<IDBObjectStore>;
+  _schemaCont: PACont<StoreSchema<Item>>;
 
   constructor(args: {
-    txCont: AsyncCont<Transaction>;
-    schemaCont: AsyncCont<StoreSchema<Item>>;
+    txCont: PACont<Transaction>;
+    schemaCont: PACont<StoreSchema<Item>>;
   }) {
     this._parentTxCont = args.txCont;
     this._schemaCont = args.schemaCont;
@@ -78,7 +78,7 @@ export class Store<Item> {
   }
 
   async _mapExistingRows(mapper: (row: Row) => Row): Promise<void> {
-    return await AsyncCont.tuple(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
+    return await PACont.pair(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
       const cursor = new Cursor({
         idbSource: idbStore,
         query: 'everything',
@@ -94,7 +94,7 @@ export class Store<Item> {
    * Add an item to the store.
    */
   async add(item: Item): Promise<void> {
-    return AsyncCont.tuple(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
+    return PACont.pair(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
       return new Promise((resolve, reject) => {
 
         const traits: Dict<unknown> = {};
@@ -153,7 +153,7 @@ export class Store<Item> {
    * @returns An array with all items in the store.
    */
   async array(): Promise<Array<Item>> {
-    return AsyncCont.tuple(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
+    return PACont.pair(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
       return new Promise((resolve, reject) => {
         const req = idbStore.getAll();
         req.onsuccess = (event) => {
@@ -195,7 +195,7 @@ export class Store<Item> {
     options?: { unique?: boolean; explode?: boolean },
   ): Promise<Index<Item, Trait>> {
 
-    return await AsyncCont.tuple(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
+    return await PACont.pair(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
 
       const txMode = prettifyTransactionMode(idbStore.transaction.mode);
       if (txMode !== 'vc')
@@ -238,7 +238,7 @@ export class Store<Item> {
       const index = new Index<Item, Trait>({
         parentStore: this,
         parentTxCont: this._parentTxCont,
-        schemaCont: AsyncCont.fromValue(indexSchema),
+        schemaCont: PACont.fromValue(indexSchema),
       });
 
       schema.addIndex(indexName, indexSchema);
@@ -258,7 +258,7 @@ export class Store<Item> {
    */
   async removeIndex(name: string): Promise<void> {
 
-    return await AsyncCont.tuple(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
+    return await PACont.pair(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
 
       const txMode = prettifyTransactionMode(idbStore.transaction.mode);
       if (txMode !== 'vc')

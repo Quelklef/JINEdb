@@ -1,6 +1,6 @@
 
 import { Store } from './store';
-import { AsyncCont } from './cont';
+import { PACont } from './cont';
 import { Awaitable } from './util';
 import { DatabaseSchema } from './schema';
 import { JineNoSuchStoreError, mapError } from './errors';
@@ -24,12 +24,12 @@ export class Connection<$$ = unknown> {
    */
   $: $$;
 
-  _idbConnCont: AsyncCont<IDBDatabase>;
-  _schemaCont: AsyncCont<DatabaseSchema>;
+  _idbConnCont: PACont<IDBDatabase>;
+  _schemaCont: PACont<DatabaseSchema>;
 
   constructor(args: {
-    idbConnCont: AsyncCont<IDBDatabase>;
-    schemaCont: AsyncCont<DatabaseSchema>;
+    idbConnCont: PACont<IDBDatabase>;
+    schemaCont: PACont<DatabaseSchema>;
   }) {
     this._idbConnCont = args.idbConnCont;
     this._schemaCont = args.schemaCont;
@@ -55,8 +55,8 @@ export class Connection<$$ = unknown> {
    * @param mode The transaction mode.
    * @returns A new transaction
    */
-  newTransaction(stores: Array<string | Store<any>>, txMode: TransactionMode): AsyncCont<Transaction<$$>> {
-    return AsyncCont.tuple(this._idbConnCont, this._schemaCont).map(async ([idbConn, schema]) => {
+  newTransaction(stores: Array<string | Store<any>>, txMode: TransactionMode): PACont<Transaction<$$>> {
+    return PACont.pair(this._idbConnCont, this._schemaCont).map(async ([idbConn, schema]) => {
       const storeNames = await Promise.all(stores.map(s => typeof s === 'string' ? s : s.name));
       const idbTxMode = uglifyTransactionMode(txMode)
 

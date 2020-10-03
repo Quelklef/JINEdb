@@ -1,6 +1,6 @@
 
 import { Store } from './store';
-import { AsyncCont } from './cont';
+import { PACont } from './cont';
 import { Connection } from './connection';
 import { DatabaseSchema } from './schema';
 import { Codec, UserCodec } from './codec';
@@ -230,7 +230,7 @@ export class Database<$$> {
         if (typeof prop === 'string') {
           const storeName = prop;
 
-          const idbConnCont = AsyncCont.fromFunc<IDBDatabase>(async callback => {
+          const idbConnCont = PACont.fromFunc<IDBDatabase>(async callback => {
             const idbConn = await this._newIdbConn();
             const result = await callback(idbConn);
             idbConn.close();
@@ -238,7 +238,7 @@ export class Database<$$> {
           });
           const conn = new Connection({
             idbConnCont: idbConnCont,
-            schemaCont: AsyncCont.fromValue(this._schema),
+            schemaCont: PACont.fromValue(this._schema),
           });
           return (conn.$ as any)[storeName];
         }
@@ -268,8 +268,8 @@ export class Database<$$> {
    */
   async newConnection(): Promise<Connection<$$>> {
     return new Connection<$$>({
-      idbConnCont: AsyncCont.fromValue(await this._newIdbConn()),
-      schemaCont: AsyncCont.fromValue(await this._schema),
+      idbConnCont: PACont.fromValue(await this._newIdbConn()),
+      schemaCont: PACont.fromValue(await this._schema),
     });
   }
 

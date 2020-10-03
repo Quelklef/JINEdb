@@ -1,7 +1,7 @@
 
 import { Store } from './store';
 import { Awaitable } from './util';
-import { AsyncCont } from './cont';
+import { PACont } from './cont';
 import { IndexSchema } from './schema';
 import { Transaction } from './transaction';
 import { Query, Selection, SelectionUnique } from './query';
@@ -83,21 +83,21 @@ export class Index<Item, Trait> {
   }
 
 
-  _parentTxCont: AsyncCont<Transaction>;
-  _idbIndexCont: AsyncCont<IDBIndex>;
-  _schemaCont: AsyncCont<IndexSchema<Item, Trait>>;
+  _parentTxCont: PACont<Transaction>;
+  _idbIndexCont: PACont<IDBIndex>;
+  _schemaCont: PACont<IndexSchema<Item, Trait>>;
   _parentStore: Store<Item>;
 
   constructor(args: {
     parentStore: Store<Item>;
-    parentTxCont: AsyncCont<Transaction>;
-    schemaCont: AsyncCont<IndexSchema<Item, Trait>>;
+    parentTxCont: PACont<Transaction>;
+    schemaCont: PACont<IndexSchema<Item, Trait>>;
   }) {
     this._parentStore = args.parentStore;
     this._parentTxCont = args.parentTxCont;
     this._schemaCont = args.schemaCont;
 
-    this._idbIndexCont = AsyncCont.tuple(this._parentStore._idbStoreCont, this._schemaCont).map(([idbStore, schema]) => {
+    this._idbIndexCont = PACont.pair(this._parentStore._idbStoreCont, this._schemaCont).map(([idbStore, schema]) => {
       const indexName = schema.name;
       try {
         return idbStore.index(indexName);

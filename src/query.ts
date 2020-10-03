@@ -1,7 +1,7 @@
 
 import { Row } from './row';
 import { Codec } from './codec';
-import { AsyncCont } from './cont';
+import { PACont } from './cont';
 import { StoreSchema } from './schema';
 import { JineError, mapError } from './errors';
 import { some, getPropertyDescriptor, Dict } from './util';
@@ -296,21 +296,23 @@ export class Selection<Item, Trait> {
 
   readonly query: Query<Trait>;
 
-  readonly idbSourceCont: AsyncCont<IDBObjectStore> | AsyncCont<IDBIndex>;
-  readonly storeSchemaCont: AsyncCont<StoreSchema<Item>>;
+  readonly idbSourceCont: PACont<IDBObjectStore> | PACont<IDBIndex>;
+  readonly storeSchemaCont: PACont<StoreSchema<Item>>;
 
-  cursorCont: AsyncCont<Cursor<Item, Trait>>;
+  cursorCont: PACont<Cursor<Item, Trait>>;
 
   constructor(args: {
     query: Query<Trait>;
-    idbSourceCont: AsyncCont<IDBObjectStore> | AsyncCont<IDBIndex>;
-    storeSchemaCont: AsyncCont<StoreSchema<Item>>;
+    idbSourceCont: PACont<IDBObjectStore> | PACont<IDBIndex>;
+    storeSchemaCont: PACont<StoreSchema<Item>>;
   }) {
     this.query = args.query;
     this.storeSchemaCont = args.storeSchemaCont;
     this.idbSourceCont = args.idbSourceCont;
 
-    this.cursorCont = AsyncCont.tuple(this.idbSourceCont, this.storeSchemaCont).map(async ([idbSource, storeSchema]) => {
+    this.cursorCont = PACont.pair<IDBObjectStore | IDBIndex, StoreSchema<Item>>(
+      this.idbSourceCont, this.storeSchemaCont
+    ).map(async ([idbSource, storeSchema]) => {
       // TODO: use transactionmode
       return new Cursor<Item, Trait>({
         idbSource: idbSource,
@@ -564,12 +566,12 @@ export class Selection<Item, Trait> {
 export class SelectionUnique<Item, Trait> {
 
   readonly selection: Selection<Item, Trait>;
-  readonly idbSourceCont: AsyncCont<IDBIndex>;
+  readonly idbSourceCont: PACont<IDBIndex>;
 
   constructor(args: {
     selectedTrait: Trait;
-    idbSourceCont: AsyncCont<IDBIndex>;
-    storeSchemaCont: AsyncCont<StoreSchema<Item>>;
+    idbSourceCont: PACont<IDBIndex>;
+    storeSchemaCont: PACont<StoreSchema<Item>>;
   }) {
     this.idbSourceCont = args.idbSourceCont.map(idbIndex => {
       if (!idbIndex.unique)
