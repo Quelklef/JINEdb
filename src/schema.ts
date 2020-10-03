@@ -1,6 +1,7 @@
 
+import { W, M } from 'wrongish';
+
 import { Dict } from './util';
-import { Codec } from './codec';
 import { JineError, JineNoSuchStoreError, JineNoSuchIndexError } from './errors';
 
 // Precisely, the schema contains the information that is controlled
@@ -31,19 +32,15 @@ export class IndexSchema<Item, Trait> {
     return this.traitPathOrGetter as ((item: Item) => Trait);
   }
 
-  codec: Codec;
-
   constructor(args: {
     name: string;
     unique: boolean;
     explode: boolean;
     traitPathOrGetter: string | ((item: Item) => Trait);
-    codec: Codec;
   }) {
     this.name = args.name;
     this.unique = args.unique;
     this.explode = args.explode;
-    this.codec = args.codec;
     this.traitPathOrGetter = args.traitPathOrGetter;
   }
 
@@ -60,16 +57,12 @@ export class StoreSchema<Item> {
   name: string;
   private indexes: Dict<IndexSchema<Item, unknown>>;
 
-  codec: Codec;
-
   constructor(args: {
     name: string;
     indexes: Dict<IndexSchema<Item, unknown>>;
-    codec: Codec;
   }) {
     this.name = args.name;
     this.indexes = args.indexes;
-    this.codec = args.codec;
   }
 
   index(indexName: string): IndexSchema<Item, unknown> {
@@ -79,8 +72,8 @@ export class StoreSchema<Item> {
     return got;
   }
 
-  get indexNames(): Array<string> {
-    return Object.keys(this.indexes);
+  get indexNames(): Set<string> {
+    return new Set(Object.keys(this.indexes));
   }
 
   addIndex(indexName: string, indexSchema: IndexSchema<Item, unknown>): void {
@@ -95,16 +88,13 @@ export class StoreSchema<Item> {
 export class DatabaseSchema {
   name: string;
   private stores: Dict<StoreSchema<unknown>>;
-  codec: Codec;
 
   constructor(args: {
     name: string;
     stores: Dict<StoreSchema<unknown>>;
-    codec: Codec;
   }) {
     this.name = args.name;
     this.stores = args.stores;
-    this.codec = args.codec;
   }
 
   store(storeName: string): StoreSchema<unknown> {
@@ -114,8 +104,12 @@ export class DatabaseSchema {
     return got;
   }
 
-  get storeNames(): Array<string> {
-    return Object.keys(this.stores);
+  get storeNames(): Set<string> {
+    return new Set(Object.keys(this.stores));
+  }
+
+  get indexNames(): Set<[string, string]> {
+    return this.storeNames[W.flatMap](storeName => M.a(this.stores[storeName]).indexNames[W.map](indexName => [storeName, indexName]));
   }
 
   addStore<Item>(storeName: string, storeSchema: StoreSchema<Item>): void {
@@ -126,3 +120,4 @@ export class DatabaseSchema {
     delete this.stores[storeName];
   }
 }
+

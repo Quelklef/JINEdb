@@ -1,6 +1,7 @@
 
 import { Row } from './row';
 import { Index } from './index';
+import { Codec } from './codec';
 import { PACont } from './cont';
 import { Dict, Awaitable } from './util';
 import { Selection, Cursor } from './query';
@@ -40,13 +41,16 @@ export class Store<Item> {
   _parentTxCont: PACont<Transaction, TransactionMode>;
   _idbStoreCont: PACont<IDBObjectStore, TransactionMode>;
   _schemaCont: PACont<StoreSchema<Item>>;
+  _codec: Codec;
 
   constructor(args: {
     txCont: PACont<Transaction, TransactionMode>;
     schemaCont: PACont<StoreSchema<Item>>;
+    codec: Codec;
   }) {
     this._parentTxCont = args.txCont;
     this._schemaCont = args.schemaCont;
+    this._codec = args.codec;
 
     this._idbStoreCont = args.txCont.map(async tx => {
       return await this._schemaCont.run(schema => {
@@ -71,6 +75,7 @@ export class Store<Item> {
             parentStore: this,
             parentTxCont: this._parentTxCont,
             schemaCont: this._schemaCont.map(schema => schema.index(indexName) as IndexSchema<Item, any>),
+            codec: this._codec,
           });
         }
       }
@@ -83,6 +88,7 @@ export class Store<Item> {
         idbSource: idbStore,
         query: 'everything',
         storeSchema: schema,
+        codec: this._codec,
       });
       for (await cursor.init(); cursor.active; await cursor.step()) {
         await cursor._replaceRow(mapper(cursor._currentRow()));
@@ -98,17 +104,21 @@ export class Store<Item> {
       return new Promise((resolve, reject) => {
 
         const traits: Dict<unknown> = {};
-        for (const indexName of schema.indexNames) {
-          const indexSchema = schema.index(indexName);
-          const trait = indexSchema.calcTrait(item);
-          const encoded = schema.codec.encodeTrait(trait, indexSchema.explode);
-          const traitName = indexName;
-          traits[traitName] = encoded;
+        // vv Calculate traits, but not during migrations, since migrations don't have access
+        //    to user-defined types. These values will be filled in after migrations are run.
+        if (idbStore.transaction.mode !== 'versionchange') {
+          for (const indexName of schema.indexNames) {
+            const indexSchema = schema.index(indexName);
+            const trait = indexSchema.calcTrait(item);
+            const encoded = this._codec.encodeTrait(trait, indexSchema.explode);
+            const traitName = indexName;
+            traits[traitName] = encoded;
+          }
         }
 
         // Don't include the id since it's autoincrement'd
         const row: Omit<Row, 'id'> = {
-          payload: schema.codec.encodeItem(item),
+          payload: this._codec.encodeItem(item),
           traits: traits,
         };
 
@@ -153,12 +163,12 @@ export class Store<Item> {
    * @returns An array with all items in the store.
    */
   async array(): Promise<Array<Item>> {
-    return PACont.pair(this._idbStoreCont, this._schemaCont).run('r', async ([idbStore, schema]) => {
+    return this._idbStoreCont.run('r', async idbStore => {
       return new Promise((resolve, reject) => {
         const req = idbStore.getAll();
         req.onsuccess = (event) => {
           const rows = (event.target as any).result as Array<Row>;
-          const items = rows.map(row => schema.codec.decodeItem(row.payload) as Item);
+          const items = rows.map(row => this._codec.decodeItem(row.payload) as Item);
           resolve(items);
         };
         req.onerror = _event => reject(mapError(req.error));
@@ -175,6 +185,7 @@ export class Store<Item> {
       query: 'everything',
       idbSourceCont: this._idbStoreCont,
       storeSchemaCont: this._schemaCont,
+      codec: this._codec,
     });
   }
 
@@ -218,24 +229,17 @@ export class Store<Item> {
         traitPathOrGetter: traitPathOrGetter,
         unique: unique,
         explode: explode,
-        codec: schema.codec,
       });
-
-      // update existing items if needed
-      if (indexSchema.kind === 'derived') {
-        const traitGetter = indexSchema.getter;
-        await this.all()._replaceRows((row: Row) => {
-          const item = schema.codec.decodeItem(row.payload) as Item;
-          row.traits[indexName] = schema.codec.encodeTrait(traitGetter(item), explode);
-          return row;
-        });
-      }
 
       const index = new Index<Item, Trait>({
         parentStore: this,
         parentTxCont: this._parentTxCont,
         schemaCont: PACont.fromValue(indexSchema),
+        codec: this._codec,
       });
+
+      // Note that we don't actually calculate the trait values.
+      // This is done after migrations are run.
 
       schema.addIndex(indexName, indexSchema);
 

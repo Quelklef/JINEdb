@@ -1,9 +1,10 @@
 
 import { Store } from './store';
+import { Codec } from './codec';
 import { PACont } from './cont';
 import { Awaitable } from './util';
 import { DatabaseSchema } from './schema';
-import { JineNoSuchStoreError, mapError } from './errors';
+import { JineError, JineNoSuchStoreError, mapError } from './errors';
 import { Transaction, TransactionMode, uglifyTransactionMode } from './transaction';
 
 /**
@@ -26,13 +27,16 @@ export class Connection<$$ = unknown> {
 
   _idbConnCont: PACont<IDBDatabase>;
   _schemaCont: PACont<DatabaseSchema>;
+  _codec: Codec;
 
   constructor(args: {
     idbConnCont: PACont<IDBDatabase>;
     schemaCont: PACont<DatabaseSchema>;
+    codec: Codec;
   }) {
     this._idbConnCont = args.idbConnCont;
     this._schemaCont = args.schemaCont;
+    this._codec = args.codec;
 
     this.$ = <$$> new Proxy({}, {
       get: (_target: {}, prop: string | number | symbol) => {
@@ -41,6 +45,7 @@ export class Connection<$$ = unknown> {
           const store = new Store({
             txCont: this.newTransactionCont([storeName]),
             schemaCont: this._schemaCont.map(schema => schema.store(storeName)),
+            codec: this._codec,
           });
           return store;
         }
@@ -48,16 +53,19 @@ export class Connection<$$ = unknown> {
     });
   }
 
-  newTransactionCont(stores: Array<string | Store<any>>): PACont<Transaction<$$>, TransactionMode> {
+  newTransactionCont(stores: Iterable<string | Store<any>>): PACont<Transaction<$$>, TransactionMode> {
     // this could probably be better implemented with a new combinator or something, but that's okay
     return PACont.fromFunc<Transaction<$$>, TransactionMode>(async (callback, txMode) => {
       const txCont = PACont.pair(this._idbConnCont, this._schemaCont).map(async ([idbConn, schema]) => {
-        const storeNames = await Promise.all(stores.map(s => typeof s === 'string' ? s : s.name));
+        const storeNames = new Set(await Promise.all([...stores].map(s => typeof s === 'string' ? s : s.name)));
         const idbTxMode = uglifyTransactionMode(txMode)
+
+        if (storeNames.size === 0)
+          throw new JineError(`Cannot start a transaction without specifying stores on which to transact! Sorry.`);
 
         let idbTx!: IDBTransaction;
         try {
-          idbTx = idbConn.transaction(storeNames, idbTxMode);
+          idbTx = idbConn.transaction([...storeNames], idbTxMode);
         } catch (err) {
           if (err.name === 'NotFoundError')
             throw new JineNoSuchStoreError({ oneOfStoreNames: storeNames });
@@ -69,8 +77,10 @@ export class Connection<$$ = unknown> {
           scope: storeNames,
           genuine: true,
           schema: schema,
+          codec: this._codec,
         });
       });
+
       return await txCont.run(callback);
     });
   }
@@ -84,7 +94,7 @@ export class Connection<$$ = unknown> {
    * @returns The result of the callback
    */
   async transact<R>(
-    stores: Array<string | Store<any>>,
+    stores: Iterable<string | Store<any>>,
     txMode: TransactionMode,
     callback: (tx: Transaction<$$>) => Promise<R>,
   ): Promise<R> {

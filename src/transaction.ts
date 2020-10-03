@@ -2,6 +2,7 @@
 import { clone } from 'true-clone';
 
 import { Dict } from './util';
+import { Codec } from './codec';
 import { Store } from './store';
 import { PACont } from './cont';
 import { JineTransactionModeError } from './errors';
@@ -91,18 +92,21 @@ export class Transaction<$$ = unknown> {
   _idbTx: IDBTransaction;
   _idbDb: IDBDatabase;
   _schema: DatabaseSchema;
+  _codec: Codec;
 
   constructor(args: {
     idbTx: IDBTransaction;
-    scope: Array<string>;
+    scope: Set<string>;
     schema: DatabaseSchema;
     genuine: boolean;
+    codec: Codec;
   }) {
 
     this.genuine = args.genuine;
 
     this._idbTx = args.idbTx;
     this._idbDb = this._idbTx.db;
+    this._codec = args.codec;
 
     // Clone schema so that, if a migration occurs, then
     // changes are sandboxed in case of e.g. .abort()
@@ -116,6 +120,7 @@ export class Transaction<$$ = unknown> {
             txCont: this._toCont(),
             // vv Use a producer to keep things lazy. Defers errors to the invokation code.
             schemaCont: PACont.fromProducer(() => this._schema.store(storeName)),
+            codec: this._codec,
           });
           return store;
         }
@@ -200,12 +205,12 @@ export class Transaction<$$ = unknown> {
     const storeSchema = new StoreSchema({
       name: storeName,
       indexes: { },
-      codec: this._schema.codec,
     });
 
     const store = new Store<Item>({
       txCont: this._toCont(),
       schemaCont: PACont.fromValue(storeSchema),
+      codec: this._codec,
     });
 
     this._schema.addStore(storeName, storeSchema);

@@ -28,8 +28,8 @@ export class JineVersionError extends JineError { }
 
 /** Thrown when you try and access an store that doesn't exist */
 export class JineNoSuchStoreError extends JineError {
-  constructor(args: { storeName: string } | { oneOfStoreNames: Array<string> }) {
-    const oneOfStoreNames = 'storeName' in args ? [args.storeName] : args.oneOfStoreNames;
+  constructor(args: { storeName: string } | { oneOfStoreNames: Iterable<string> }) {
+    const oneOfStoreNames = 'storeName' in args ? [args.storeName] : [...args.oneOfStoreNames];
     if (oneOfStoreNames.length === 1)
       super(`I was asked to operate on an store called '${oneOfStoreNames[0]}', but I could not find one.`);
     else
@@ -58,8 +58,11 @@ export class JineBlockedError extends JineError { }
 
 /** Thrown when attemping to do an operation on a transaction of the wrong mode */
 export class JineTransactionModeError extends JineError {
-  constructor(args: { operationName?: string; expectedMode: string; actualMode: string }) {
-    super(`I was trying to perform ${args.operationName ?? 'an operation'} on a transaction, but was unable to. The operation demands that the transaction be in '${args.expectedMode}' mode or higher, but it was only in '${args.actualMode}' mode.`);
+  constructor(arg: string | { operationName?: string; expectedMode: string; actualMode: string }) {
+    if (typeof arg === 'string')
+      super(arg);
+    else
+      super(`I was trying to perform ${arg.operationName ?? 'an operation'} on a transaction, but was unable to. The operation demands that the transaction be in '${arg.expectedMode}' mode or higher, but it was only in '${arg.actualMode}' mode.`);
   }
 }
 

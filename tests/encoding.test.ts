@@ -4,7 +4,7 @@ import 'fake-indexeddb/auto';
 import { Database, Store, Index, Connection } from '../src/jine';
 import { reset } from './shared';
 
-describe('core', () => {
+describe('encoding', () => {
 
   describe('without custom types', () => {
 
@@ -69,7 +69,7 @@ describe('core', () => {
   it('works with custom storable types', async () => {
 
     // eslint-disable-next-line @typescript-eslint/class-name-casing
-    class MyPair_v1 {
+    class MyPair {
       constructor(
         public left: any,
         public right: any,
@@ -85,25 +85,37 @@ describe('core', () => {
       ],
       types: [
         {
-          type: MyPair_v1,
+          type: MyPair,
           id: 'MyPair',
-          encode(pair: MyPair_v1): object {
+          encode(pair: MyPair): object {
             return { left: pair.left, right: pair.right };
           },
-          decode(pair: any): MyPair_v1 {
+          decode(pair: any): MyPair {
             const { left, right } = pair;
-            return new MyPair_v1(left, right);
+            return new MyPair(left, right);
           },
         }
       ]
     });
 
     await jine.connect(async (conn: any) => {
-      const pair = new MyPair_v1('left', 'right');
+      const pair = new MyPair('left', 'right');
       conn.$.pairs.add(pair);
       const got = await conn.$.pairs.array();
       expect(got).toEqual([pair]);
-      expect(got[0].constructor).toBe(MyPair_v1);
+      expect(got[0].constructor).toBe(MyPair);
+    });
+
+    // test the recursive case as well
+    await jine.connect(async (conn: any) => {
+      await conn.$.pairs.clear();
+      const pair = new MyPair(new MyPair('ll', 'lr'), new MyPair('rl', 'rr'));
+      conn.$.pairs.add(pair);
+      const got = await conn.$.pairs.array();
+      expect(got).toEqual([pair]);
+      expect(got[0].constructor).toBe(MyPair);
+      expect(got[0].left.constructor).toBe(MyPair);
+      expect(got[0].right.constructor).toBe(MyPair);
     });
 
   });
@@ -194,8 +206,6 @@ describe('core', () => {
         async (genuine: boolean, tx: any) => {
           const itemstore = tx.addStore('itemstore');
           await itemstore.addIndex('trait', (item: Item) => item.nums.map(n => new MyCustomIndexable(n as any)));
-          for (const item of items)
-            await itemstore.add(item);
         }
       ],
       types: [
@@ -212,6 +222,9 @@ describe('core', () => {
         }
       ]
     });
+
+    for (const item of items)
+      await jine.$.itemstore.add(item);
 
     const got = await jine.$.itemstore.by.trait.select({ above: [new MyCustomIndexable('three'), new MyCustomIndexable('two')] }).array();
     expect(got).toStrictEqual([items[items.length - 1]]);
@@ -236,7 +249,7 @@ describe('core', () => {
       jine = new Database<any>('jine', {
         migrations: [
           async (genuine: boolean, tx: any) => {
-            tx.addStore('items');
+            await tx.addStore('items');
           },
         ],
         types: [
@@ -244,10 +257,10 @@ describe('core', () => {
             type: MyCustomStorable,
             id: 'MyCustomStorable',
             encode(mcs: MyCustomStorable): unknown {
-              return mcs.val;
+              return { val: mcs.val };
             },
             decode(encoded: any): MyCustomStorable {
-              const actual = encoded as string;
+              const actual = encoded.val as string;
               return new MyCustomStorable(actual);
             },
           }

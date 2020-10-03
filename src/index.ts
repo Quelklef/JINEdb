@@ -1,7 +1,8 @@
 
 import { Store } from './store';
-import { Awaitable } from './util';
+import { Codec } from './codec';
 import { PACont } from './cont';
+import { Awaitable } from './util';
 import { IndexSchema } from './schema';
 import { Transaction, TransactionMode } from './transaction';
 import { Query, Selection, SelectionUnique } from './query';
@@ -87,18 +88,27 @@ export class Index<Item, Trait> {
   _idbIndexCont: PACont<IDBIndex, TransactionMode>;
   _schemaCont: PACont<IndexSchema<Item, Trait>>;
   _parentStore: Store<Item>;
+  _codec: Codec;
 
   constructor(args: {
     parentStore: Store<Item>;
     parentTxCont: PACont<Transaction, TransactionMode>;
     schemaCont: PACont<IndexSchema<Item, Trait>>;
+    codec: Codec;
   }) {
     this._parentStore = args.parentStore;
     this._parentTxCont = args.parentTxCont;
     this._schemaCont = args.schemaCont;
+    this._codec = args.codec;
 
     this._idbIndexCont = PACont.pair(this._parentStore._idbStoreCont, this._schemaCont).map(([idbStore, schema]) => {
       const indexName = schema.name;
+
+      // vv Indexes are not available during migrations, since they use the codec, which
+      //    is not available to migrations.
+      if (idbStore.transaction.mode === 'versionchange')
+        throw new JineTransactionModeError(`Indexes are not available during migrations.`);
+
       try {
         return idbStore.index(indexName);
       } catch (err) {
@@ -209,6 +219,7 @@ export class Index<Item, Trait> {
       query: query,
       idbSourceCont: this._idbIndexCont,
       storeSchemaCont: this._parentStore._schemaCont,
+      codec: this._codec,
     });
   }
 
@@ -221,6 +232,7 @@ export class Index<Item, Trait> {
       selectedTrait: trait,
       idbSourceCont: this._idbIndexCont,
       storeSchemaCont: this._parentStore._schemaCont,
+      codec: this._codec,
     });
   }
 

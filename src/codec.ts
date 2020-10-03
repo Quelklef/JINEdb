@@ -1,7 +1,7 @@
 
 import { W } from 'wrongish';
 
-import { Constructor, isPrimitive, isInstanceOfStrict } from './util';
+import { Constructor, isInstanceOfStrict } from './util';
 import { JineError, JineEncodingError, JineDecodingError, JineInternalError } from './errors';
 
 /*
@@ -42,47 +42,54 @@ Array
 
 */
 
-function isSome<T>(x: T | null | undefined): x is T {
-  return x != null;
+function resolve(names: string): Array<string | Constructor<unknown>> {
+  return names
+    .split(/\W/)
+    .filter(name => name !== '')
+    .map(name =>
+      name[0].toLowerCase() === name[0] ? name  // primitive type
+      : (window as any)[name] as Constructor<unknown> | undefined  // constructor
+    )
+    [W.filter2](<T>(type: undefined | T): type is T => type !== undefined)
 }
 
-const idbNonContainerNativelyStorableConstructors: Array<Constructor<unknown>> = ([
-  Date,
-  RegExp,
-  Blob,
-  File,
-  FileList,
-  (document as any)['ArrayBuffer'],
-  (document as any)['Int8Array'],
-  (document as any)['Uint8Array'],
-  (document as any)['Uint8ClampedArray'],
-  (document as any)['Int16Array'],
-  (document as any)['Uint16Array'],
-  (document as any)['Int32Array'],
-  (document as any)['Uint32Array'],
-  (document as any)['Float32Array'],
-  (document as any)['Float64Array'],
-  (document as any)['DataView'],
-  (document as any)['ImageBitmap'],
-  (document as any)['ImageData'],
-] as Array<undefined | Constructor<unknown>>)[W.filter2](isSome);
+const idbNativelyStorableTypes = resolve(`
+  string number boolean bigint undefined
+  Date RegExp Blob
+  File FileList ArrayBuffer
+  Int8Array Uint8Array Uint8ClampedArray Int16Array Uint16Array Int32Array Uint32Array Float32Array Float64Array
+  DataView ImageBitmap ImageData
+  Array Object Map Set
+`);
 
-const idbNonContainerNativelyIndexableType: Array<Constructor<unknown>> = ([
-  Date,
-  (document as any)['ArrayBuffer'],
-  (document as any)['Int8Array'],
-  (document as any)['Uint8Array'],
-  (document as any)['Uint8ClampedArray'],
-  (document as any)['Int16Array'],
-  (document as any)['Uint16Array'],
-  (document as any)['Int32Array'],
-  (document as any)['Uint32Array'],
-  (document as any)['Float32Array'],
-  (document as any)['Float64Array'],
-  (document as any)['DataView'],
-  (document as any)['ImageBitmap'],
-  (document as any)['ImageData'],
-] as Array<undefined | Constructor<unknown>>)[W.filter2](isSome);
+const idbNativelyIndexableTypes = resolve(`
+  string number
+  Date
+  ArrayBuffer
+  Int8Array Uint8Array Uint8ClampedArray Int16Array Uint16Array Int32Array Uint32Array Float32Array Float64Array
+  DataView ImageBitmap ImageData
+  Array
+`);
+
+function isOfAny(value: any, types: Array<string | Constructor<unknown>>): boolean {
+  return types.some(type => typeof value === type || isInstanceOfStrict(value, type as Constructor<unknown>));
+}
+
+function isOfNativelyStorableType(value: any, opts?: { except: Array<string | Constructor<unknown>> }): boolean {
+  return value === null || isOfAny(value, idbNativelyStorableTypes) && !isOfAny(value, opts?.except ?? []);
+}
+
+function isOfNativelyIndexableType(value: any, opts?: { except: Array<string | Constructor<unknown>> }): boolean {
+  return isOfAny(value, idbNativelyIndexableTypes) && !isOfAny(value, opts?.except ?? []);
+}
+
+function typeNamePretty(value: any): string {
+  return value === null ? 'null'
+    : typeof value === 'object' ? value.constructor.name
+    : typeof value;
+}
+
+// --
 
 export type UserCodec = {
   type: Constructor<unknown>;
@@ -91,181 +98,235 @@ export type UserCodec = {
   decode(it: unknown): unknown;
 }
 
+function getUserCodecById(userCodecs: Array<UserCodec>, id: string): UserCodec {
+  const codec = userCodecs.find(codec => codec.id === id);
+  if (!codec)
+    throw new JineDecodingError(`I was unable to find a requested custom codec. It's supposed to have id '${id}'. Did you remove a custom codec recently?`);
+  return codec;
+}
+
+const codecIdMark: unique symbol = Symbol('JINEdb codec id');
+
+function validateUserCodecs(userCodecs: Array<UserCodec>): void {
+  const duplicateIds = userCodecs.map(codec => codec.id)[W.duplicates]();
+  if (duplicateIds.size > 0)
+    throw new JineError(`You have given me multiple codecs with the same id! This is now allowed. Duplicated id(s): ${[...duplicateIds].join(", ")}.`);
+
+  const duplicateTypes = userCodecs.map(codec => codec.type)[W.duplicates]();
+  if (duplicateTypes.size > 0)
+    throw new JineError(`You have given me multiple codecs for the same type! This is now allowed. Duplicated type(s): ${[...duplicateTypes].join(", ")}.`);
+}
+
 export class Codec {
 
-  private userCodecs: Array<UserCodec>;
+  constructor(
+    public encodeItem: (it: unknown) => unknown,
+    public decodeItem: (it: unknown) => unknown,
+    public encodeTrait: (it: unknown, indexIsExploding: boolean) => unknown,
+    public decodeTrait: (it: unknown, indexIsExploding: boolean) => unknown,
+  ) { }
 
-  constructor(userCodecs: Array<UserCodec>) {
-    const duplicateIds = userCodecs.map(codec => codec.id)[W.duplicates]();
-    if (duplicateIds.size > 0)
-      throw new JineError(`You have given me multiple codecs with the same id! This is now allowed. Duplicated id(s): ${[...duplicateIds].join(", ")}.`);
+  static usualCodec(userCodecs: Array<UserCodec>): Codec {
+    validateUserCodecs(userCodecs);
 
-    const duplicateTypes = userCodecs.map(codec => codec.type)[W.duplicates]();
-    if (duplicateTypes.size > 0)
-      throw new JineError(`You have given me multiple codecs for the same type! This is now allowed. Duplicated type(s): ${[...duplicateTypes].join(", ")}.`);
+    function encodeItem(decoded: unknown): unknown {
+      if (isOfNativelyStorableType(decoded, { except: [Object, Array, Map, Set] }))
+        return decoded;
 
-    this.userCodecs = userCodecs;
+      if (isInstanceOfStrict(decoded, Array))
+        return decoded.map(elem => encodeItem(elem));
+
+      if (isInstanceOfStrict(decoded, Map))
+        return new Map([...decoded.entries()].map(([k, v]) => [encodeItem(k), encodeItem(v)]));
+
+      if (isInstanceOfStrict(decoded, Set))
+        return new Set([...decoded].map(elem => encodeItem(elem)));
+
+      if (isInstanceOfStrict(decoded, Object)) {
+        const encoded = {} as any;
+        for (const key in (decoded as any))
+          encoded[key] = encodeItem((decoded as any)[key]);
+        const boxed = { boxedValue: encoded, codecId: null }
+        return boxed;
+      }
+
+      const userCodec = userCodecs.find(codec => isInstanceOfStrict(decoded, codec.type));
+      if (userCodec) {
+        let shallowlyEncoded = userCodec.encode(decoded) as any;
+        // vv If encoded to another custom type, expand
+        if (!isOfNativelyStorableType(shallowlyEncoded))
+          shallowlyEncoded = encodeItem(shallowlyEncoded);
+        // vv Ensure it resolved to a plain object. This is so that we can mark it in the migration codec.
+        if (!isInstanceOfStrict(shallowlyEncoded, Object))
+          throw new JineEncodingError(`An item of custom type '${userCodec.id}' encoded to something other than a plain object. This is not allowed!`);
+
+        const deeplyEncoded = {} as any;
+        for (const key in shallowlyEncoded)
+          deeplyEncoded[key] = encodeItem(shallowlyEncoded[key]);
+
+        const boxed = { boxedValue: deeplyEncoded, codecId: userCodec.id };
+        return boxed;
+      }
+
+      throw new JineEncodingError(`I don't know how to store values of type '${typeNamePretty(decoded)}'. (If this is an Object type, did you forget to provide a custom codec?)`);
+    }
+
+    function decodeItem(encoded: unknown): unknown {
+      if (isOfNativelyStorableType(encoded, { except: [Array, Map, Set, Object] }))
+        return encoded;
+
+      if (isInstanceOfStrict(encoded, Array))
+        return encoded.map(elem => decodeItem(elem));
+
+      if (isInstanceOfStrict(encoded, Map))
+        return new Map([...encoded.entries()].map(([k, v]) => [decodeItem(k), decodeItem(v)]));
+
+      if (isInstanceOfStrict(encoded, Set))
+        return new Set([...encoded].map(elem => decodeItem(elem)))
+
+      if (isInstanceOfStrict(encoded, Object)) {
+        if (!('codecId' in encoded)) throw new JineInternalError();
+        const { boxedValue, codecId } = encoded as { boxedValue: any; codecId: string | null };
+        if (codecId === null) {
+          const decoded = {} as any;
+          for (const key in boxedValue)
+            decoded[key] = decodeItem(boxedValue[key]);
+          return decoded;
+        } else {
+          let innerDecoded: any;
+          if (isInstanceOfStrict(boxedValue, Object)) {
+            innerDecoded = {};
+            for (const key in boxedValue)
+              innerDecoded[key] = decodeItem(boxedValue[key]);
+          } else {
+            innerDecoded = decodeItem(boxedValue);
+          }
+          const userCodec = getUserCodecById(userCodecs, codecId);
+          const decoded = userCodec.decode(innerDecoded);
+          return decoded;
+        }
+      }
+
+      throw new JineInternalError();
+    }
+
+    function encodeTrait(item: any, indexIsExploding: boolean): unknown {
+      if (isOfNativelyIndexableType(item, { except: [Array] }))
+        return item;
+
+      if (indexIsExploding) {
+        if (!(item instanceof Array))
+          throw new JineEncodingError(`I was asked to encode a trait for an exploding index, but the given trait was not an array!`);
+        return item.map(elem => encodeTrait(elem, false));
+      }
+
+      if (isInstanceOfStrict(item, Array)) {
+        const encoded = item.map(elem => encodeTrait(elem, false));
+        const boxed = [0, encoded];
+        return boxed;
+      }
+
+      const codec = userCodecs.find(codec => isInstanceOfStrict(item, codec.type));
+      if (codec) {
+        const encoded = codec.encode(item);
+        const boxed = [1, codec.id, encoded];
+        return boxed;
+      }
+
+      throw new JineEncodingError(`I can't use use values of type '${typeNamePretty(item)}' to index database items. (If this is an Object type, did you forget to provide a custom codec?)`);
+    }
+
+    function decodeTrait(item: unknown, indexIsExploding: boolean): unknown {
+      if (indexIsExploding) {
+        if (!(item instanceof Array))
+          throw new JineDecodingError(`I was asked to decoded a trait for an exploding index, but the given trait was not an array!`);
+        return item.map(elem => decodeTrait(elem, false));
+      }
+
+      if (isOfNativelyIndexableType(item, { except: [Array] }))
+        return item;
+
+      if (isInstanceOfStrict(item, Array) && (item[0] as 0 | 1) === 0) {
+        const [_, unboxed] = item as [0, Array<unknown>];
+        const decoded = unboxed.map(elem => decodeTrait(elem, false));
+        return decoded;
+      }
+
+      if (isInstanceOfStrict(item, Array) && (item[0] as 0 | 1) === 1) {
+        const [_, codecId, unboxed] = item as [1, string, unknown];
+        const codec = getUserCodecById(userCodecs, codecId);
+        const decoded = codec.decode(unboxed);
+        return decoded;
+      }
+
+      throw new JineInternalError();
+    }
+
+    return new Codec(encodeItem, decodeItem, encodeTrait, decodeTrait);
   }
 
-  encodeItem(item: unknown): unknown {
+  static migrationCodec(): Codec {
+    function decodeItem(encoded: unknown): unknown {
+      if (isOfNativelyStorableType(encoded, { except: [Array, Map, Set, Object] }))
+        return encoded;
 
-    if (item === null || 'string number boolean bigint undefined'.includes(typeof item))
-      return item as null | string | number | boolean | BigInt | undefined;
+      if (isInstanceOfStrict(encoded, Array))
+        return encoded.map(elem => decodeItem(elem));
 
-    if (isInstanceOfStrict(item, Object)) {
-      const asRecord = item as Record<string, unknown>;
+      if (isInstanceOfStrict(encoded, Map))
+        return new Map([...encoded.entries()].map(([k, v]) => [decodeItem(k), decodeItem(v)]));
 
-      const encoded = {} as Record<string, unknown>;
-      for (const key in asRecord)
-        encoded[key] = this.encodeItem(asRecord[key]);
+      if (isInstanceOfStrict(encoded, Set))
+        return new Set([...encoded].map(elem => decodeItem(elem)))
 
-      const boxed = { boxedValue: encoded };
-      return boxed;
+      if (isInstanceOfStrict(encoded, Object)) {
+        if (!('codecId' in encoded)) throw new JineInternalError();
+        const { boxedValue, codecId } = encoded as { boxedValue: any, codecId: null | string };
+        const decoded = {} as any;
+        for (const key in boxedValue)
+          decoded[key] = decodeItem(boxedValue[key]);
+        const marked = Object.assign(decoded, { [codecIdMark]: codecId });
+        return marked;
+      }
+
+      throw new JineInternalError();
     }
 
-    if (idbNonContainerNativelyStorableConstructors.some(type => isInstanceOfStrict(item, type)))
-      return item as unknown;
+    function encodeItem(marked: unknown): unknown {
+      if (isOfNativelyStorableType(marked, { except: [Object, Array, Map, Set] }))
+        return marked;
 
-    if (isInstanceOfStrict(item, Array))
-      return item.map(elem => this.encodeItem(elem));
+      if (isInstanceOfStrict(marked, Array))
+        return marked.map(elem => encodeItem(elem));
 
-    if (isInstanceOfStrict(item, Map))
-      return new Map([...item.entries()].map(([k, v]) => [this.encodeItem(k), this.encodeItem(v)]));
+      if (isInstanceOfStrict(marked, Map))
+        return new Map([...marked.entries()].map(([k, v]) => [encodeItem(k), encodeItem(v)]));
 
-    if (isInstanceOfStrict(item, Set))
-      return new Set([...item].map(elem => this.encodeItem(elem)));
+      if (isInstanceOfStrict(marked, Set))
+        return new Set([...marked].map(elem => encodeItem(elem)));
 
-    const userCodec = this.userCodecs.find(codec => isInstanceOfStrict(item, codec.type));
-    if (userCodec) {
-      const encoded = userCodec.encode(item);
-      const boxed = { boxedValue: encoded, codecId: userCodec.id };
-      return boxed;
+      if (isInstanceOfStrict(marked, Object)) {
+        if (!(codecIdMark in marked)) throw new JineEncodingError(`I was trying to encode a value of type '${typeNamePretty(marked)}', but could not find some information that I needed. Are you doing tricky data manipulations during a migration?`);
+        const codecId = (marked as any)[codecIdMark] as null | string;
+        const encoded = {} as any;
+        for (const key in marked)
+          encoded[key] = encodeItem((marked as any)[key]);
+        const boxed = { boxedValue: encoded, codecId: codecId };
+        return boxed;
+      }
+
+      throw new JineInternalError();
     }
 
-    if (typeof item === 'object') {
-      const asNonNull = item as object;
-      throw new JineEncodingError(`I don't know how to store values of type '${asNonNull.constructor.name}'. Did you forget to provide a custom codec?`);
-    } else {
-      throw new JineEncodingError(`I don't know how to store values of type '${typeof item}'.`);
+    function decodeTrait(..._args: Array<unknown>): unknown {
+      throw new JineInternalError('Traits are not accessible during migrations');
     }
 
-  }
-
-  decodeItem(item: unknown): unknown {
-
-    if (isPrimitive(item))
-      return item;
-
-    if (idbNonContainerNativelyStorableConstructors.some(type => isInstanceOfStrict(item, type)))
-      return item;
-
-    if (isInstanceOfStrict(item, Array))
-      return item.map(elem => this.decodeItem(elem));
-
-    if (isInstanceOfStrict(item, Map))
-      return new Map([...item.entries()].map(([k, v]) => [this.decodeItem(k), this.decodeItem(v)]));
-
-    if (isInstanceOfStrict(item, Set))
-      return new Set([...item].map(elem => this.decodeItem(elem)))
-
-    if (isInstanceOfStrict(item, Object) && 'boxedValue' in item && !('codecId' in item)) {
-      const asBox = item as { boxedValue: Record<string, unknown> };
-      const decoded = {} as Record<string, unknown>;
-      for (const key in asBox.boxedValue)
-        decoded[key] = this.decodeItem(asBox.boxedValue[key]);
-      return decoded;
+    function encodeTrait(..._args: Array<unknown>): unknown {
+      throw new JineInternalError('Traits are not accessible during migrations');
     }
 
-    if (isInstanceOfStrict(item, Object) && 'boxedValue' in item && 'codecId' in item) {
-      const asBox = item as { boxedValue: unknown; codecId: string };
-
-      const codec = this.userCodecs.find(codec => codec.id === asBox.codecId);
-      if (!codec)
-        throw new JineDecodingError(`I was unable to find a requested custom codec. It's supposed to have id '${asBox.codecId}'. Did you remove a custom codec recently?`);
-
-      const decoded = codec.decode(asBox.boxedValue);
-      return decoded;
-    }
-
-    throw new JineInternalError();
-
-  }
-
-  encodeTrait(item: any, indexIsExploding: boolean): unknown {
-
-    if (['number', 'string'].includes(typeof item))
-      return item;
-
-    if (idbNonContainerNativelyIndexableType.some(type => isInstanceOfStrict(item, type)))
-      return item;
-
-    if (indexIsExploding) {
-      if (!(item instanceof Array))
-        throw new JineEncodingError(`I was asked to encode a trait for an exploding index, but the given trait was not an array!`);
-
-      return item.map(elem => this.encodeTrait(elem, false));
-    }
-
-    if (isInstanceOfStrict(item, Array)) {
-      const encoded = item.map(elem => this.encodeTrait(elem, false));
-      const boxed = ['0', encoded];
-      return boxed;
-    }
-
-    const codec = this.userCodecs.find(codec => isInstanceOfStrict(item, codec.type));
-    if (codec) {
-      const encoded = codec.encode(item);
-      const boxed = ['1' + codec.id, encoded];
-      return boxed;
-    }
-
-    if (item === null)
-      throw new JineEncodingError(`I can't use 'null' to index database items.`);
-    else if (typeof item !== 'object')
-      throw new JineEncodingError(`I can't use use values of type '${typeof item}' to index database items.`);
-    else
-      throw new JineEncodingError(`I don't know how to use values of the type '${item.constructor.name}' to index database items. Did you forget to provide a custom codec?`);
-
-  }
-
-  decodeTrait(item: unknown, indexIsExploding: boolean): unknown {
-
-    if (indexIsExploding) {
-      if (!(item instanceof Array))
-        throw new JineDecodingError(`I was asked to decoded a trait for an exploding index, but the given trait was not an array!`);
-
-      return item.map(elem => this.decodeTrait(elem, false));
-    }
-
-    if (['number', 'string'].includes(typeof item))
-      return item;
-
-    if (idbNonContainerNativelyIndexableType.some(type => isInstanceOfStrict(item, type)))
-      return item;
-
-    if (isInstanceOfStrict(item, Array))
-      console.log(item);
-
-    if (isInstanceOfStrict(item, Array) && (item[0] as string) === '0') {
-      const unboxed = item[1] as Array<unknown>;
-      const decoded = unboxed.map(elem => this.decodeTrait(elem, false));
-      return decoded;
-    }
-
-    if (isInstanceOfStrict(item, Array) && (item[0] as string).startsWith('1')) {
-      const unboxed = item[1] as unknown;
-
-      const codecId = item[0] as string;
-      const codec = this.userCodecs.find(codec => codec.id === codecId);
-      if (!codec)
-        throw new JineError(`I was unable to find a requested custom codec. It's supposed to have id '${codecId}'. Did you remove a custom codec recently?`);
-
-      const decoded = codec.decode(unboxed);
-      return decoded;
-    }
-
-    throw new JineInternalError();
-
+    return new Codec(encodeItem, decodeItem, encodeTrait, decodeTrait);
   }
 
 }

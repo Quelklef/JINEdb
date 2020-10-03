@@ -1,4 +1,7 @@
 
+import { M } from 'wrongish';
+
+import { Index } from './index';
 import { Store } from './store';
 import { PACont } from './cont';
 import { Connection } from './connection';
@@ -53,37 +56,112 @@ async function getDbVersion(name: string): Promise<number> {
 }
 
 
+type Migration$$ = {
+  [storeName: string]: Store<unknown> & {
+    by: {
+      [indexName: string]: Index<unknown, unknown>;
+    };
+  };
+};
 
-type Migration<$$> = (genuine: boolean, tx: Transaction<$$>) => Promise<void>;
+type Migration = (genuine: boolean, tx: Transaction<Migration$$>) => Promise<void>;
 
-async function runMigrations<$$>(name: string, migrations: Array<Migration<$$>>, userCodecs: Array<UserCodec>): Promise<[number, DatabaseSchema]> {
-  let version = await getDbVersion(name);
-  let schema = new DatabaseSchema({
-    name: name,
-    stores: {},
-    codec: new Codec(userCodecs),
-  });
+async function runMigrations<$$>(dbName: string, migrations: Array<Migration>, codec: Codec): Promise<[number, DatabaseSchema]> {
 
   // Reset dummy database
-  const dummyName = '__JINE_DUMMY__' + name;
+  const dummyName = '__JINE_DUMMY__' + dbName;
   await new Promise((resolve, reject) => {
     const req = indexedDB.deleteDatabase(dummyName);
     req.onerror = _event => reject(mapError(req.error));
     req.onsuccess = _event => resolve();
   });
 
+  let dbVersion = await getDbVersion(dbName);
+  let dbSchema = new DatabaseSchema({
+    name: dbName,
+    stores: {},
+  });
+
   for (let idx = 0; idx < migrations.length; idx++) {
     const migration = migrations[idx]
     const toVersion = idx + 1;
-    [version, schema] = await runMigration(name, version, schema, migration, toVersion);
+    [dbVersion, dbSchema] = await runMigration(dbName, dbVersion, dbSchema, migration, toVersion);
   }
 
-  return [version, schema];
+  await ensureIndexesPopulated(dbName, dbSchema, codec);
+
+  return [dbVersion, dbSchema];
 }
 
-function runMigration<$$>(name: string, version: number, schema: DatabaseSchema, migration: Migration<$$>, toVersion: number): Promise<[number, DatabaseSchema]> {
+async function ensureIndexesPopulated(dbName: string, dbSchema: DatabaseSchema, codec: Codec): Promise<void> {
+  // During migrations, Store#add and Store#addIndex don't calculate traits, so we need to do that here.
+  // (The reason they don't is that calculating traits requires the codec; migrations may not use the
+  //  codec since it may change version-to-version. Doing it all at the end is okay because we'd
+  //  imagine the result db schema to match up with the codec. In other words: suppose an index that used
+  //  a custom type was added in migration 2 and removed in migration 6. If in migratiosn we eagerly resolved
+  //  traits for Store#add and Store#addIndex, a fresh DB running migrations may fail since it would
+  //  be unable to calculate traits between versions 2-6 for this index. However, if we instead defer all
+  //  trait calculation to after running all migrations, then we will see that the index is now gone and
+  //  will not bother with it; as for all remaining indexes, it is fair to assume that an index that
+  //  has not been removed will be supported by the codec.)
 
-  const genuine = toVersion > version;
+  if (dbSchema.storeNames.size === 0)
+    // Nothing to do!!
+    // Also, continuing will error because we will end up trying to make an idb transaction with
+    // empty scope, which is not allowed.
+    return;
+
+  const idbConnCont = PACont.fromFunc<IDBDatabase>(callback => {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(dbName);
+      req.onupgradeneeded = _event => reject(new JineInternalError());
+      req.onblocked = _event => reject(new JineBlockedError());
+      req.onerror = _event => reject(mapError(req.error));
+      req.onsuccess = _event => {
+        const idbConn = req.result;
+        // vv Floating promise since callback is expected to keep connection alive
+        Promise.resolve(callback(idbConn))  // eslint-disable-line @typescript-eslint/no-floating-promises
+          .then(result => { idbConn.close(); return result; })
+          .then(resolve, reject);
+      };
+    })
+  });
+
+  const conn = new Connection({
+    idbConnCont: idbConnCont,
+    schemaCont: PACont.fromValue(dbSchema),
+    codec: codec,
+  });
+
+  await conn.transact(dbSchema.storeNames, 'rw', async tx => {
+    for (const storeName of dbSchema.storeNames) {
+      const storeSchema = dbSchema.store(storeName);
+      await M.a(tx.stores[storeName]).all()._replaceRows(row => {
+        for (const indexName of storeSchema.indexNames) {
+          const indexSchema = storeSchema.index(indexName);
+          if (!(indexName in row.traits)) {
+            const item = codec.decodeItem(row.payload);
+            const traitValue = indexSchema.calcTrait(item);
+            const traitName = indexName;
+            row.traits[traitName] = codec.encodeTrait(traitValue, indexSchema.explode);
+          }
+        }
+        return row;
+      });
+    }
+  });
+
+}
+
+function runMigration<$$>(
+  dbName: string,
+  dbVersion: number,
+  dbSchema: DatabaseSchema,
+  migration: Migration,
+  toVersion: number,
+): Promise<[number, DatabaseSchema]> {
+
+  const txIsGenuine = toVersion > dbVersion;
 
   return new Promise((resolve, reject) => {
 
@@ -94,9 +172,9 @@ function runMigration<$$>(name: string, version: number, schema: DatabaseSchema,
     // point that the actual database is at, when they switch to being run
     // on the actual db.
     const req =
-      genuine
-        ? indexedDB.open(name, toVersion)
-        : indexedDB.open('__JINE_DUMMY__' + name, toVersion)
+      txIsGenuine
+        ? indexedDB.open(dbName, toVersion)  // FIXME: prefix for non-dummy
+        : indexedDB.open('__JINE_DUMMY__' + dbName, toVersion)
         ;
 
     req.onblocked = _event => {
@@ -106,13 +184,13 @@ function runMigration<$$>(name: string, version: number, schema: DatabaseSchema,
     req.onerror = _event => {
       const idbError = req.error;
       if (idbError?.name === 'AbortError') {
-        reject(Error(`A migration was aborted! This is not allowed.`));
+        reject(new JineError(`A migration was aborted! This is not allowed.`));
       } else {
         reject(mapError(req.error));
       }
     };
 
-    const newVersion = genuine ? toVersion : version;
+    const newVersion = txIsGenuine ? toVersion : dbVersion;
     let newSchema = null as null | DatabaseSchema;
     let upgradeNeededCalled = false;
 
@@ -121,23 +199,24 @@ function runMigration<$$>(name: string, version: number, schema: DatabaseSchema,
 
       if (!req.transaction) throw new JineInternalError();
       const idbTx = req.transaction;
-      const tx = new Transaction<$$>({
+      const tx = new Transaction<Migration$$>({
         idbTx: idbTx,
-        // vvv Versionchange transactions have access to entire db
-        scope: schema.storeNames,
-        genuine: genuine,
-        schema: schema,
+        // vv Versionchange transactions have access to entire db
+        scope: dbSchema.storeNames,
+        genuine: txIsGenuine,
+        schema: dbSchema,
+        codec: Codec.migrationCodec(),
       });
 
-      // vvv The below looks concerning due to the fact that we don't await the promise.
-      //     In fact, it's fine; floating callbacks are natural when working with idb
-      //     (as long as they don't span multiple ticks).
-      //     The 'after' code doesn't come after awaiting the promise, it comes in onsuccess.
+      // vv The below looks concerning due to the fact that we don't await the promise.
+      //    In fact, it's fine; floating callbacks are natural when working with idb
+      //    (as long as they don't span multiple ticks).
+      //    The 'after' code doesn't come after awaiting the promise, it comes in onsuccess.
       // eslint-disable-next-line @typescript-eslint/no-floating-promises
       tx.wrap(async tx => {
-        await migration(genuine, tx);
+        await migration(txIsGenuine, tx);
 
-        // vvv Update structure if stores were added etc
+        // vv Update structure if stores were added etc
         // TODO: for some reason, we still reach this line of code when the transaction
         //       was aborted. I'm not sure why that is?
         if (tx.state === 'aborted')
@@ -208,13 +287,19 @@ export class Database<$$> {
   initialized: Promise<void>;
 
   _schema: Promise<DatabaseSchema>;
+  _codec: Codec;
 
-  constructor(name: string, args: { migrations: Array<Migration<$$>>; types?: Array<UserCodec> }) {
+  constructor(name: string, args: { migrations: Array<Migration>; types?: Array<UserCodec> }) {
     if (name.startsWith("__JINE_DUMMY__"))
       throw new Error("Jine db names may not start with '__JINE_DUMMY__'");
 
+    if (args.migrations.length === 0)
+      throw new JineError(`Databases must be given at least one migration.`);
+
+    this._codec = Codec.usualCodec(args?.types ?? []);
+
     const versionAndSchemaPromise: Promise<[number, DatabaseSchema]> =
-      runMigrations(name, args.migrations, args.types ?? [])
+      runMigrations(name, args.migrations, this._codec)
       .catch(err => {
         console.error(`There was an error migrating the database:`, err);
         return new Promise(() => {});  // never resolve so that no db operations can go through
@@ -239,6 +324,7 @@ export class Database<$$> {
           const conn = new Connection({
             idbConnCont: idbConnCont,
             schemaCont: PACont.fromValue(this._schema),
+            codec: this._codec,
           });
           return (conn.$ as any)[storeName];
         }
@@ -251,7 +337,7 @@ export class Database<$$> {
     await this.initialized;
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(this.name);
-      // vvv upgradeneeded shouldn't fire
+      // vv Upgradeneeded shouldn't fire since we don't provide a version
       req.onupgradeneeded = _event => reject(new JineInternalError());
       req.onblocked = _event => reject(new JineBlockedError());
       req.onerror = _event => reject(mapError(req.error));
@@ -270,6 +356,7 @@ export class Database<$$> {
     return new Connection<$$>({
       idbConnCont: PACont.fromValue(await this._newIdbConn()),
       schemaCont: PACont.fromValue(await this._schema),
+      codec: this._codec,
     });
   }
 

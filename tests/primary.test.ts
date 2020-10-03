@@ -63,7 +63,7 @@ describe("primary", () => {
 
     db = new Database<$$>("home", {
       migrations: [
-        async (genuine: boolean, tx: Transaction<$$>) => {
+        async (genuine: boolean, tx: Transaction) => {
           const rooms = tx.addStore<Room>("rooms");
           await rooms.addIndex<string>("name", ".name", { unique: true });
           await rooms.addIndex<number>("score", ".score");
@@ -416,7 +416,7 @@ describe("primary", () => {
             // Another operation
             await new Promise(resolve => setTimeout(resolve, 0));
             // Note we can't use an "actual" other operation here
-            // because if there $ were from a Database, that would
+            // because if the $ were from a Database, that would
             // open a new connection and would actually *not* throw
           }
         };

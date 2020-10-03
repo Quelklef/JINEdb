@@ -116,6 +116,7 @@ export class Cursor<Item, Trait> {
   my: Dict<any> = {};
 
   readonly storeSchema: StoreSchema<Item>;
+  readonly codec: Codec;
 
   readonly _query: Query<Trait>;
 
@@ -127,8 +128,10 @@ export class Cursor<Item, Trait> {
     idbSource: IDBIndex | IDBObjectStore;
     query: Query<Trait>;
     storeSchema: StoreSchema<Item>;
+    codec: Codec;
   }) {
     this._query = args.query;
+    this.codec = args.codec;
     this._idbSource = args.idbSource;
     this._idbReq = null;
     this._idbCur = null;
@@ -146,7 +149,7 @@ export class Cursor<Item, Trait> {
 
   init(): Promise<void> {
     const req = this._idbSource.openCursor(
-      compileTraitRange(this._query, this.storeSchema.codec),
+      compileTraitRange(this._query, this.codec),
       compileCursorDirection(this._query),
     );
     this._idbReq = req;
@@ -195,7 +198,7 @@ export class Cursor<Item, Trait> {
     // Get the item at the cursor.
     const idbCur = this._activeIdbCur();
     const row = idbCur.value;
-    return this.storeSchema.codec.decodeItem(row.payload) as Item;
+    return this.codec.decodeItem(row.payload) as Item;
   }
 
   step(options?: { toTrait: Trait } | { size: number }): Promise<void> {
@@ -209,7 +212,7 @@ export class Cursor<Item, Trait> {
 
       if (options && 'toTrait' in options) {
         const trait = options.toTrait;
-        const encoded = this.storeSchema.codec.encodeTrait(trait, this._sourceIsExploding);
+        const encoded = this.codec.encodeTrait(trait, this._sourceIsExploding);
         idbCur.continue(encoded as any);
       } else {
         idbCur.advance(options?.size ?? 1);
@@ -232,7 +235,7 @@ export class Cursor<Item, Trait> {
   currentTrait(): Trait {
     const idbCur = this._activeIdbCur();
     const encoded = idbCur.key;
-    return this.storeSchema.codec.decodeTrait(encoded, this._sourceIsExploding) as Trait;
+    return this.codec.decodeTrait(encoded, this._sourceIsExploding) as Trait;
   }
 
   async delete(): Promise<void> {
@@ -261,13 +264,13 @@ export class Cursor<Item, Trait> {
     const row: any = idbCur.value;
 
     // update payload
-    row.payload = this.storeSchema.codec.encodeItem(newItem);
+    row.payload = this.codec.encodeItem(newItem);
 
     // update traits
     for (const indexName of this.storeSchema.indexNames) {
       const indexSchema = this.storeSchema.index(indexName);
       const trait = indexSchema.calcTrait(newItem);
-      const encoded = this.storeSchema.codec.encodeTrait(trait, indexSchema.explode);
+      const encoded = this.codec.encodeTrait(trait, indexSchema.explode);
       const traitName = indexName;
       row.traits[traitName] = encoded;
     }
@@ -299,6 +302,7 @@ export class Selection<Item, Trait> {
 
   readonly idbSourceCont: PACont<IDBObjectStore | IDBIndex, TransactionMode>;
   readonly storeSchemaCont: PACont<StoreSchema<Item>>;
+  readonly codec: Codec;
 
   cursorCont: PACont<Cursor<Item, Trait>, TransactionMode>;
 
@@ -306,10 +310,12 @@ export class Selection<Item, Trait> {
     query: Query<Trait>;
     idbSourceCont: PACont<IDBObjectStore, TransactionMode> | PACont<IDBIndex, TransactionMode>;
     storeSchemaCont: PACont<StoreSchema<Item>>;
+    codec: Codec;
   }) {
     this.query = args.query;
     this.storeSchemaCont = args.storeSchemaCont;
     this.idbSourceCont = args.idbSourceCont;
+    this.codec = args.codec;
 
     this.cursorCont = PACont.pair(
       this.idbSourceCont, this.storeSchemaCont
@@ -319,6 +325,7 @@ export class Selection<Item, Trait> {
         idbSource: idbSource,
         query: this.query,
         storeSchema: storeSchema,
+        codec: this.codec,
       });
     });
   }
@@ -573,6 +580,7 @@ export class SelectionUnique<Item, Trait> {
     selectedTrait: Trait;
     idbSourceCont: PACont<IDBIndex, TransactionMode>;
     storeSchemaCont: PACont<StoreSchema<Item>>;
+    codec: Codec;
   }) {
     this.idbSourceCont = args.idbSourceCont.map(idbIndex => {
       if (!idbIndex.unique)
@@ -583,6 +591,7 @@ export class SelectionUnique<Item, Trait> {
       query: { equals: args.selectedTrait },
       idbSourceCont: args.idbSourceCont,
       storeSchemaCont: args.storeSchemaCont,
+      codec: args.codec,
     });
   }
 

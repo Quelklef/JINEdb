@@ -1,7 +1,7 @@
 
 import 'fake-indexeddb/auto';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { Database, Store, Index, Connection } from '../src/jine';
+import { Database, Store, Index, Connection, JineTransactionModeError } from '../src/jine';
 import { reset } from './shared';
 
 describe('migration (no beforeEach)', () => {
@@ -40,10 +40,58 @@ describe('migration', () => {
 
   beforeEach(async () => {
     reset();
-    migrations = [ async (_tx: any) => { } ];
+    migrations = [ async (_tx: any) => {  } ];
     jine = new Database<any>('jine', { migrations });
     await jine.initialized;
   });
+
+  it(`doesn't break on an empty migration`, async () => {
+
+    await jine.connect(async () => { });
+
+  });
+
+  it(`doesn't allow access to indexes during a migration (1)`, async () => {
+
+    migrations.push(async (genuine: boolean, tx: any) => {
+      const values = await tx.addStore('values');
+      await values.addIndex('value', '.value');
+    });
+    jine = new Database('jine', { migrations });
+    await jine.initialized;
+
+    migrations.push(async (genuine: boolean, tx: any) => {
+      await expect(async () => await tx.$.values.by.value.exists(null))
+        .rejects.toThrow(JineTransactionModeError);
+    });
+    jine = new Database('jine', { migrations });
+    await jine.initialized;
+
+  });
+
+  /*
+
+  FIXME: currently failing! Because the way we handle errors during migrations is shite!
+
+  it(`doesn't allow access to indexes during a migration (2)`, async () => {
+
+    migrations.push(async (genuine: boolean, tx: any) => {
+      const values = await tx.addStore('values');
+      await values.addIndex('value', '.value');
+    });
+    jine = new Database('jine', { migrations });
+    await jine.initialized;
+
+    migrations.push(async (genuine: boolean, tx: any) => {
+      await tx.$.values.by.value.exists(null);
+    });
+    jine = new Database('jine', { migrations });
+    await expect(async () => await jine.initialized)
+      .rejects.toThrow(JineTransactionModeError);
+
+  });
+
+  */
 
   it('allows for adding and removing stores', async () => {
 
@@ -162,6 +210,51 @@ describe('migration', () => {
       expect(await conn.$.objects.by.trait.get(1)).toEqual([obj]);
       expect(await conn.$.objects.by.trait.get(2)).toEqual([obj, obj]);
     });
+
+  });
+
+  it(`user types are ignored during migrations`, async () => {
+
+    class MyPair {
+      constructor(
+        public fst: any,
+        public snd: any,
+      ) { }
+    }
+
+    const fruits = new MyPair('orange', 'banana');
+
+    const pairCodec = {
+      type: MyPair,
+      id: 'MyPair',
+      encode(it: MyPair): unknown {
+        return { fst: it.fst, snd: it.snd };
+      },
+      decode(it: any): MyPair {
+        const { fst, snd } = it;
+        return new MyPair(fst, snd);
+      },
+    };
+
+    migrations.push(async (genuine: boolean, tx: any) => {
+      await tx.addStore('items');
+    });
+    jine = new Database('jine', { migrations, types: [pairCodec] });
+
+    await jine.$.items.add(fruits);
+
+    migrations.push(async (genuine: boolean, tx: any) => {
+      const [item] = await tx.$.items.all().array();
+      // vv In migrations, you get the items' encoded values, not them as rich JS objects
+      //    Since they are marked, we cannot use a plain expect(item).toEqual() for testing
+      expect(item.constructor).toEqual(Object);
+      expect(item.fst).toEqual(fruits.fst);
+      expect(item.snd).toEqual(fruits.snd);
+    });
+    jine = new Database('jine', { migrations, types: [pairCodec] });
+
+    // vv But now out of the migration, the item should be decoded as a JS class
+    expect(await jine.$.items.all().array()).toEqual([fruits]);
 
   });
 
