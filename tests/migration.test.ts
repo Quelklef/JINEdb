@@ -100,6 +100,71 @@ describe('migration', () => {
 
   });
 
+  it('allows for updating trait getters', async () => {
+
+    migrations.push(async (genuine: boolean, tx: any) => {
+      const strings = await tx.addStore('strings');
+      await strings.addIndex('trait', (x: any) => x.length);
+    });
+    jine = new Database('jine', { migrations });
+
+    await jine.connect(async (conn: any) => {
+      await conn.$.strings.add('123');
+      await conn.$.strings.add('abc');
+      expect(await conn.$.strings.by.trait.get(3)).toEqual(['123', 'abc']);
+    });
+
+    migrations.push(async (genuine: boolean, tx: any) => {
+      await tx.$.strings.by.trait.updateTraitGetter((x: any) => [...x].filter(c => c === 'x').length);
+    });
+    jine = new Database('jine', { migrations });
+
+    await jine.connect(async (conn: any) => {
+      await conn.$.strings.add('___x');
+      await conn.$.strings.add('___xx');
+      await conn.$.strings.add('___xxx');
+
+      // does not update traits on existing values
+      expect(await conn.$.strings.by.trait.get(0)).toEqual([]);
+      expect(await conn.$.strings.by.trait.get(1)).toEqual(['___x']);
+      expect(await conn.$.strings.by.trait.get(2)).toEqual(['___xx']);
+      expect(await conn.$.strings.by.trait.get(3)).toEqual(['123', 'abc', '___xxx']);
+      expect(await conn.$.strings.by.trait.get(4)).toEqual([]);
+    });
+
+  });
+
+  it('allows for updating trait paths', async () => {
+
+    migrations.push(async (genuine: boolean, tx: any) => {
+      const objects = await tx.addStore('objects');
+      await objects.addIndex('trait', '.traitA');
+    });
+    jine = new Database('jine', { migrations });
+
+    const obj = { traitA: 1, traitB: 2 };
+
+    await jine.connect(async (conn: any) => {
+      await conn.$.objects.add(obj);
+      expect(await conn.$.objects.by.trait.get(1)).toEqual([obj]);
+    });
+
+    migrations.push(async (genuine: boolean, tx: any) => {
+      await tx.$.objects.by.trait.updateTraitPath('.traitB');
+    });
+    jine = new Database('jine', { migrations });
+
+    await jine.connect(async (conn: any) => {
+      await conn.$.objects.add(obj);
+      await conn.$.objects.add(obj);
+
+      // does not update traits on existing values
+      expect(await conn.$.objects.by.trait.get(1)).toEqual([obj]);
+      expect(await conn.$.objects.by.trait.get(2)).toEqual([obj, obj]);
+    });
+
+  });
+
   /*
   it("throws on .abort()", async () => {
     async function go(): Promise<void> {

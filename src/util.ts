@@ -50,7 +50,7 @@ export function some<T>(x: T | null | undefined, errorMessage: string | null): T
 
 /* instanceof without inheritance */
 export function isInstanceOfStrict<T>(val: any, type: Constructor<T>): val is T {
-  return val.constructor === type;
+  return val && val.constructor === type;
 }
 
 export function invoke<T>(func: () => T): T {

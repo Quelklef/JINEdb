@@ -5,7 +5,7 @@ import { PACont } from './cont';
 import { IndexSchema } from './schema';
 import { Transaction, TransactionMode } from './transaction';
 import { Query, Selection, SelectionUnique } from './query';
-import { JineError, JineNoSuchIndexError, mapError } from './errors';
+import { JineError, JineNoSuchIndexError, JineTransactionModeError, mapError } from './errors';
 
 
 /**
@@ -106,6 +106,38 @@ export class Index<Item, Trait> {
           throw new JineNoSuchIndexError({ indexName });
         throw mapError(err);
       }
+    });
+  }
+
+  /**
+   * Updates the trait getter on a derived index.
+   *
+   * Only usable during a versionchang ('vc') transaction.
+   */
+  async updateTraitGetter(newGetter: (item: Item) => Trait): Promise<void> {
+    await this._parentTxCont.run('r', async tx => {
+      if (tx.mode !== 'vc')
+        throw new JineTransactionModeError({ operationName: 'Index#updateTraitGetter', expectedMode: 'vc', actualMode: tx.mode });
+      if (this.kind !== 'derived')
+        throw new JineError(`I was asked to update a trait getter on a non-derived index. I can't do this!`);
+      await this._schemaCont.run(schema => schema.traitPathOrGetter = newGetter);
+    });
+  }
+
+  /**
+  * Updates the trait path on a path index.
+  *
+  * Only usable during a versionchange ('vc') transaciton.
+  */
+  async updateTraitPath(newPath: string): Promise<void> {
+    await this._parentTxCont.run('r', async tx => {
+      if (tx.mode !== 'vc')
+        throw new JineTransactionModeError({ operationName: 'Index#updateTraitPath', expectedMode: 'vc', actualMode: tx.mode });
+      if (this.kind === 'derived')
+        throw new JineError(`I was asked to update a trait path on a derived index. I can't do this!`);
+      if (!newPath.startsWith('.'))
+        throw new JineError("Trait path must start with '.'");
+      await this._schemaCont.run(schema => schema.traitPathOrGetter = newPath.slice(1));
     });
   }
 

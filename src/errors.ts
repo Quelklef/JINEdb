@@ -29,10 +29,11 @@ export class JineVersionError extends JineError { }
 /** Thrown when you try and access an store that doesn't exist */
 export class JineNoSuchStoreError extends JineError {
   constructor(args: { storeName: string } | { oneOfStoreNames: Array<string> }) {
-    if ('storeName' in args)
-      super(`I was asked to operate on an store called '${args.storeName}', but I could not find one.`);
+    const oneOfStoreNames = 'storeName' in args ? [args.storeName] : args.oneOfStoreNames;
+    if (oneOfStoreNames.length === 1)
+      super(`I was asked to operate on an store called '${oneOfStoreNames[0]}', but I could not find one.`);
     else
-      super(`I was asked to operate on the stores '${args.oneOfStoreNames.join(', ')}', but I was unable to find at least one.`);
+      super(`I was asked to operate on the stores '${oneOfStoreNames.join(', ')}', but I was unable to find at least one.`);
   }
 }
 
