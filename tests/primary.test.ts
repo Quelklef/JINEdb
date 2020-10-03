@@ -140,8 +140,8 @@ describe("primary", () => {
     let con!: Connection<$$>;
     beforeEach(async () => {
       con = await db.newConnection();
-      const tx_k = await con.newTransaction(['rooms'], 'rw');
-      const tx = await tx_k.unsafeUnwrap(); // FIXME
+      const tx_k = await con.newTransactionCont(['rooms']);
+      const tx = await tx_k.unsafeUnwrap('rw'); // FIXME
       $ = tx.$;
     });
 

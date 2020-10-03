@@ -43,6 +43,8 @@ import { Awaitable, mapAwaitable } from './util';
  *   <R>(k: (x: T) => Promise<R>) => Promise<R>
  *
  * We will be using parameterized async continuations :)
+ * Actually, we will want to use both parameterized and unparameterized async continuations, so the class
+ * will have good support for the parameter type being 'undefined'.
  *
  * Pains have been taken to ensure that if you use an PACont with a
  * non-promise value, it will run synchronously.
@@ -59,7 +61,12 @@ export class PACont<Val, Param = undefined> {
       this.func = func;
     }
 
-    run<R>(callback: (value: Val) => Awaitable<R>): undefined extends Param ? Awaitable<R> : never;
+    // Run a continuation
+    // Unfortunately, I cannot figure out how to make typescript error for sure if you do
+    // not provide an argument to an unparameterized continuation. The best I could do was
+    // have the return type be `unknown`. This works fairly well, but can be a silent failure,
+    // for instance if `run` is used as a statement.
+    run<R>(callback: (value: Val) => Awaitable<R>): Param extends undefined ? Awaitable<R> : unknown;
     run<R>(param: Param, callback: (value: Val) => Awaitable<R>): Awaitable<R>;
     run<R>(...args: unknown[]): unknown {
       if (args.length === 2) {
@@ -72,9 +79,9 @@ export class PACont<Val, Param = undefined> {
     }
 
     // Unsafe because it allows using the guarded value after the 'after' code as been run
-    unsafeUnwrap(): undefined extends Param ? Awaitable<Val> : never;
+    unsafeUnwrap(): Param extends undefined ? Awaitable<Val> : unknown;
     unsafeUnwrap(param: Param): Awaitable<Val>;
-    unsafeUnwrap(param?: unknown): Awaitable<Val> {
+    unsafeUnwrap(param?: unknown): unknown {
       return this.run(param as Param, val => val);
     }
 
@@ -84,16 +91,23 @@ export class PACont<Val, Param = undefined> {
 
     // When there is no 'after' code
     static fromProducer<Val>(prod: () => Awaitable<Val>): PACont<Val>
-    static fromProducer<Val, Param = undefined>(prod: (param: Param) => Awaitable<Val>): PACont<Val, Param> {
+    static fromProducer<Val, Param>(prod: (param: Param) => Awaitable<Val>): PACont<Val, Param>;
+    static fromProducer(prod: (param?: unknown) => Awaitable<any>): PACont<any, any> {
       return new PACont((callback, param) => mapAwaitable(prod(param), callback));
     }
 
-    static fromFunc<Val, Param = undefined>(func: <R>(callback: (val: Val) => Awaitable<R>, param: Param) => Awaitable<R>): PACont<Val, Param> {
+    static fromFunc<Val>(func: <R>(callback: (val: Val) => Awaitable<R>) => Awaitable<R>): PACont<Val>;
+    static fromFunc<Val, Param>(func: <R>(callback: (val: Val) => Awaitable<R>, param: Param) => Awaitable<R>): PACont<Val, Param>;
+    static fromFunc(func: any): any {
       return new PACont(func);
     }
 
     map<NewVal>(mapper: (value: Val) => Awaitable<NewVal>): PACont<NewVal, Param> {
       return new PACont((callback, param) => this.func(val => mapAwaitable(mapper(val), callback), param));
+    }
+
+    supply(param: Param): PACont<Val, undefined> {
+      return new PACont(callback => this.func(callback, param));
     }
 
     /*-
@@ -102,13 +116,11 @@ export class PACont<Val, Param = undefined> {
      * The code
      *   PACont.pair(cont1, cont2).run(param, (val1, val2) => { ... })
      * is equivalent to
-     *   cont1.run(param, val1 => cont2.run(undefined, val2 => { ... }))
+     *   cont1.run(param, val1 => cont2.run(val2 => { ... }))
      */
-    static pair<Val1, Val2, Param = undefined>(
-      cont1: PACont<Val1, Param>,
-      cont2: PACont<Val2, undefined>
-    ): PACont<[Val1, Val2], Param> {
-      return new PACont((callback, param) => cont1.run(param, val1 => cont2.run(undefined, val2 => callback([val1, val2]))));
+    static pair<Val1, Val2, Param>(cont1: PACont<Val1, Param>, cont2: PACont<Val2, undefined>): PACont<[Val1, Val2], Param> {
+      return new PACont((callback, param) =>
+        cont1.run(param, val1 => cont2.run(val2 => callback([val1, val2]))));
     }
 
 }

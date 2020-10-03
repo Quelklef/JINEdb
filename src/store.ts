@@ -5,8 +5,8 @@ import { PACont } from './cont';
 import { Dict, Awaitable } from './util';
 import { Selection, Cursor } from './query';
 import { StoreSchema, IndexSchema } from './schema';
-import { Transaction, prettifyTransactionMode } from './transaction';
-import { JineError, JineNoSuchStoreError, JineTransactionModeError, mapError } from './errors';
+import { Transaction, TransactionMode } from './transaction';
+import { JineError, JineNoSuchStoreError, mapError } from './errors';
 
 /**
  * A collection of stored items.
@@ -37,12 +37,12 @@ export class Store<Item> {
     return this._schemaCont.run(schema => schema.name);
   }
 
-  _parentTxCont: PACont<Transaction>;
-  _idbStoreCont: PACont<IDBObjectStore>;
+  _parentTxCont: PACont<Transaction, TransactionMode>;
+  _idbStoreCont: PACont<IDBObjectStore, TransactionMode>;
   _schemaCont: PACont<StoreSchema<Item>>;
 
   constructor(args: {
-    txCont: PACont<Transaction>;
+    txCont: PACont<Transaction, TransactionMode>;
     schemaCont: PACont<StoreSchema<Item>>;
   }) {
     this._parentTxCont = args.txCont;
@@ -78,7 +78,7 @@ export class Store<Item> {
   }
 
   async _mapExistingRows(mapper: (row: Row) => Row): Promise<void> {
-    return await PACont.pair(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
+    return await PACont.pair(this._idbStoreCont, this._schemaCont).run('rw', async ([idbStore, schema]) => {
       const cursor = new Cursor({
         idbSource: idbStore,
         query: 'everything',
@@ -94,7 +94,7 @@ export class Store<Item> {
    * Add an item to the store.
    */
   async add(item: Item): Promise<void> {
-    return PACont.pair(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
+    return PACont.pair(this._idbStoreCont, this._schemaCont).run('rw', async ([idbStore, schema]) => {
       return new Promise((resolve, reject) => {
 
         const traits: Dict<unknown> = {};
@@ -124,7 +124,7 @@ export class Store<Item> {
    * Remove all items from the store.
    */
   async clear(): Promise<void> {
-    return await this._idbStoreCont.run(idbStore => {
+    return await this._idbStoreCont.run('rw', idbStore => {
       return new Promise((resolve, reject) => {
         const req = idbStore.clear();
         req.onsuccess = _event => resolve();
@@ -137,7 +137,7 @@ export class Store<Item> {
    * @return The number of items in the store
    */
   async count(): Promise<number> {
-    return await this._idbStoreCont.run(idbStore => {
+    return await this._idbStoreCont.run('r', idbStore => {
       return new Promise((resolve, reject) => {
         const req = idbStore.count();
         req.onsuccess = event => {
@@ -153,7 +153,7 @@ export class Store<Item> {
    * @returns An array with all items in the store.
    */
   async array(): Promise<Array<Item>> {
-    return PACont.pair(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
+    return PACont.pair(this._idbStoreCont, this._schemaCont).run('r', async ([idbStore, schema]) => {
       return new Promise((resolve, reject) => {
         const req = idbStore.getAll();
         req.onsuccess = (event) => {
@@ -181,7 +181,7 @@ export class Store<Item> {
   /**
    * Add an index to the store.
    *
-   * Only possible in a `ersionchange ('vc') transaction, which is given by [[Database.upgrade]].
+   * Only possible in a versionchange ('vc') transaction, which is given by [[Database.upgrade]].
    *
    * @param indexName The name to give the new index
    * @param trait The path or function that defines the indexed trait (see [[Index]])
@@ -195,11 +195,7 @@ export class Store<Item> {
     options?: { unique?: boolean; explode?: boolean },
   ): Promise<Index<Item, Trait>> {
 
-    return await PACont.pair(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
-
-      const txMode = prettifyTransactionMode(idbStore.transaction.mode);
-      if (txMode !== 'vc')
-        throw new JineTransactionModeError({ operationName: 'Store#addIndex', expectedMode: 'vc', actualMode: txMode });
+    return await PACont.pair(this._idbStoreCont, this._schemaCont).run('vc', async ([idbStore, schema]) => {
 
       if (typeof traitPathOrGetter === 'string') {
         const traitPath = traitPathOrGetter;
@@ -258,11 +254,7 @@ export class Store<Item> {
    */
   async removeIndex(name: string): Promise<void> {
 
-    return await PACont.pair(this._idbStoreCont, this._schemaCont).run(async ([idbStore, schema]) => {
-
-      const txMode = prettifyTransactionMode(idbStore.transaction.mode);
-      if (txMode !== 'vc')
-        throw new JineTransactionModeError({ operationName: 'Store#removeIndex', expectedMode: 'vc', actualMode: txMode });
+    return await PACont.pair(this._idbStoreCont, this._schemaCont).run('vc', async ([idbStore, schema]) => {
 
       // remove idb index
       idbStore.deleteIndex(name);

@@ -58,8 +58,8 @@ export class JineBlockedError extends JineError { }
 
 /** Thrown when attemping to do an operation on a transaction of the wrong mode */
 export class JineTransactionModeError extends JineError {
-  constructor(args: { operationName: string; expectedMode: string; actualMode: string }) {
-    super(`Cannot call ${args.operationName} on a '${args.actualMode}' transaction, only a '${args.expectedMode}' one.`);
+  constructor(args: { operationName?: string; expectedMode: string; actualMode: string }) {
+    super(`I was trying to perform ${args.operationName ?? 'an operation'} on a transaction, but was unable to. The operation demands that the transaction be in '${args.expectedMode}' mode or higher, but it was only in '${args.actualMode}' mode.`);
   }
 }
 

@@ -3,7 +3,7 @@ import { Store } from './store';
 import { Awaitable } from './util';
 import { PACont } from './cont';
 import { IndexSchema } from './schema';
-import { Transaction } from './transaction';
+import { Transaction, TransactionMode } from './transaction';
 import { Query, Selection, SelectionUnique } from './query';
 import { JineError, JineNoSuchIndexError, mapError } from './errors';
 
@@ -83,14 +83,14 @@ export class Index<Item, Trait> {
   }
 
 
-  _parentTxCont: PACont<Transaction>;
-  _idbIndexCont: PACont<IDBIndex>;
+  _parentTxCont: PACont<Transaction, TransactionMode>;
+  _idbIndexCont: PACont<IDBIndex, TransactionMode>;
   _schemaCont: PACont<IndexSchema<Item, Trait>>;
   _parentStore: Store<Item>;
 
   constructor(args: {
     parentStore: Store<Item>;
-    parentTxCont: PACont<Transaction>;
+    parentTxCont: PACont<Transaction, TransactionMode>;
     schemaCont: PACont<IndexSchema<Item, Trait>>;
   }) {
     this._parentStore = args.parentStore;

@@ -18,6 +18,11 @@ import { DatabaseSchema, StoreSchema } from './schema';
  */
 export type TransactionMode = 'r' | 'rw' | 'vc';
 
+export function txModeLeq(a: TransactionMode, b: TransactionMode): boolean {
+  const ranks = { r: 0, rw: 1, vc: 2 };
+  return ranks[a] <= ranks[b];
+}
+
 export function prettifyTransactionMode(idbTxMode: IDBTransactionMode): TransactionMode {
   return {
     readonly: 'r',
@@ -108,7 +113,7 @@ export class Transaction<$$ = unknown> {
         if (typeof prop === 'string') {
           const storeName = prop;
           const store = new Store({
-            txCont: PACont.fromValue(this),
+            txCont: this._toCont(),
             // vv Use a producer to keep things lazy. Defers errors to the invokation code.
             schemaCont: PACont.fromProducer(() => this._schema.store(storeName)),
           });
@@ -133,6 +138,14 @@ export class Transaction<$$ = unknown> {
       this.state = 'committed';
     });
 
+  }
+
+  _toCont(): PACont<Transaction, TransactionMode> {
+    return PACont.fromProducer((txMode: TransactionMode) => {
+      if (!txModeLeq(txMode, this.mode))
+        throw new JineTransactionModeError({ expectedMode: txMode, actualMode: this.mode });
+      return this;
+    });
   }
 
   /**
@@ -191,7 +204,7 @@ export class Transaction<$$ = unknown> {
     });
 
     const store = new Store<Item>({
-      txCont: PACont.fromValue(this),
+      txCont: this._toCont(),
       schemaCont: PACont.fromValue(storeSchema),
     });
 

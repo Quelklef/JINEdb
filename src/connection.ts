@@ -39,7 +39,7 @@ export class Connection<$$ = unknown> {
         if (typeof prop === 'string') {
           const storeName = prop;
           const store = new Store({
-            txCont: this.newTransaction([storeName], 'rw'),  // FIXME: assumes readwrite
+            txCont: this.newTransactionCont([storeName]),
             schemaCont: this._schemaCont.map(schema => schema.store(storeName)),
           });
           return store;
@@ -48,33 +48,30 @@ export class Connection<$$ = unknown> {
     });
   }
 
-  /**
-   * Create a new transaction on the given stores with the given mode.
-   *
-   * @param stores The stores that the transaction wants access to.
-   * @param mode The transaction mode.
-   * @returns A new transaction
-   */
-  newTransaction(stores: Array<string | Store<any>>, txMode: TransactionMode): PACont<Transaction<$$>> {
-    return PACont.pair(this._idbConnCont, this._schemaCont).map(async ([idbConn, schema]) => {
-      const storeNames = await Promise.all(stores.map(s => typeof s === 'string' ? s : s.name));
-      const idbTxMode = uglifyTransactionMode(txMode)
+  newTransactionCont(stores: Array<string | Store<any>>): PACont<Transaction<$$>, TransactionMode> {
+    // this could probably be better implemented with a new combinator or something, but that's okay
+    return PACont.fromFunc<Transaction<$$>, TransactionMode>(async (callback, txMode) => {
+      const txCont = PACont.pair(this._idbConnCont, this._schemaCont).map(async ([idbConn, schema]) => {
+        const storeNames = await Promise.all(stores.map(s => typeof s === 'string' ? s : s.name));
+        const idbTxMode = uglifyTransactionMode(txMode)
 
-      let idbTx!: IDBTransaction;
-      try {
-        idbTx = idbConn.transaction(storeNames, idbTxMode);
-      } catch (err) {
-        if (err.name === 'NotFoundError')
-          throw new JineNoSuchStoreError({ oneOfStoreNames: storeNames });
-        throw mapError(err);
-      }
+        let idbTx!: IDBTransaction;
+        try {
+          idbTx = idbConn.transaction(storeNames, idbTxMode);
+        } catch (err) {
+          if (err.name === 'NotFoundError')
+            throw new JineNoSuchStoreError({ oneOfStoreNames: storeNames });
+          throw mapError(err);
+        }
 
-      return new Transaction<$$>({
-        idbTx: idbTx,
-        scope: storeNames,
-        genuine: true,
-        schema: schema,
+        return new Transaction<$$>({
+          idbTx: idbTx,
+          scope: storeNames,
+          genuine: true,
+          schema: schema,
+        });
       });
+      return await txCont.run(callback);
     });
   }
 
@@ -88,11 +85,11 @@ export class Connection<$$ = unknown> {
    */
   async transact<R>(
     stores: Array<string | Store<any>>,
-    mode: TransactionMode,
+    txMode: TransactionMode,
     callback: (tx: Transaction<$$>) => Promise<R>,
   ): Promise<R> {
-    const txCont = this.newTransaction(stores, mode);
-    return txCont.run(tx => tx.wrap(callback));
+    const txCont = this.newTransactionCont(stores);
+    return txCont.run(txMode, tx => tx.wrap(callback));
   }
 
   /**

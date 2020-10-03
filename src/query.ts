@@ -3,6 +3,7 @@ import { Row } from './row';
 import { Codec } from './codec';
 import { PACont } from './cont';
 import { StoreSchema } from './schema';
+import { TransactionMode } from './transaction';
 import { JineError, mapError } from './errors';
 import { some, getPropertyDescriptor, Dict } from './util';
 
@@ -296,21 +297,21 @@ export class Selection<Item, Trait> {
 
   readonly query: Query<Trait>;
 
-  readonly idbSourceCont: PACont<IDBObjectStore> | PACont<IDBIndex>;
+  readonly idbSourceCont: PACont<IDBObjectStore | IDBIndex, TransactionMode>;
   readonly storeSchemaCont: PACont<StoreSchema<Item>>;
 
-  cursorCont: PACont<Cursor<Item, Trait>>;
+  cursorCont: PACont<Cursor<Item, Trait>, TransactionMode>;
 
   constructor(args: {
     query: Query<Trait>;
-    idbSourceCont: PACont<IDBObjectStore> | PACont<IDBIndex>;
+    idbSourceCont: PACont<IDBObjectStore, TransactionMode> | PACont<IDBIndex, TransactionMode>;
     storeSchemaCont: PACont<StoreSchema<Item>>;
   }) {
     this.query = args.query;
     this.storeSchemaCont = args.storeSchemaCont;
     this.idbSourceCont = args.idbSourceCont;
 
-    this.cursorCont = PACont.pair<IDBObjectStore | IDBIndex, StoreSchema<Item>>(
+    this.cursorCont = PACont.pair(
       this.idbSourceCont, this.storeSchemaCont
     ).map(async ([idbSource, storeSchema]) => {
       // TODO: use transactionmode
@@ -323,7 +324,7 @@ export class Selection<Item, Trait> {
   }
 
   async _replaceRows(mapper: (row: Row) => Row): Promise<void> {
-    await this.cursorCont.run(/*'rw', */async cursor => {
+    await this.cursorCont.run('rw', async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
         const oldRow = cursor._currentRow();
         const newRow = mapper(oldRow);
@@ -433,7 +434,7 @@ export class Selection<Item, Trait> {
    * Test if the selection is empty or not.
    */
   async isEmpty(): Promise<boolean> {
-    return await this.cursorCont.run(/*'r', */async cursor => {
+    return await this.cursorCont.run('r', async cursor => {
       await cursor.init();
       return cursor.exhausted;
     });
@@ -445,7 +446,7 @@ export class Selection<Item, Trait> {
    * @param mapper Given an existing item, this function should return the new item.
    */
   async replace(mapper: (item: Item) => Item): Promise<void> {
-    await this.cursorCont.run(/*'rw', */async cursor => {
+    await this.cursorCont.run('rw', async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
         const oldItem = cursor.currentItem();
         const newItem = mapper(oldItem);
@@ -460,7 +461,7 @@ export class Selection<Item, Trait> {
    * @param updates The delta
    */
   async update(delta: Partial<Item>): Promise<void> {
-    await this.cursorCont.run(/*'rw', */async cursor => {
+    await this.cursorCont.run('rw', async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
         await cursor.update(delta);
       }
@@ -471,7 +472,7 @@ export class Selection<Item, Trait> {
    * Delete the selected items from the database.
    */
   async delete(): Promise<void> {
-    await this.cursorCont.run(/*'rw', */async cursor => {
+    await this.cursorCont.run('rw', async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
         await cursor.delete();
       }
@@ -482,7 +483,7 @@ export class Selection<Item, Trait> {
    * @return The number of selected items.
    */
   async count(): Promise<number> {
-    return await this.cursorCont.run(/*'r', */async cursor => {
+    return await this.cursorCont.run('r', async cursor => {
       let result = 0;
       for (await cursor.init(); cursor.active; await cursor.step()) {
         result++;
@@ -497,7 +498,7 @@ export class Selection<Item, Trait> {
    * @returns The items
    */
   async array(): Promise<Array<Item>> {
-    return await this.cursorCont.run(/*'r', */async cursor => {
+    return await this.cursorCont.run('r', async cursor => {
       const result: Array<Item> = [];
       for (await cursor.init(); cursor.active; await cursor.step()) {
         result.push(cursor.currentItem());
@@ -526,7 +527,7 @@ export class Selection<Item, Trait> {
       = new Promise(resolve => resolveIteratorDone = resolve);
 
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    this.cursorCont.run(/*'r', */cursor => {
+    this.cursorCont.run('r', cursor => {
       resolveCursor(cursor);
       return new Promise(resolve => {
         const iteratorDone = resolve;
@@ -566,11 +567,11 @@ export class Selection<Item, Trait> {
 export class SelectionUnique<Item, Trait> {
 
   readonly selection: Selection<Item, Trait>;
-  readonly idbSourceCont: PACont<IDBIndex>;
+  readonly idbSourceCont: PACont<IDBIndex, TransactionMode>;
 
   constructor(args: {
     selectedTrait: Trait;
-    idbSourceCont: PACont<IDBIndex>;
+    idbSourceCont: PACont<IDBIndex, TransactionMode>;
     storeSchemaCont: PACont<StoreSchema<Item>>;
   }) {
     this.idbSourceCont = args.idbSourceCont.map(idbIndex => {
