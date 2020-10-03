@@ -17,7 +17,6 @@ export class JineAbortError extends JineError { }
 /** Thrown when trying to insert data that would invalidate a database constraint, such as causing a unique index to have duplicate values. */
 export class JineConstraintError extends JineError { }
 
-
 /** Thrown when the user declines giving more disk space. */
 export class JineQuotaError extends JineError { }
 
