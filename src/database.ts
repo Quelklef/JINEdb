@@ -6,8 +6,8 @@ import { Store } from './store';
 import { PACont } from './cont';
 import { Connection } from './connection';
 import { DatabaseSchema } from './schema';
-import { Codec, UserCodec } from './codec';
 import { Transaction, TransactionMode } from './transaction';
+import { Codec, UserCodec, NativelyStorable, NativelyIndexable } from './codec';
 import { JineError, JineBlockedError, JineInternalError, mapError } from './errors';
 
 async function getDbVersion(name: string): Promise<number> {
@@ -57,9 +57,9 @@ async function getDbVersion(name: string): Promise<number> {
 
 
 type Migration$$ = {
-  [storeName: string]: Store<unknown> & {
+  [storeName: string]: Store<NativelyStorable> & {
     by: {
-      [indexName: string]: Index<unknown, unknown>;
+      [indexName: string]: Index<NativelyStorable, NativelyIndexable>;
     };
   };
 };
@@ -387,7 +387,7 @@ export class Database<$$> {
    * await db.connect(async conn => await conn.transact(tx => ...))
    * ```
    */
-  async transact<R>(stores: Array<string | Store<unknown>>, mode: TransactionMode, callback: (tx: Transaction<$$>) => Promise<R>): Promise<R> {
+  async transact<R>(stores: Array<string | Store<any>>, mode: TransactionMode, callback: (tx: Transaction<$$>) => Promise<R>): Promise<R> {
     return await this.connect(async conn => {
       return await conn.transact(stores, mode, async tx => {
         return await callback(tx);

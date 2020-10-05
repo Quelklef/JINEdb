@@ -1,9 +1,9 @@
 
 import { Store } from './store';
-import { Codec } from './codec';
 import { PACont } from './cont';
 import { Awaitable } from './util';
 import { IndexSchema } from './schema';
+import { Codec, Storable, Indexable } from './codec';
 import { Transaction, TransactionMode } from './transaction';
 import { Query, Selection, SelectionUnique } from './query';
 import { JineError, JineNoSuchIndexError, JineTransactionModeError, mapError } from './errors';
@@ -21,7 +21,7 @@ import { JineError, JineNoSuchIndexError, JineTransactionModeError, mapError } f
  * @typeparam Item The type of the item stored on the [[Store]] that this indexes is connected to.
  * @typeparam Trait The type of the traits being indexed by.
  */
-export class Index<Item, Trait> {
+export class Index<Item extends Storable, Trait extends Indexable> {
 
   /**
    * Name of the index.

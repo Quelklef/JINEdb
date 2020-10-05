@@ -1,7 +1,7 @@
 
 import "fake-indexeddb/auto";
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { Database, Connection, Transaction, Store, Index } from "../src/jine";
+import { Database, Connection, Transaction, Store, Index, encodesTo } from "../src/jine";
 import * as jine from '../src/jine';
 import { reset } from "./shared";
 

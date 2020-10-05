@@ -1,11 +1,11 @@
 
 import { Row } from './row';
 import { Index } from './index';
-import { Codec } from './codec';
 import { PACont } from './cont';
 import { Dict, Awaitable } from './util';
 import { Selection, Cursor } from './query';
 import { StoreSchema, IndexSchema } from './schema';
+import { Codec, Storable, Indexable } from './codec';
 import { Transaction, TransactionMode } from './transaction';
 import { JineError, JineNoSuchStoreError, mapError } from './errors';
 
@@ -18,7 +18,7 @@ import { JineError, JineNoSuchStoreError, mapError } from './errors';
  *
  * @typeparam Item The type of objects contained in this store.
  */
-export class Store<Item> {
+export class Store<Item extends Storable> {
 
   /**
    * An alias for [[Store.indexes]].
@@ -200,7 +200,7 @@ export class Store<Item> {
    * - `unqiue`: enforces unique values for this trait; see [[Index.unique]].
    * - `explode`: see [[Index.explode]].
    */
-  async addIndex<Trait>(
+  async addIndex<Trait extends Indexable>(
     indexName: string,
     traitPathOrGetter: string | ((item: Item) => Trait),
     options?: { unique?: boolean; explode?: boolean },

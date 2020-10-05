@@ -6,4 +6,6 @@ export { Transaction } from './transaction';
 export { Store } from './store';
 export { Index } from './index';
 
+export { codec, encodesTo } from './codec';
+
 export * from './errors';

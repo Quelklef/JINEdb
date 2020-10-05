@@ -1,10 +1,10 @@
 
 import { Row } from './row';
-import { Codec } from './codec';
 import { PACont } from './cont';
 import { StoreSchema } from './schema';
 import { TransactionMode } from './transaction';
 import { JineError, mapError } from './errors';
+import { Codec, Storable, Indexable } from './codec';
 import { some, getPropertyDescriptor, Dict } from './util';
 
 /**
@@ -28,7 +28,7 @@ import { some, getPropertyDescriptor, Dict } from './util';
  * the query results should be traversed in reverse order, and `unique` marks that
  * duplicated values should be skipped.
  */
-export type Query<Trait>
+export type Query<Trait extends Indexable>
   = 'everything'
   | {
     /** Equality */
@@ -48,7 +48,7 @@ export type Query<Trait>
   };
 
 
-function compileTraitRange<Trait>(query: Query<Trait>, codec: Codec): IDBKeyRange | undefined {
+function compileTraitRange<Trait extends Indexable>(query: Query<Trait>, codec: Codec): IDBKeyRange | undefined {
   /* Conpile an IDBKeyRange object from a Query<Trait>. */
 
   // The implementation isn't elegant, but it's easy to understand
@@ -98,7 +98,7 @@ function compileTraitRange<Trait>(query: Query<Trait>, codec: Codec): IDBKeyRang
 
 }
 
-function compileCursorDirection<Trait>(query: Query<Trait>): IDBCursorDirection {
+function compileCursorDirection<Trait extends Indexable>(query: Query<Trait>): IDBCursorDirection {
   if (query === 'everything') return 'next';
   query = query as Omit<Query<Trait>, 'everything'>;
   let result = query.reversed ? 'prev' : 'next';
@@ -107,7 +107,7 @@ function compileCursorDirection<Trait>(query: Query<Trait>): IDBCursorDirection 
 }
 
 
-export class Cursor<Item, Trait> {
+export class Cursor<Item extends Storable, Trait extends Indexable> {
   /* IDBCursor wrapper */
 
   // For use by the API user to monkeypatch in any
@@ -296,7 +296,7 @@ export class Cursor<Item, Trait> {
  * @typeparam Item The type of the items for the parent database
  * @typeparam Trait The type of the trait for the parent index
  */
-export class Selection<Item, Trait> {
+export class Selection<Item extends Storable, Trait extends Indexable> {
 
   readonly query: Query<Trait>;
 
@@ -571,7 +571,7 @@ export class Selection<Item, Trait> {
 /**
  * Like [[Selection]], but for unique indexes.
  */
-export class SelectionUnique<Item, Trait> {
+export class SelectionUnique<Item extends Storable, Trait extends Indexable> {
 
   readonly selection: Selection<Item, Trait>;
   readonly idbSourceCont: PACont<IDBIndex, TransactionMode>;

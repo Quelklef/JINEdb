@@ -1,7 +1,7 @@
 
 import { W } from 'wrongish';
 
-import { Constructor, isInstanceOfStrict } from './util';
+import { Constructor, PlainObjectOf, isInstanceOfStrict } from './util';
 import { JineError, JineEncodingError, JineDecodingError, JineInternalError } from './errors';
 
 /*
@@ -54,29 +54,60 @@ function resolve(names: string): Array<string | Constructor<unknown>> {
 }
 
 const idbNativelyStorableTypes = resolve(`
-  string number boolean bigint undefined
+  undefined null string number boolean bigint
   Date RegExp Blob
   File FileList ArrayBuffer
-  Int8Array Uint8Array Uint8ClampedArray Int16Array Uint16Array Int32Array Uint32Array Float32Array Float64Array
-  DataView ImageBitmap ImageData
+  Int8Array Uint8Array Uint8ClampedArray Int16Array Uint16Array Int32Array Uint32Array Float32Array Float64Array DataView
+  ImageBitmap ImageData
   Array Object Map Set
 `);
+
+type IdbNativelyStorable =
+  undefined | null | string | number | boolean | BigInt
+  | Date | RegExp | Blob
+  | File | FileList | ArrayBuffer
+  | ArrayBufferView
+  | ImageBitmap | ImageData
+  | Array<NativelyStorable> | PlainObjectOf<NativelyStorable> | Map<NativelyStorable, NativelyStorable> | Set<NativelyStorable>
+  ;
 
 const idbNativelyIndexableTypes = resolve(`
   string number
   Date
   ArrayBuffer
-  Int8Array Uint8Array Uint8ClampedArray Int16Array Uint16Array Int32Array Uint32Array Float32Array Float64Array
-  DataView ImageBitmap ImageData
+  Int8Array Uint8Array Uint8ClampedArray Int16Array Uint16Array Int32Array Uint32Array Float32Array Float64Array DataView
+  ImageBitmap ImageData
   Array
 `);
 
+type IdbNativelyIndexable =
+  string | number
+  | Date
+  | ArrayBuffer
+  | ArrayBufferView
+  | ImageBitmap | ImageData
+  | Array<NativelyIndexable>
+  ;
+
+export type NativelyStorable = IdbNativelyStorable
+export type NativelyIndexable = IdbNativelyIndexable;
+
+// Typescript users should tag their custom types with what they encode to
+export declare const encodesTo: unique symbol;
+
+export type Storable = NativelyStorable | { [encodesTo]: NativelyStorable };
+export type Indexable = NativelyIndexable | { [encodesTo]: NativelyIndexable };
+
 function isOfAny(value: any, types: Array<string | Constructor<unknown>>): boolean {
-  return types.some(type => typeof value === type || isInstanceOfStrict(value, type as Constructor<unknown>));
+  return types.some(type =>
+    value === null && type === 'null'
+    || typeof value === type
+    || isInstanceOfStrict(value, type as Constructor<unknown>)
+  );
 }
 
 function isOfNativelyStorableType(value: any, opts?: { except: Array<string | Constructor<unknown>> }): boolean {
-  return value === null || isOfAny(value, idbNativelyStorableTypes) && !isOfAny(value, opts?.except ?? []);
+  return isOfAny(value, idbNativelyStorableTypes) && !isOfAny(value, opts?.except ?? []);
 }
 
 function isOfNativelyIndexableType(value: any, opts?: { except: Array<string | Constructor<unknown>> }): boolean {
@@ -91,11 +122,25 @@ function typeNamePretty(value: any): string {
 
 // --
 
-export type UserCodec = {
+export interface UserCodec<Decoded = any, Encoded extends NativelyStorable | NativelyIndexable = any> {
   type: Constructor<unknown>;
   id: string;
-  encode(it: unknown): unknown;
-  decode(it: unknown): unknown;
+  encode(it: Decoded): Encoded;
+  decode(it: Encoded): Decoded;
+}
+
+// Because the Database constructor asks for an Array<UserCodec>, and typescript doesn't have
+// existential types, then those codecs won't necessarily be type-safe.
+// To make them more safe, create them with this function.
+export function codec<Decoded, Encoded extends NativelyStorable | NativelyIndexable>(
+  type: Constructor<unknown>,
+  id: string,
+  code: {
+    encode(it: Decoded): Encoded;
+    decode(it: Encoded): Decoded;
+  },
+): UserCodec<Decoded, Encoded> {
+  return { type, id, encode: code.encode, decode: code.decode };
 }
 
 function getUserCodecById(userCodecs: Array<UserCodec>, id: string): UserCodec {
@@ -120,17 +165,18 @@ function validateUserCodecs(userCodecs: Array<UserCodec>): void {
 
 export class Codec {
 
+  // vv Could be typed better, but no point
   constructor(
-    public encodeItem: (it: unknown) => unknown,
-    public decodeItem: (it: unknown) => unknown,
-    public encodeTrait: (it: unknown, indexIsExploding: boolean) => unknown,
-    public decodeTrait: (it: unknown, indexIsExploding: boolean) => unknown,
+    public encodeItem: (it: any) => unknown,
+    public decodeItem: (it: any) => unknown,
+    public encodeTrait: (it: any, indexIsExploding: boolean) => unknown,
+    public decodeTrait: (it: any, indexIsExploding: boolean) => unknown,
   ) { }
 
   static usualCodec(userCodecs: Array<UserCodec>): Codec {
     validateUserCodecs(userCodecs);
 
-    function encodeItem(decoded: unknown): unknown {
+    function encodeItem(decoded: any): unknown {
       if (isOfNativelyStorableType(decoded, { except: [Object, Array, Map, Set] }))
         return decoded;
 
@@ -145,15 +191,15 @@ export class Codec {
 
       if (isInstanceOfStrict(decoded, Object)) {
         const encoded = {} as any;
-        for (const key in (decoded as any))
-          encoded[key] = encodeItem((decoded as any)[key]);
+        for (const key in decoded)
+          encoded[key] = encodeItem(decoded[key]);
         const boxed = { boxedValue: encoded, codecId: null }
         return boxed;
       }
 
       const userCodec = userCodecs.find(codec => isInstanceOfStrict(decoded, codec.type));
       if (userCodec) {
-        let shallowlyEncoded = userCodec.encode(decoded) as any;
+        let shallowlyEncoded = userCodec.encode(decoded);
         // vv If encoded to another custom type, expand
         if (!isOfNativelyStorableType(shallowlyEncoded))
           shallowlyEncoded = encodeItem(shallowlyEncoded);
@@ -172,7 +218,7 @@ export class Codec {
       throw new JineEncodingError(`I don't know how to store values of type '${typeNamePretty(decoded)}'. (If this is an Object type, did you forget to provide a custom codec?)`);
     }
 
-    function decodeItem(encoded: unknown): unknown {
+    function decodeItem(encoded: any): unknown {
       if (isOfNativelyStorableType(encoded, { except: [Array, Map, Set, Object] }))
         return encoded;
 
@@ -237,7 +283,7 @@ export class Codec {
       throw new JineEncodingError(`I can't use use values of type '${typeNamePretty(item)}' to index database items. (If this is an Object type, did you forget to provide a custom codec?)`);
     }
 
-    function decodeTrait(item: unknown, indexIsExploding: boolean): unknown {
+    function decodeTrait(item: any, indexIsExploding: boolean): unknown {
       if (indexIsExploding) {
         if (!(item instanceof Array))
           throw new JineDecodingError(`I was asked to decoded a trait for an exploding index, but the given trait was not an array!`);
@@ -267,7 +313,7 @@ export class Codec {
   }
 
   static migrationCodec(): Codec {
-    function decodeItem(encoded: unknown): unknown {
+    function decodeItem(encoded: any): unknown {
       if (isOfNativelyStorableType(encoded, { except: [Array, Map, Set, Object] }))
         return encoded;
 
@@ -282,7 +328,7 @@ export class Codec {
 
       if (isInstanceOfStrict(encoded, Object)) {
         if (!('codecId' in encoded)) throw new JineInternalError();
-        const { boxedValue, codecId } = encoded as { boxedValue: any, codecId: null | string };
+        const { boxedValue, codecId } = encoded as { boxedValue: any; codecId: null | string };
         const decoded = {} as any;
         for (const key in boxedValue)
           decoded[key] = decodeItem(boxedValue[key]);
@@ -293,7 +339,7 @@ export class Codec {
       throw new JineInternalError();
     }
 
-    function encodeItem(marked: unknown): unknown {
+    function encodeItem(marked: any): unknown {
       if (isOfNativelyStorableType(marked, { except: [Object, Array, Map, Set] }))
         return marked;
 
@@ -308,10 +354,10 @@ export class Codec {
 
       if (isInstanceOfStrict(marked, Object)) {
         if (!(codecIdMark in marked)) throw new JineEncodingError(`I was trying to encode a value of type '${typeNamePretty(marked)}', but could not find some information that I needed. Are you doing tricky data manipulations during a migration?`);
-        const codecId = (marked as any)[codecIdMark] as null | string;
+        const codecId = marked[codecIdMark] as null | string;
         const encoded = {} as any;
         for (const key in marked)
-          encoded[key] = encodeItem((marked as any)[key]);
+          encoded[key] = encodeItem(marked[key]);
         const boxed = { boxedValue: encoded, codecId: codecId };
         return boxed;
       }

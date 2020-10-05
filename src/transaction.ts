@@ -2,11 +2,11 @@
 import { clone } from 'true-clone';
 
 import { Dict } from './util';
-import { Codec } from './codec';
 import { Store } from './store';
 import { PACont } from './cont';
 import { JineTransactionModeError } from './errors';
 import { DatabaseSchema, StoreSchema } from './schema';
+import { Codec, Storable, NativelyStorable } from './codec';
 
 /**
  * Modes that a transaction can take.
@@ -53,7 +53,7 @@ export class Transaction<$$ = unknown> {
    *
    * For non-programmatic code, [[Transaction.$]] is nicer to use.
    */
-  stores: Dict<Store<unknown>>;
+  stores: Dict<Store<NativelyStorable>>;
 
   /**
    * A non-genuine transaction will not allow `.commit()` and will not
@@ -112,7 +112,7 @@ export class Transaction<$$ = unknown> {
     // changes are sandboxed in case of e.g. .abort()
     this._schema = clone(args.schema);
 
-    const $: Record<string, Store<unknown>> = new Proxy({}, {
+    const $: Record<string, Store<NativelyStorable>> = new Proxy({}, {
       get: (_target: {}, prop: string | number | symbol) => {
         if (typeof prop === 'string') {
           const storeName = prop;
@@ -195,7 +195,7 @@ export class Transaction<$$ = unknown> {
    * @param name The name to give the new store
    * @returns The new store
    */
-  addStore<Item>(storeName: string): Store<Item> {
+  addStore<Item extends Storable>(storeName: string): Store<Item> {
 
     if (this.mode !== 'vc')
       throw new JineTransactionModeError({ operationName: 'Transaction#addStore', expectedMode: 'vc', actualMode: this.mode });
