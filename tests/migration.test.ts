@@ -213,51 +213,6 @@ describe('migration', () => {
 
   });
 
-  it(`user types are ignored during migrations`, async () => {
-
-    class MyPair {
-      constructor(
-        public fst: any,
-        public snd: any,
-      ) { }
-    }
-
-    const fruits = new MyPair('orange', 'banana');
-
-    const pairCodec = {
-      type: MyPair,
-      id: 'MyPair',
-      encode(it: MyPair): unknown {
-        return { fst: it.fst, snd: it.snd };
-      },
-      decode(it: any): MyPair {
-        const { fst, snd } = it;
-        return new MyPair(fst, snd);
-      },
-    };
-
-    migrations.push(async (genuine: boolean, tx: any) => {
-      await tx.addStore('items');
-    });
-    jine = new Database('jine', { migrations, types: [pairCodec] });
-
-    await jine.$.items.add(fruits);
-
-    migrations.push(async (genuine: boolean, tx: any) => {
-      const [item] = await tx.$.items.all().array();
-      // vv In migrations, you get the items' encoded values, not them as rich JS objects
-      //    Since they are marked, we cannot use a plain expect(item).toEqual() for testing
-      expect(item.constructor).toEqual(Object);
-      expect(item.fst).toEqual(fruits.fst);
-      expect(item.snd).toEqual(fruits.snd);
-    });
-    jine = new Database('jine', { migrations, types: [pairCodec] });
-
-    // vv But now out of the migration, the item should be decoded as a JS class
-    expect(await jine.$.items.all().array()).toEqual([fruits]);
-
-  });
-
   /*
   it("throws on .abort()", async () => {
     async function go(): Promise<void> {

@@ -105,7 +105,8 @@ function getUserCodecById(userCodecs: Array<UserCodec>, id: string): UserCodec {
   return codec;
 }
 
-const codecIdMark: unique symbol = Symbol('JINEdb codec id');
+// exported for tests
+export const codecIdMark: unique symbol = Symbol('JINEdb codec id');
 
 function validateUserCodecs(userCodecs: Array<UserCodec>): void {
   const duplicateIds = userCodecs.map(codec => codec.id)[W.duplicates]();

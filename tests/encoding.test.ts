@@ -1,74 +1,170 @@
 
 import 'fake-indexeddb/auto';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { Database, Store, Index, Connection } from '../src/jine';
+import { Database, Store, Index, Connection, Transaction } from '../src/jine';
+import { codecIdMark } from '../src/codec';
 import { reset } from './shared';
 
 describe('encoding', () => {
 
-  describe('without custom types', () => {
+  describe('natively-storable types', () => {
 
-    it("works with natively-storable primitive values", async () => {
+    let migrations!: Array<any>;
+    let jine: Database<any>;
+    beforeEach(() => {
       reset();
-      const jine = new Database<any>('jine', {
-        migrations: [
-          async (genuine: boolean, tx: any) => {
-            tx.addStore('prims');
-          }
-        ],
-      });
-      const vals = new Set([null, undefined, 'string', 10, 3.14]);
-      for (const val of vals)
-        await jine.$.prims.add(val);
-      expect(new Set(await jine.$.prims.array())).toStrictEqual(vals);
-    });
-
-    it("works with natively-storable object values", async () => {
-      reset();
-      const jine = new Database<any>('jine', {
-        migrations: [
-          async (genuine: boolean, tx: any) => {
-            tx.addStore('obj');
-          }
-        ],
-      });
-      const o = { a: 'a', b: 'b' };
-      const d = new Date();
-      const r = /abc/;
-      await jine.$.obj.add(o);
-      await jine.$.obj.add(d);
-      await jine.$.obj.add(r);
-      expect(await jine.$.obj.array()).toStrictEqual([o, d, r]);
-    });
-
-    it("works with recursive instantiations of the storable registry box type", async () => {
-      reset();
-      const jine = new Database<any>('jine', {
-        migrations: [
-          async (genuine: boolean, tx: any) => {
-            tx.addStore('obj');
-          }
-        ],
-      });
-      const o = {
-        x: 1,
-        c: {
-          x: 2,
-          c: {
-            x: 3,
-            c: null,
-          }
+      migrations = [
+        async (genuine: boolean, tx: any) => {
+          tx.addStore('items');
         }
-      };
-      await jine.$.obj.add(o);
-      expect(await jine.$.obj.array()).toStrictEqual([o]);
+      ]
+      jine = new Database<any>('jine', { migrations });
     });
+
+    describe('not in a migration', () => {
+      async function txCont<R>(callback: (tx: Transaction<any>) => Promise<R>): Promise<R> {
+        return await jine.transact(['items'], 'rw', callback);
+      }
+      doNativelyStorableTypeTest(false, txCont);
+    });
+
+    describe('in a migration', () => {
+      async function txCont<R>(callback: (tx: Transaction<any>) => Promise<R>): Promise<R> {
+        let result!: R;
+        migrations.push(async (genuine: boolean, tx: any) => {
+          result = await callback(tx);
+        });
+        const jine2 = new Database<any>('jine', { migrations: migrations });
+        await jine2.initialized;
+        return result;
+      }
+      doNativelyStorableTypeTest(true, txCont);
+    });
+
+    function doNativelyStorableTypeTest(isMigration: boolean, txCont: <R>(callback: (tx: Transaction<any>) => Promise<R>) => Promise<R>): void {
+      it("works with natively-storable primitive values", async () => {
+        const vals = new Set([null, undefined, 'string', 10, 3.14]);
+        for (const val of vals)
+          await jine.$.items.add(val);
+
+        // twice to ensure it survives a round-trip in the case of being in a migration tx
+        let result = await txCont(tx => tx.$.items.array()) as Array<unknown>;
+        expect(new Set(result)).toStrictEqual(vals);
+        result = await txCont(tx => tx.$.items.array()) as Array<unknown>;
+        expect(new Set(result)).toStrictEqual(vals);
+      });
+
+      it("works with natively-storable object values", async () => {
+        const o = { a: 'a', b: 'b' };
+        const d = new Date();
+        const r = /abc/;
+        const a = [1, 2, 3];
+        await jine.$.items.add(o);
+        await jine.$.items.add(d);
+        await jine.$.items.add(r);
+        await jine.$.items.add(a);
+
+        const oPrime = !isMigration ? o : Object.assign(o, { [codecIdMark]: null });
+
+        // twice to ensure it survives a round-trip in the case of being in a migration tx
+        let result = await txCont(tx => tx.$.items.array());
+        expect(result).toStrictEqual([oPrime, d, r, a]);
+        result = await txCont(tx => tx.$.items.array());
+        expect(result).toStrictEqual([oPrime, d, r, a]);
+      });
+
+      it("works with recursive instantiations of the storable registry box type", async () => {
+        const o = {
+          x: 1,
+          c: {
+            x: 2,
+            c: {
+              x: 3,
+              c: null,
+            }
+          }
+        };
+        await jine.$.items.add(o);
+
+        const oPrime = !isMigration ? o : {
+          x: 1,
+          c: {
+            x: 2,
+            c: {
+              x: 3,
+              c: null,
+              [codecIdMark]: null,
+            },
+            [codecIdMark]: null,
+          },
+          [codecIdMark]: null,
+        };
+
+        // twice to ensure it survives a round-trip in the case of being in a migration tx
+        let result = await txCont(tx => tx.$.items.array());
+        expect(result).toStrictEqual([oPrime]);
+        result = await txCont(tx => tx.$.items.array());
+        expect(result).toStrictEqual([oPrime]);
+      });
+    }
+
+  });
+
+  it(`user types are ignored during migrations`, async () => {
+
+    class MyPair {
+      constructor(
+        public fst: any,
+        public snd: any,
+      ) { }
+    }
+
+    const fruits = new MyPair(new MyPair('orange', 'pawpaw'), 'banana');
+
+    const pairCodec = {
+      type: MyPair,
+      id: 'MyPair',
+      encode(it: MyPair): unknown {
+        return { fst: it.fst, snd: it.snd };
+      },
+      decode(it: any): MyPair {
+        const { fst, snd } = it;
+        return new MyPair(fst, snd);
+      },
+    };
+
+    const migrations = [];
+    migrations.push(async (genuine: boolean, tx: any) => {
+      await tx.addStore('items');
+    });
+    reset();
+    let jine = new Database<any>('jine', { migrations, types: [pairCodec] });
+
+    await jine.$.items.add(fruits);
+
+    migrations.push(async (genuine: boolean, tx: any) => {
+      const [item] = await tx.$.items.all().array();
+      // vv In migrations, you get the items' encoded values, not them as rich JS objects
+      //    Since they are marked, we cannot use a plain expect(item).toEqual() for testing
+      expect(item).toEqual({
+        [codecIdMark]: 'MyPair',
+        fst: {
+          [codecIdMark]: 'MyPair',
+          fst: 'orange',
+          snd: 'pawpaw',
+        },
+        snd: 'banana',
+      });
+    });
+    jine = new Database('jine', { migrations, types: [pairCodec] });
+
+    // vv But now out of the migration, the item should be decoded as a JS class
+    expect(await jine.$.items.all().array()).toEqual([fruits]);
 
   });
 
   it('works with custom storable types', async () => {
 
-    // eslint-disable-next-line @typescript-eslint/class-name-casing
     class MyPair {
       constructor(
         public left: any,
