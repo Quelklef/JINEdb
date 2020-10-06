@@ -117,8 +117,8 @@ export class Index<Item extends Storable, Trait extends Indexable> {
    */
   async updateTraitGetter(newGetter: (item: Item) => Trait): Promise<void> {
     await this._parentTxCont.run('r', async tx => {
-      if (tx.mode !== 'vc')
-        throw new JineTransactionModeError({ operationName: 'Index#updateTraitGetter', expectedMode: 'vc', actualMode: tx.mode });
+      if (tx.mode !== 'm')
+        throw new JineTransactionModeError({ operationName: 'Index#updateTraitGetter', expectedMode: 'm', actualMode: tx.mode });
       if (this.kind !== 'derived')
         throw new JineError(`I was asked to update a trait getter on a non-derived index. I can't do this!`);
       await this._schemaCont.run(schema => schema.traitPathOrGetter = newGetter);
@@ -132,8 +132,8 @@ export class Index<Item extends Storable, Trait extends Indexable> {
   */
   async updateTraitPath(newPath: string): Promise<void> {
     await this._parentTxCont.run('r', async tx => {
-      if (tx.mode !== 'vc')
-        throw new JineTransactionModeError({ operationName: 'Index#updateTraitPath', expectedMode: 'vc', actualMode: tx.mode });
+      if (tx.mode !== 'm')
+        throw new JineTransactionModeError({ operationName: 'Index#updateTraitPath', expectedMode: 'm', actualMode: tx.mode });
       if (this.kind === 'derived')
         throw new JineError(`I was asked to update a trait path on a derived index. I can't do this!`);
       if (!newPath.startsWith('.'))

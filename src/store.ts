@@ -172,7 +172,7 @@ export class Store<Item extends Storable> {
     options?: { unique?: boolean; explode?: boolean },
   ): Promise<Index<Item, Trait>> {
 
-    return await PACont.pair(this._idbStoreCont, this._schemaCont).run('vc', async ([idbStore, schema]) => {
+    return await PACont.pair(this._idbStoreCont, this._schemaCont).run('m', async ([idbStore, schema]) => {
 
       if (typeof traitPathOrGetter === 'string') {
         const traitPath = traitPathOrGetter;
@@ -222,7 +222,7 @@ export class Store<Item extends Storable> {
    */
   async removeIndex(name: string): Promise<void> {
 
-    return await PACont.pair(this._idbStoreCont, this._schemaCont).run('vc', async ([idbStore, schema]) => {
+    return await PACont.pair(this._idbStoreCont, this._schemaCont).run('m', async ([idbStore, schema]) => {
 
       // remove idb index
       idbStore.deleteIndex(name);

@@ -5,7 +5,7 @@ import { StoreSchema } from './schema';
 import { TransactionMode } from './transaction';
 import { JineError, mapError } from './errors';
 import { Codec, Storable, Indexable } from './codec';
-import { some, getPropertyDescriptor, Dict } from './util';
+import { some, getPropertyDescriptor } from './util';
 
 /**
  * Query specification

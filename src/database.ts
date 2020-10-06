@@ -7,7 +7,7 @@ import { PACont } from './cont';
 import { Connection } from './connection';
 import { DatabaseSchema } from './schema';
 import { Transaction, TransactionMode } from './transaction';
-import { Codec, UserCodec, NativelyStorable, NativelyIndexable } from './codec';
+import { Codec, UserCodec, NativelyStorable } from './codec';
 import { JineError, JineBlockedError, JineInternalError, mapError } from './errors';
 
 async function getDbVersion(name: string): Promise<number> {

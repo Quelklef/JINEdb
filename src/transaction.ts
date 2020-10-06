@@ -15,12 +15,12 @@ import { Codec, Storable, NativelyStorable } from './codec';
  *
  * `rw` - Read and write. A read-write transaction will block accessed stores until it is complete.
  *
- * `vc` - Version change. A version change transaction will block an entire database from use until it is complete.
+ * `m` - Migration. A migration transaction will block an entire database from use until it is complete.
  */
-export type TransactionMode = 'r' | 'rw' | 'vc';
+export type TransactionMode = 'r' | 'rw' | 'm';
 
 export function txModeLeq(a: TransactionMode, b: TransactionMode): boolean {
-  const ranks = { r: 0, rw: 1, vc: 2 };
+  const ranks = { r: 0, rw: 1, m: 2 };
   return ranks[a] <= ranks[b];
 }
 
@@ -28,7 +28,7 @@ export function prettifyTransactionMode(idbTxMode: IDBTransactionMode): Transact
   return {
     readonly: 'r',
     readwrite: 'rw',
-    versionchange: 'vc',
+    versionchange: 'm',
   }[idbTxMode] as TransactionMode;
 }
 
@@ -36,7 +36,7 @@ export function uglifyTransactionMode(txMode: TransactionMode): IDBTransactionMo
   return {
     r: 'readonly',
     rw: 'readwrite',
-    vc: 'versionchange',
+    m: 'versionchange',
   }[txMode] as IDBTransactionMode;
 }
 
@@ -187,8 +187,8 @@ export class Transaction<$$ = unknown> {
    */
   addStore<Item extends Storable>(storeName: string): Store<Item> {
 
-    if (this.mode !== 'vc')
-      throw new JineTransactionModeError({ operationName: 'Transaction#addStore', expectedMode: 'vc', actualMode: this.mode });
+    if (this.mode !== 'm')
+      throw new JineTransactionModeError({ operationName: 'Transaction#addStore', expectedMode: 'm', actualMode: this.mode });
 
     this._idbDb.createObjectStore(storeName, { keyPath: 'id', autoIncrement: true });
 
@@ -217,8 +217,8 @@ export class Transaction<$$ = unknown> {
    */
   removeStore(name: string): void {
 
-    if (this.mode !== 'vc')
-      throw new JineTransactionModeError({ operationName: 'Transaction#removeStore', expectedMode: 'vc', actualMode: this.mode });
+    if (this.mode !== 'm')
+      throw new JineTransactionModeError({ operationName: 'Transaction#removeStore', expectedMode: 'm', actualMode: this.mode });
 
     this._idbDb.deleteObjectStore(name);
     this._schema.removeStore(name);
