@@ -10,18 +10,14 @@ import { Transaction, TransactionMode } from './transaction';
 import { JineError, JineNoSuchStoreError, mapError } from './errors';
 
 /**
- * A collection of stored items.
- *
- * A store is a collection of items saved and managed by Jine.
- * Jine can natively handle storing some types (see [[NativelyStorable]]), but not all types.
- * Custom types must be registered. See [[Storable]].
+ * A collection of items stored in the database.
  *
  * @typeparam Item The type of objects contained in this store.
  */
 export class Store<Item extends Storable> {
 
   /**
-   * An alias for [[Store.indexes]].
+   * Gives access to the store indexes.
    *
    * The type is `unknown` because the type should be given by the user-defined `$$` type.
    *
@@ -29,11 +25,7 @@ export class Store<Item extends Storable> {
    */
   by: unknown;
 
-  /**
-   * Store name
-   *
-   * Unique per-database
-   */
+  /** Store name. Unique per-[[Database]]. */
   get name(): Awaitable<string> {
     return this._schemaCont.run(schema => schema.name);
   }
@@ -86,7 +78,7 @@ export class Store<Item extends Storable> {
     return await PACont.pair(this._idbStoreCont, this._schemaCont).run('rw', async ([idbStore, schema]) => {
       const cursor = new Cursor({
         idbSource: idbStore,
-        query: 'everything',
+        query: 'all',
         storeSchema: schema,
         codec: this._codec,
       });
@@ -96,9 +88,7 @@ export class Store<Item extends Storable> {
     });
   }
 
-  /**
-   * Add an item to the store.
-   */
+  /** Add an item to the store. */
   async add(item: Item): Promise<void> {
     return PACont.pair(this._idbStoreCont, this._schemaCont).run('rw', async ([idbStore, schema]) => {
       return new Promise((resolve, reject) => {
@@ -130,9 +120,7 @@ export class Store<Item extends Storable> {
     });
   }
 
-  /**
-   * Remove all items from the store.
-   */
+  /** Remove all items from the store. */
   async clear(): Promise<void> {
     return await this._idbStoreCont.run('rw', idbStore => {
       return new Promise((resolve, reject) => {
@@ -143,9 +131,7 @@ export class Store<Item extends Storable> {
     });
   }
 
-  /**
-   * @return The number of items in the store
-   */
+  /** Calculate the number of items in the store */
   async count(): Promise<number> {
     return await this._idbStoreCont.run('r', idbStore => {
       return new Promise((resolve, reject) => {
@@ -159,30 +145,10 @@ export class Store<Item extends Storable> {
     });
   }
 
-  /**
-   * @returns An array with all items in the store.
-   */
-  async array(): Promise<Array<Item>> {
-    return this._idbStoreCont.run('r', async idbStore => {
-      return new Promise((resolve, reject) => {
-        const req = idbStore.getAll();
-        req.onsuccess = (event) => {
-          const rows = (event.target as any).result as Array<Row>;
-          const items = rows.map(row => this._codec.decodeItem(row.payload) as Item);
-          resolve(items);
-        };
-        req.onerror = _event => reject(mapError(req.error));
-      });
-    });
-  }
-
-  /**
-   * Begin a query with all the items in the store
-   * @returns The query executor.
-   */
-  all(): Selection<Item, never> {
+  /** Begin a query with all the items in the store */
+  selectAll(): Selection<Item, never> {
     return new Selection({
-      query: 'everything',
+      query: 'all',
       idbSourceCont: this._idbStoreCont,
       storeSchemaCont: this._schemaCont,
       codec: this._codec,
@@ -192,10 +158,10 @@ export class Store<Item extends Storable> {
   /**
    * Add an index to the store.
    *
-   * Only possible in a versionchange ('vc') transaction, which is given by [[Database.upgrade]].
+   * Only possible in a migration; see {@page Versioning}.
    *
    * @param indexName The name to give the new index
-   * @param trait The path or function that defines the indexed trait (see [[Index]])
+   * @param trait The path or function that defines the indexed trait.
    * @param options
    * - `unqiue`: enforces unique values for this trait; see [[Index.unique]].
    * - `explode`: see [[Index.explode]].
@@ -252,9 +218,7 @@ export class Store<Item extends Storable> {
   /**
    * Remove an index from the store
    *
-   * Only possible in a `versionchange` transaction, which is given by [[Database.upgrade]].
-   *
-   * @param name The name of the index to remove.
+   * Only possible in a migration; see {@page Versioning}.
    */
   async removeIndex(name: string): Promise<void> {
 
@@ -266,7 +230,7 @@ export class Store<Item extends Storable> {
       // update existing rows if needed
       const indexSchema = schema.index(name);
       if (indexSchema.kind === 'derived') {
-        await this.all()._replaceRows((row: Row) => {
+        await this.selectAll()._replaceRows((row: Row) => {
           delete row.traits[name];
           return row;
         });

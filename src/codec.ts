@@ -1,7 +1,7 @@
 
 import { W } from 'wrongish';
 
-import { Constructor, PlainObjectOf, isInstanceOfStrict } from './util';
+import { globalObj, Constructor, PlainObjectOf, isInstanceOfStrict } from './util';
 import { JineError, JineEncodingError, JineDecodingError, JineInternalError } from './errors';
 
 /*
@@ -48,7 +48,7 @@ function resolve(names: string): Array<string | Constructor<unknown>> {
     .filter(name => name !== '')
     .map(name =>
       name[0].toLowerCase() === name[0] ? name  // primitive type
-      : (window as any)[name] as Constructor<unknown> | undefined  // constructor
+      : (globalObj as any)[name] as Constructor<unknown> | undefined  // constructor
     )
     [W.filter2](<T>(type: undefined | T): type is T => type !== undefined)
 }
@@ -62,7 +62,8 @@ const idbNativelyStorableTypes = resolve(`
   Array Object Map Set
 `);
 
-type IdbNativelyStorable =
+/** Types that are storable by IndexedDB */
+type IdbStorable =
   undefined | null | string | number | boolean | BigInt
   | Date | RegExp | Blob
   | File | FileList | ArrayBuffer
@@ -80,7 +81,8 @@ const idbNativelyIndexableTypes = resolve(`
   Array
 `);
 
-type IdbNativelyIndexable =
+/** Types that are indexable by IndexedDB */
+type IdbIndexable =
   string | number
   | Date
   | ArrayBuffer
@@ -89,13 +91,20 @@ type IdbNativelyIndexable =
   | Array<NativelyIndexable>
   ;
 
-export type NativelyStorable = IdbNativelyStorable
-export type NativelyIndexable = IdbNativelyIndexable;
+/** Types that are natively storable by Jine */
+export type NativelyStorable = IdbStorable
+/** Types that are natively indexable by Jine */
+export type NativelyIndexable = IdbIndexable;
 
-// Typescript users should tag their custom types with what they encode to
+/**
+ * Typescript users must declare this attribute on any custom-encodable classes.
+ * The value should be the type that the class encodes to.
+ */
 export declare const encodesTo: unique symbol;
 
+/** Types that Jine can store in the database */
 export type Storable = NativelyStorable | { [encodesTo]: NativelyStorable };
+/** Types that Jine can use to index database items */
 export type Indexable = NativelyIndexable | { [encodesTo]: NativelyIndexable };
 
 function isOfAny(value: any, types: Array<string | Constructor<unknown>>): boolean {
@@ -132,6 +141,7 @@ export interface UserCodec<Decoded = any, Encoded extends NativelyStorable | Nat
 // Because the Database constructor asks for an Array<UserCodec>, and typescript doesn't have
 // existential types, then those codecs won't necessarily be type-safe.
 // To make them more safe, create them with this function.
+/** Constructs a codec for a custom type. Supplied to [[Database.constructor]]. See {@page Custom Types}. */
 export function codec<Decoded, Encoded extends NativelyStorable | NativelyIndexable>(
   type: Constructor<unknown>,
   id: string,

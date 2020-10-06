@@ -8,20 +8,24 @@ import { JineError, JineNoSuchStoreError, mapError } from './errors';
 import { Transaction, TransactionMode, uglifyTransactionMode } from './transaction';
 
 /**
- * A connection to a database.
+ * Represents a connection to the database.
+ *
+ * A connection offers no extra functionality beyond a [[Transaction]], but
+ * grouping several transactions together into a single connection will be
+ * more efficient than creating a new connection for each transaction.
  */
 export class Connection<$$ = unknown> {
 
   /**
-   * The Connection shorthand object.
-   * Used for doing one-off database operations.
+   * The connection shorthand object.
    *
    * An operation such as
-   * ```plaintext
+   * ```ts
    * await conn.$.myStore.add(myitem)
    * ```
-   * will automatically open start a [[Transaction]], run the `.add` operation,
-   * then close the transaction.
+   * Will add an item to the database store called `myStore`.
+   *
+   * Also see {@page Example}.
    */
   $: $$;
 
@@ -86,12 +90,11 @@ export class Connection<$$ = unknown> {
   }
 
   /**
-   * Create a new transaction and run some code with it, automatically committing
-   * if the code completes or aborting if it fails.
+   * Run a transaction on the connection.
    *
-   * @param callback The code to run
-   * @typeparam R the type of the callback result
-   * @returns The result of the callback
+   * This will create a new [[Transaction]] and run the given callback on it. If
+   * The callback completes successfully, the transaction is committed; if the
+   * callback throws, then the transaction is aborted.
    */
   async transact<R>(
     stores: Iterable<string | Store<any>>,
@@ -104,21 +107,22 @@ export class Connection<$$ = unknown> {
 
   /**
    * Close the connection to the database.
+   *
+   * This must only be used on connections created with [[Database.newConnection]].
    */
-  // TODO: technically, this must return a Promise<void> to account
-  // for the case that this._idbConnCont is not a bound value; however,
-  // that is exactly the case where we wouldn't want to .close() the
-  // connection.
   close(): Awaitable<void> {
+    // FIXME: technically, this must return a Promise<void> to account
+    // for the case that this._idbConnCont is not a bound value; however,
+    // that is exactly the case where we wouldn't want to .close() the
+    // connection.
     return this._idbConnCont.run(idbConn => idbConn.close());
   }
 
   /**
    * Run some code with this connection and then close it afterwards.
    *
-   * @param callback The code to run
-   * @typeParam the type of the callback result
-   * @returns The result of the callback
+   * If the code completes successfully, then the transaction will be
+   * committed. If the code throws, then the transaction will be aborted.
    */
   async wrap<R>(callback: (conn: this) => Promise<R>): Promise<R> {
     try {

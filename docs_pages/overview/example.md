@@ -3,19 +3,21 @@ First, check out {@page Installation}.
 Now, here's a 5-minute rundown of what Jine has to offer, and how to use it:
 
 ```ts
-import { Database, Connection, Store, Index, Transaction } from 'jinedb';
+import { codec, encodesTo, NativelyStorable, NativelyIndexable, MigrationTx, Database, Connection, Store, Index, Transaction } from 'jinedb';
 const assert = require('assert').strict;
 
 
 // == // == // INITIALIZATION // == // == //
 
 // What we'll be storing
-type Recipe = {
-  name: string;
-  servings: number;
-  url: string;
-  ingredients: Array<string>;
-};
+class Recipe {
+  constructor(
+    public name: string,
+    public url: string,
+    public servings: number,
+    public ingredients: Array<string>,
+  ) { }
+}
 
 // Let typescript know what our database will looks like
 interface $$ {
@@ -24,42 +26,67 @@ interface $$ {
       name: Index<Recipe, string>;
       servings: Index<Recipe, number>;
       ingredients: Index<Recipe, string>;
-      ingredient_count: Index<Recipe, number>;
+      ingredientCount: Index<Recipe, number>;
     }
   };
 }
 
-// Set up our database
-const jine = new Database<$$>('recipes');
-jine.migration(1, async (genuine: boolean, tx: Transaction<$$>) => {
+// Define the database migrations
+const migrations = [
+  async (genuine: boolean, tx: MigrationTx) => {
+    // Create a item store for recipes
+    const recipes = tx.addStore<Recipe>('recipes');
 
-  // Create a item store for recipes
-  const recipes = tx.addStore<Recipe>('recipes');
-  
-  // Track recipes by their name
-  // Require names to be unique
-  await recipes.addIndex<string>('name', '.name', { unique: true });
-  
-  // Track recipes by their serving count
-  await recipes.addIndex<number>('servings', '.servings');
-  
-  // Track recipes by their ingredients
-  // The flag 'explode: true' means that a recipe where
-  //  recipe.ingredients = ['milk', 'chocolate']
-  // will get indexed for 'milk' and 'chocolate' individually
-  // rather than indexed for the array as a whole
-  await recipes.addIndex<string>('ingredients', '.ingredients', { explode: true });
-  
-  // Track recipes by their ingredient count
-  await recipes.addIndex<number>(
-    'ingredient_count',
-    (recipe: Recipe) => recipe.ingredients.length,
-  );
-  
-});
+    // Track recipes by their name
+    // Require names to be unique
+    await recipes.addIndex<string>('name', '.name', { unique: true });
+
+    // Track recipes by their serving count
+    await recipes.addIndex<number>('servings', '.servings');
+
+    // Track recipes by their ingredients
+    await recipes.addIndex<string>('ingredients', '.ingredients', { explode: true });
+    // ^^ The flag 'explode: true' means that a recipe where
+    //  recipe.ingredients = ['milk', 'chocolate']
+    // will get indexed for 'milk' and 'chocolate' individually
+    // rather than indexed for the array as a whole
+
+    // Track recipes by their ingredient count
+    await recipes.addIndex<number>(
+      'ingredientCount',
+      (recipe: Recipe) => recipe.ingredients.length,
+    );
+  }
+];
+
+// Define the custom type
+const types = [
+  codec(Recipe, 'Recipe', {
+    encode(recipe: Recipe): NativelyStorable {
+      return {
+        name: recipe.name,
+        servings: recipe.servings,
+        url: recipe.url,
+        ingredients: recipe.ingredients,
+      };
+    },
+    decode(encoded: any): Recipe {
+      const { name, url, servings, ingredients } = encoded;
+      return new Recipe(name, url, servings, ingredients);
+    },
+  }),
+];
+
+// Let typescript know about the custom type
+interface Recipe {
+  [encodesTo]: NativelyStorable;
+}
+
+// Create the database!
+const jine = new Database<$$>('recipes', { migrations, types });
 
 
-// Open a connection to the database
+// Open a connection to the database (if top-level await isn't available)
 jine.connect(async conn => {
 
 
@@ -67,35 +94,35 @@ jine.connect(async conn => {
 // == // == // POPULATION // == // == //
 
 // Some recipes
-const pancakes = {
-  name: "Todd's Famous Blueberry Pancakes",  // (who the hell is Todd??)
-  url: 'allrecipes.com/recipe/20177',
-  servings: 6,
-  ingredients: ['flour', 'eggs', 'salt', 'milk', 'baking powder', 'butter',
-                'white sugar', 'blueberries'],
-};
-const waffles = {
-  name: 'Cinnamon Roll Waffles',
-  url: 'allrecipes.com/recipe/240386',
-  servings: 6,
-  ingredients: ['flour', 'brown sugar', 'white sugar', 'butter',
-                'baking powder', 'cinnamon', 'salt', 'milk', 'eggs',
-                'vanilla extract', 'confectioners sugar', 'cream cheese'],
-};
-const biscuits = {
-  name: 'Basic Biscuits',
-  url: 'allrecipes.com/recipe/20075',
-  servings: 10,
-  ingredients: ['flour', 'baking powder', 'salt', 'shortening', 'milk'],
-};
-const tacros = {
-  name: 'Tacros',  // croissant tacos... apparently
-  url: 'allrecipes.com/recipe/262970',
-  servings: 10,
-  ingredients: ['masa harina', 'bread flour', 'vital wheat gluten',
-                'white sugar', 'salt', 'instant yeast', 'milk', 'lard',
-                'butter'],
-};
+const pancakes = new Recipe(
+  "Todd's Famous Blueberry Pancakes",  // (who the hell is Todd??)
+  'allrecipes.com/recipe/20177',
+  6,
+  ['flour', 'eggs', 'salt', 'milk', 'baking powder', 'butter',
+   'white sugar', 'blueberries'],
+);
+const waffles = new Recipe(
+  'Cinnamon Roll Waffles',
+  'allrecipes.com/recipe/240386',
+  6,
+  ['flour', 'brown sugar', 'white sugar', 'butter',
+   'baking powder', 'cinnamon', 'salt', 'milk', 'eggs',
+   'vanilla extract', 'confectioners sugar', 'cream cheese'],
+);
+const biscuits = new Recipe(
+  'Basic Biscuits',
+  'allrecipes.com/recipe/20075',
+  10,
+  ['flour', 'baking powder', 'salt', 'shortening', 'milk'],
+);
+const tacros = new Recipe(
+  'Tacros',  // croissant tacos... apparently
+  'allrecipes.com/recipe/262970',
+  10,
+  ['masa harina', 'bread flour', 'vital wheat gluten',
+   'white sugar', 'salt', 'instant yeast', 'milk', 'lard',
+   'butter'],
+);
 
 // Add the recipes!
 await conn.$.recipes.add(pancakes);
@@ -108,23 +135,24 @@ await conn.$.recipes.add(tacros);
 // == // == // QUERIES // == // == //
 
 // I have a recipe's name
-assert.deepEqual(biscuits, await conn.$.recipes.by.name.findOne('Basic Biscuits'));
-// .get only works on unique indexes and returns one item, or errors if no item is found
+assert.deepEqual(biscuits, await conn.$.recipes.by.name.getOne('Basic Biscuits'));
+// Note that the returned item is correctly of rich type `Recipe`!
+// .selectOne only works on unique indexes and returns one item, or errors if no item is found
 
 // I have some eggs I want to cook
-const egg_recipes = await conn.$.recipes.by.ingredients.find('eggs')
-assert.deepEqual([pancakes, waffles], egg_recipes);
+const eggRecipes = await conn.$.recipes.by.ingredients.get('eggs')
+assert.deepEqual([pancakes, waffles], eggRecipes);
 // .find returns all items matching a given trait
 
 // I'm gonna have a lot of guests over
-const party_recipes = await conn.$.recipes.by.servings.select({ above: 7 }).array()
-assert.deepEqual([biscuits, tacros], party_recipes);
-// It's just me for this meal, and I don't want leftovers 
-const alone_recipes = await conn.$.recipes.by.servings.select({ below: 3 }).array()
-assert.deepEqual([], alone_recipes);
+const partyRecipes = await conn.$.recipes.by.servings.select({ above: 7 }).array()
+assert.deepEqual([biscuits, tacros], partyRecipes);
+// It's just me for this meal, and I don't want leftovers
+const aloneRecipes = await conn.$.recipes.by.servings.select({ below: 3 }).array()
+assert.deepEqual([], aloneRecipes);
 // I want to try something complicated
-const complex_recipes = await conn.$.recipes.by.ingredient_count.select({ above: 10 }).array();
-assert.deepEqual([waffles], complex_recipes);
+const complexRecipes = await conn.$.recipes.by.ingredientCount.select({ above: 10 }).array();
+assert.deepEqual([waffles], complexRecipes);
 // .select accepts queries in the form:
 //   { above  : val }  for x > val
 //   { from   : val }  for x >= val
@@ -144,30 +172,30 @@ assert.equal(4, await conn.$.recipes.count());
 
 // == // == // TRANSACTIONS // == // == //
 
-const before_count = await conn.$.recipes.count();
+const beforeCount = await conn.$.recipes.count();
 
-const banana_bread = {
-  name: "Joy's Easy Banana Bread",
-  url: 'allrecipes.com/recipe/241707',
-  servings: 10,
-  ingredients: ['bananas', 'white sugar', 'egg', 'butter', 'flour',
-                'baking soda', 'salt'],
-};
+const bananaBread = new Recipe(
+  "Joy's Easy Banana Bread",
+  'allrecipes.com/recipe/241707',
+  10,
+  ['bananas', 'white sugar', 'egg', 'butter', 'flour',
+   'baking soda', 'salt'],
+);
 
 await conn.transact([conn.$.recipes], 'rw', async tx => {
-  await tx.$.recipes.add(banana_bread);
+  await tx.$.recipes.add(bananaBread);
   tx.abort();
   // or throw Error();
 });
 
-const after_count = await conn.$.recipes.count();
-assert.equal(before_count, after_count);  // transaction atomically aborted
+const afterCount = await conn.$.recipes.count();
+assert.equal(beforeCount, afterCount);  // transaction atomically aborted
 
 await conn.transact([conn.$.recipes], 'rw', async tx => {
   // Transactions are auto-committed when not in use
   await new Promise(resolve => setTimeout(resolve, 0));
   // The following is now an error:
-  assert.rejects(tx.$.recipes.add(banana_bread));
+  assert.rejects(tx.$.recipes.add(bananaBread));
 });
 
 

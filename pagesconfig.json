@@ -5,15 +5,14 @@
       "pages": [
         { "title": "Introduction", "source": "./docs_pages/overview/introduction.md" },
         { "title": "Installation", "source": "./docs_pages/overview/installation.md" },
-        { "title": "Example", "source": "./docs_pages/overview/example.md" },
-        { "title": "Concepts", "source": "./docs_pages/overview/concepts.md" }
+        { "title": "Example", "source": "./docs_pages/overview/example.md" }
       ]
     },
     {
       "title": "In-Depth",
       "pages": [
-        { "title": "Versioning and Migrations", "source": "./docs_pages/in-depth/versioning.md" },
-        { "title": "Serialization and Custom Types", "source": "./docs_pages/in-depth/serialization.md" }
+        { "title": "Versioning", "source": "./docs_pages/in-depth/versioning.md" },
+        { "title": "Custom Types", "source": "./docs_pages/in-depth/custom-types.md" }
       ]
     }
   ]

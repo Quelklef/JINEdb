@@ -23,17 +23,12 @@ import { JineError, JineNoSuchIndexError, JineTransactionModeError, mapError } f
  */
 export class Index<Item extends Storable, Trait extends Indexable> {
 
-  /**
-   * Name of the index.
-   * Index names are unique for a particular store.
-   */
+  /** Name of the index. Index names are unique per-[[Store]]. */
   get name(): Awaitable<string> {
     return this._schemaCont.run(schema => schema.name);
   }
 
-  /**
-   * Are the values in this index required to be unique?
-   */
+  /** Are the values in this index required to be unique? */
   get unique(): Awaitable<boolean> {
     return this._schemaCont.run(schema => schema.unique);
   }
@@ -69,16 +64,12 @@ export class Index<Item extends Storable, Trait extends Indexable> {
     return this._schemaCont.run(schema => schema.kind);
   }
 
-  /**
-   * If `this.kind === 'path'`, return the trait path.
-   */
+  /** If `this.kind === 'path'`, return the trait path. */
   get traitPath(): Awaitable<undefined | string> {
     return this._schemaCont.run(schema => schema.path);
   }
 
-  /**
-   * If `this.kind === 'derived'`, return the trait computing function.
-   */
+  /** If `this.kind === 'derived'`, return the trait computing function. */
   get traitGetter(): Awaitable<undefined | ((item: Item) => Trait)> {
     return this._schemaCont.run(schema => schema.getter);
   }
@@ -122,7 +113,7 @@ export class Index<Item extends Storable, Trait extends Indexable> {
   /**
    * Updates the trait getter on a derived index.
    *
-   * Only usable during a versionchang ('vc') transaction.
+   * Only usable during a migration.
    */
   async updateTraitGetter(newGetter: (item: Item) => Trait): Promise<void> {
     await this._parentTxCont.run('r', async tx => {
@@ -137,7 +128,7 @@ export class Index<Item extends Storable, Trait extends Indexable> {
   /**
   * Updates the trait path on a path index.
   *
-  * Only usable during a versionchange ('vc') transaciton.
+  * Only usable during a migration.
   */
   async updateTraitPath(newPath: string): Promise<void> {
     await this._parentTxCont.run('r', async tx => {
@@ -151,17 +142,13 @@ export class Index<Item extends Storable, Trait extends Indexable> {
     });
   }
 
-  /**
-   * Test if there are any items with the given trait
-   */
+  /** Test if there are any items with the given trait */
   async exists(trait: Trait): Promise<boolean> {
     return !(await this.select({ equals: trait }).isEmpty());
   }
 
   /**
    * Retrieve all items matching a given trait.
-   * @param trait The trait to look for
-   * @returns The found items.
    */
   async get(trait: Trait): Promise<Array<Item>> {
     return await this.select({ equals: trait }).array();
@@ -169,10 +156,10 @@ export class Index<Item extends Storable, Trait extends Indexable> {
 
   /**
    * Get an item by trait.
+   *
    * Usable on unique indexes only.
+   *
    * Throws if no item is found.
-   * @param trait The trait to look for
-   * @returns The found item.
    */
   async getOne(trait: Trait): Promise<Item> {
     return await this.selectOne(trait).get();
@@ -182,8 +169,6 @@ export class Index<Item extends Storable, Trait extends Indexable> {
    * Update an item if it exists, or add a new one if it doesn't.
    *
    * Allowed on unique indexes only.
-   *
-   * @param item The item
    */
   async updateOrAdd(item: Item): Promise<void> {
     await this._schemaCont.run(async schema => {
@@ -202,18 +187,14 @@ export class Index<Item extends Storable, Trait extends Indexable> {
 
   /**
    * Get an item by trait, or return something else if the item isn't found.
+   *
    * Usable on unique indexes only.
-   * @param trait The trait to look for
-   * @param alternative The value to return on failure
-   * @returns The found item, or alternative value.
    */
   async getOneOr<T = undefined>(trait: Trait, alternative: T): Promise<Item | T> {
     return await this.selectOne(trait).getOr(alternative);
   }
 
-  /**
-   * Select several items by a range of traits.
-   */
+  /** Select several items by a range of traits. */
   select(query: Query<Trait>): Selection<Item, Trait> {
     return new Selection({
       query: query,
@@ -225,6 +206,7 @@ export class Index<Item extends Storable, Trait extends Indexable> {
 
   /**
    * Select a single item by trait.
+   *
    * Usable on unique indexes only.
    */
   selectOne(trait: Trait): SelectionUnique<Item, Trait> {

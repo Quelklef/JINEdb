@@ -1,7 +1,7 @@
 
 import 'fake-indexeddb/auto';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { Database, Store, Index, Connection, Transaction } from '../src/jine';
+import { codec, Database, Store, Index, Connection, Transaction } from '../src/jine';
 import { codecIdMark } from '../src/codec';
 import { reset } from './shared';
 
@@ -48,9 +48,9 @@ describe('encoding', () => {
           await jine.$.items.add(val);
 
         // twice to ensure it survives a round-trip in the case of being in a migration tx
-        let result = await txCont(tx => tx.$.items.array()) as Array<unknown>;
+        let result = await txCont(tx => tx.$.items.selectAll().array()) as Array<unknown>;
         expect(new Set(result)).toStrictEqual(vals);
-        result = await txCont(tx => tx.$.items.array()) as Array<unknown>;
+        result = await txCont(tx => tx.$.items.selectAll().array()) as Array<unknown>;
         expect(new Set(result)).toStrictEqual(vals);
       });
 
@@ -67,9 +67,9 @@ describe('encoding', () => {
         const oPrime = !isMigration ? o : Object.assign(o, { [codecIdMark]: null });
 
         // twice to ensure it survives a round-trip in the case of being in a migration tx
-        let result = await txCont(tx => tx.$.items.array());
+        let result = await txCont(tx => tx.$.items.selectAll().array());
         expect(result).toStrictEqual([oPrime, d, r, a]);
-        result = await txCont(tx => tx.$.items.array());
+        result = await txCont(tx => tx.$.items.selectAll().array());
         expect(result).toStrictEqual([oPrime, d, r, a]);
       });
 
@@ -101,9 +101,9 @@ describe('encoding', () => {
         };
 
         // twice to ensure it survives a round-trip in the case of being in a migration tx
-        let result = await txCont(tx => tx.$.items.array());
+        let result = await txCont(tx => tx.$.items.selectAll().array());
         expect(result).toStrictEqual([oPrime]);
-        result = await txCont(tx => tx.$.items.array());
+        result = await txCont(tx => tx.$.items.selectAll().array());
         expect(result).toStrictEqual([oPrime]);
       });
     }
@@ -143,7 +143,7 @@ describe('encoding', () => {
     await jine.$.items.add(fruits);
 
     migrations.push(async (genuine: boolean, tx: any) => {
-      const [item] = await tx.$.items.all().array();
+      const [item] = await tx.$.items.selectAll().array();
       // vv In migrations, you get the items' encoded values, not them as rich JS objects
       //    Since they are marked, we cannot use a plain expect(item).toEqual() for testing
       expect(item).toEqual({
@@ -159,7 +159,7 @@ describe('encoding', () => {
     jine = new Database('jine', { migrations, types: [pairCodec] });
 
     // vv But now out of the migration, the item should be decoded as a JS class
-    expect(await jine.$.items.all().array()).toEqual([fruits]);
+    expect(await jine.$.items.selectAll().array()).toEqual([fruits]);
 
   });
 
@@ -197,7 +197,7 @@ describe('encoding', () => {
     await jine.connect(async (conn: any) => {
       const pair = new MyPair('left', 'right');
       conn.$.pairs.add(pair);
-      const got = await conn.$.pairs.array();
+      const got = await conn.$.pairs.selectAll().array();
       expect(got).toEqual([pair]);
       expect(got[0].constructor).toBe(MyPair);
     });
@@ -207,7 +207,7 @@ describe('encoding', () => {
       await conn.$.pairs.clear();
       const pair = new MyPair(new MyPair('ll', 'lr'), new MyPair('rl', 'rr'));
       conn.$.pairs.add(pair);
-      const got = await conn.$.pairs.array();
+      const got = await conn.$.pairs.selectAll().array();
       expect(got).toEqual([pair]);
       expect(got[0].constructor).toBe(MyPair);
       expect(got[0].left.constructor).toBe(MyPair);
@@ -367,25 +367,25 @@ describe('encoding', () => {
     it('allows for Array<MyCustomStorable>', async () => {
       const array = [puppy, kitten];
       await jine.$.items.add(array);
-      expect(await jine.$.items.array()).toStrictEqual([array]);
+      expect(await jine.$.items.selectAll().array()).toStrictEqual([array]);
     });
 
     it('allows for Map<MyCustomStorable>', async () => {
       const map = new Map([[puppy, kitten]]);
       await jine.$.items.add(map);
-      expect(await jine.$.items.array()).toStrictEqual([map]);
+      expect(await jine.$.items.selectAll().array()).toStrictEqual([map]);
     });
 
     it('allows for Set<MyCustomStorable>', async () => {
       const set = new Set([puppy, kitten]);
       await jine.$.items.add(set);
-      expect(await jine.$.items.array()).toStrictEqual([set]);
+      expect(await jine.$.items.selectAll().array()).toStrictEqual([set]);
     });
 
     it('allows for Record<string, MyCustomStorable>', async () => {
       const object = { pup: puppy, kit: kitten };
       await jine.$.items.add(object);
-      expect(await jine.$.items.array()).toStrictEqual([object]);
+      expect(await jine.$.items.selectAll().array()).toStrictEqual([object]);
     });
 
   });

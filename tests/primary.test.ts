@@ -89,7 +89,7 @@ describe("primary", () => {
         await tx.$.rooms.clear();
         tx.abort();
       });
-      expect(await db.$.rooms.array()).toStrictEqual(ROOMS);
+      expect(await db.$.rooms.selectAll().array()).toStrictEqual(ROOMS);
     });
 
     it("aborts on error", async () => {
@@ -101,7 +101,7 @@ describe("primary", () => {
       } catch (err) {
         expect(err).toBe('uh-oh');
       }
-      expect(await db.$.rooms.array()).toStrictEqual(ROOMS);
+      expect(await db.$.rooms.selectAll().array()).toStrictEqual(ROOMS);
     });
 
   });
@@ -247,7 +247,7 @@ describe("primary", () => {
 
     it("$.{store}.by.{index}.select( * )", async () => {
       const expected = ROOMS;
-      const actual = await $.rooms.by.name.select("everything").array();
+      const actual = await $.rooms.by.name.select("all").array();
       expect(new Set(actual)).toStrictEqual(new Set(expected));
     });
 
@@ -312,21 +312,21 @@ describe("primary", () => {
       expect(attic.score).toBe(1);
     });
 
-    it("$.{store}.all().filter()", async () => {
+    it("$.{store}.selectAll().filter()", async () => {
       const expected = ROOMS.filter(room => room.name.includes("stairway"));
-      const actual = await $.rooms.all().filter(room => room.name.includes("stairway")).array();
+      const actual = await $.rooms.selectAll().filter(room => room.name.includes("stairway")).array();
       expect(actual).toStrictEqual(expected);
     });
 
-    it("$.{store}.all().drop()", async () => {
+    it("$.{store}.selectAll().drop()", async () => {
       const expected = ROOMS.slice(5);
-      const actual = await $.rooms.all().drop(5).array();
+      const actual = await $.rooms.selectAll().drop(5).array();
       expect(actual).toStrictEqual(expected);
     });
 
-    it("$.{store}.all().limit()", async () => {
+    it("$.{store}.selectAll().limit()", async () => {
       const expected = ROOMS.slice(0, 5);
-      const actual = await $.rooms.all().limit(5).array();
+      const actual = await $.rooms.selectAll().limit(5).array();
       expect(actual).toStrictEqual(expected);
     });
 
@@ -334,67 +334,67 @@ describe("primary", () => {
 
       it("[bug]", async () => {
         const expected = ROOMS.filter(room => room.name.includes("ground")).slice(10);
-        const actual = await $.rooms.all().filter(room => room.name.includes("ground")).drop(10).array();
+        const actual = await $.rooms.selectAll().filter(room => room.name.includes("ground")).drop(10).array();
         expect(actual).toStrictEqual(expected);
       });
 
-      it("$.{store}.all().filter().drop()", async () => {
+      it("$.{store}.selectAll().filter().drop()", async () => {
         const expected = ROOMS.filter(room => room.name.includes("ground")).slice(3);
-        const actual = await $.rooms.all().filter(room => room.name.includes("ground")).drop(3).array();
+        const actual = await $.rooms.selectAll().filter(room => room.name.includes("ground")).drop(3).array();
         expect(actual).toStrictEqual(expected);
       });
 
-      it("$.{store}.all().drop().filter()", async () => {
+      it("$.{store}.selectAll().drop().filter()", async () => {
         const expected = ROOMS.slice(5).filter(room => room.name.includes("ground"));
-        const actual = await $.rooms.all().drop(5).filter(room => room.name.includes("ground")).array();
+        const actual = await $.rooms.selectAll().drop(5).filter(room => room.name.includes("ground")).array();
         expect(actual).toStrictEqual(expected);
       });
 
-      it("$.{store}.all().filter().limit()", async () => {
+      it("$.{store}.selectAll().filter().limit()", async () => {
         const expected = ROOMS.filter(room => room.name.includes("ground")).slice(0, 2);
-        const actual = await $.rooms.all().filter(room => room.name.includes("ground")).limit(2).array();
+        const actual = await $.rooms.selectAll().filter(room => room.name.includes("ground")).limit(2).array();
         expect(actual).toStrictEqual(expected);
       });
 
-      it("$.{store}.all().limit().filter()", async () => {
+      it("$.{store}.selectAll().limit().filter()", async () => {
         const expected = ROOMS.slice(0, 10).filter(room => room.name.includes("ground"));
-        const actual = await $.rooms.all().limit(10).filter(room => room.name.includes("ground")).array();
+        const actual = await $.rooms.selectAll().limit(10).filter(room => room.name.includes("ground")).array();
         expect(actual).toStrictEqual(expected);
       });
 
-      it("$.{store}.all().drop().limit()", async () => {
+      it("$.{store}.selectAll().drop().limit()", async () => {
         const expected = ROOMS.slice(5).slice(0, 10);
-        const actual = await $.rooms.all().drop(5).limit(10).array();
+        const actual = await $.rooms.selectAll().drop(5).limit(10).array();
         expect(actual).toStrictEqual(expected);
       });
 
-      it("$.{store}.all().drop().limit().filter()", async () => {
+      it("$.{store}.selectAll().drop().limit().filter()", async () => {
         const expected = ROOMS.slice(5).slice(0, 10).filter(room => room.name.includes("ground"));
-        const actual = await $.rooms.all().drop(5).limit(10).filter(room => room.name.includes("ground")).array();
+        const actual = await $.rooms.selectAll().drop(5).limit(10).filter(room => room.name.includes("ground")).array();
         expect(actual).toStrictEqual(expected);
       });
 
-      it("$.{store}.all().filter().drop().limit()", async () => {
+      it("$.{store}.selectAll().filter().drop().limit()", async () => {
         const expected = ROOMS.filter(room => room.name.includes("ground")).slice(3).slice(0, 2);
-        const actual = await $.rooms.all().filter(room => room.name.includes("ground")).drop(3).limit(2).array();
+        const actual = await $.rooms.selectAll().filter(room => room.name.includes("ground")).drop(3).limit(2).array();
         expect(actual).toStrictEqual(expected);
       });
 
-      it("$.{store}.all().drop().filter().limit()", async () => {
+      it("$.{store}.selectAll().drop().filter().limit()", async () => {
         const expected = ROOMS.slice(5).filter(room => room.name.includes("ground")).slice(0, 2);
-        const actual = await $.rooms.all().drop(5).filter(room => room.name.includes("ground")).limit(2).array();
+        const actual = await $.rooms.selectAll().drop(5).filter(room => room.name.includes("ground")).limit(2).array();
         expect(actual).toStrictEqual(expected);
       });
 
-      it("$.{store}.all().filter().limit().limit()", async () => {
+      it("$.{store}.selectAll().filter().limit().limit()", async () => {
         const expected = ROOMS.filter(room => room.name.includes("ground")).slice(0, 2).slice(0, 2);
-        const actual = await $.rooms.all().filter(room => room.name.includes("ground")).limit(2).limit(2).array();
+        const actual = await $.rooms.selectAll().filter(room => room.name.includes("ground")).limit(2).limit(2).array();
         expect(actual).toStrictEqual(expected);
       });
 
-      it("$.{store}.all().limit().filter().limit()", async () => {
+      it("$.{store}.selectAll().limit().filter().limit()", async () => {
         const expected = ROOMS.slice(0, 10).filter(room => room.name.includes("ground")).slice(0, 2);
-        const actual = await $.rooms.all().limit(10).filter(room => room.name.includes("ground")).limit(2).array();
+        const actual = await $.rooms.selectAll().limit(10).filter(room => room.name.includes("ground")).limit(2).array();
         expect(actual).toStrictEqual(expected);
       });
 
@@ -404,7 +404,7 @@ describe("primary", () => {
 
       it("iterates items", async () => {
         const rooms = [];
-        for await (const room of $.rooms.all()) {
+        for await (const room of $.rooms.selectAll()) {
           rooms.push(room);
         }
         expect(rooms).toStrictEqual(ROOMS);
@@ -412,7 +412,7 @@ describe("primary", () => {
 
       it("throws if there's another mid-iteration operation", async () => {
         const bugged = async (): Promise<void> => {
-          for await (const _result of $.rooms.all()) {
+          for await (const _result of $.rooms.selectAll()) {
             // Another operation
             await new Promise(resolve => setTimeout(resolve, 0));
             // Note we can't use an "actual" other operation here

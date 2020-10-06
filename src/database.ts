@@ -56,15 +56,32 @@ async function getDbVersion(name: string): Promise<number> {
 }
 
 
-type Migration$$ = {
+/**
+ * The database shape during migrations.
+ *
+ * The essential meaning of this is that items access during migrations will *not*
+ * be encoded or decoded, and indexes are *not* available during migrations.
+ */
+export type MigrationTx = Transaction<{
   [storeName: string]: Store<NativelyStorable> & {
     by: {
-      [indexName: string]: Index<NativelyStorable, NativelyIndexable>;
+      [indexName: string]: Index<NativelyStorable, never>;
     };
   };
-};
+}>;
 
-type Migration = (genuine: boolean, tx: Transaction<Migration$$>) => Promise<void>;
+/**
+ * A database migration.
+ *
+ * A migration is a function that is given a [[Transaction]] and is allowed to
+ * do as it pleases with it. Migrations have special access to [[Transaction.addStore]],
+ * [[Transaction.removeStore]], [[Store.addIndex]], and [[Store.removeIndex]] to
+ * allow you to change the shape of your database. Additionally, migrations are
+ * not allowed to access store indexes.
+ *
+ * See {@page Example} for example use of a Migration.
+ */
+type Migration = (genuine: boolean, tx: MigrationTx) => Promise<void>;
 
 async function runMigrations<$$>(dbName: string, migrations: Array<Migration>, codec: Codec): Promise<[number, DatabaseSchema]> {
 
@@ -136,7 +153,7 @@ async function ensureIndexesPopulated(dbName: string, dbSchema: DatabaseSchema, 
   await conn.transact(dbSchema.storeNames, 'rw', async tx => {
     for (const storeName of dbSchema.storeNames) {
       const storeSchema = dbSchema.store(storeName);
-      await M.a(tx.stores[storeName]).all()._replaceRows(row => {
+      await M.a(tx.stores[storeName]).selectAll()._replaceRows(row => {
         for (const indexName of storeSchema.indexNames) {
           const indexSchema = storeSchema.index(indexName);
           if (!(indexName in row.traits)) {
@@ -199,7 +216,7 @@ function runMigration<$$>(
 
       if (!req.transaction) throw new JineInternalError();
       const idbTx = req.transaction;
-      const tx = new Transaction<Migration$$>({
+      const tx: MigrationTx = new Transaction({
         idbTx: idbTx,
         // vv Versionchange transactions have access to entire db
         scope: dbSchema.storeNames,
@@ -239,37 +256,39 @@ function runMigration<$$>(
 }
 
 /**
- * Represents a Database, which houses several item [[Store]]s contain data, queryable by [[Index]]es.
+ * A Jine Database.
+ *
+ * The purpose of a [[Database]] is to store data. The data is organized into several
+ * item [[Stores]], which are queryable by [[Index]]es. The shape of the database, i.e.
+ * what stores it contains and what indexes those contain, are defined during migrations.
  */
 export class Database<$$> {
 
   /**
-   * The name of the database.
-   * Database names are unique.
+   * The name of the database. Database names are unique.
    */
   name: string;
 
   /**
-   * The database version.
-   * Database versions are integers greater than zero.
+   * The database version. This is an integer equal to the number of migrations given.
    */
   version: Promise<number>;
 
   /**
-   * The Database shorthand object.
-   * Used for doing one-off database operations.
+   * The database shorthand object.
    *
    * An operation such as
-   * ```plaintext
-   * await db.$.myStore.add(myItem)
+   * ```ts
+   * await db.$.myStore.add(myitem)
    * ```
-   * will automatically open up a [[Connection]], start a [[Transaction]], run the `.add` operation,
-   * close the transaction, and close the connection.
+   * Will add an item to the database store called `myStore`.
+   *
+   * Also see {@page Example}.
    */
   $: $$;
 
   /**
-   * Resolves when the database is finished initializing;
+   * Resolves when the database is finished initializing.
    *
    * When the database is created, it will immediately begin running migrations.
    * All database operations will wait for these migrations to finish before actually
@@ -289,6 +308,15 @@ export class Database<$$> {
   _schema: Promise<DatabaseSchema>;
   _codec: Codec;
 
+  /**
+   * Creates a database with the given name and according to the given migrations
+   * and custom types.
+   *
+   * See {@page Example} for example database construction.
+   *
+   * @param name The database name. Must be unique.
+   * @param args The database migrations as well as codecs for custom datatypes.
+   */
   constructor(name: string, args: { migrations: Array<Migration>; types?: Array<UserCodec> }) {
     if (name.startsWith("__JINE_DUMMY__"))
       throw new Error("Jine db names may not start with '__JINE_DUMMY__'");
@@ -348,9 +376,8 @@ export class Database<$$> {
   /**
    * Create new connection to the database.
    *
-   * Unlike with [[Database.connect]], connections created with this method must be manually closed.
-   *
-   * @returns A new connection
+   * Unlike with [[Database.connect]], connections created with this method must be
+   * manually closed via [[Connection.close]].
    */
   async newConnection(): Promise<Connection<$$>> {
     return new Connection<$$>({
@@ -361,14 +388,10 @@ export class Database<$$> {
   }
 
   /**
-   * Connect to a database and run some code.
+   * Create a [[Connection]] to a database and run some code.
    *
-   * This will create a new connection to the database, run the given callback, and then
+   * This will create a new [[Connection]] to the database, run the given callback, and then
    * close the connection once the callback has completed.
-   *
-   * @param callback The function to run with the database connection.
-   * @typeparam T The return type of the callback.
-   * @returns The callback result
    */
   async connect<R>(callback: (conn: Connection<$$>) => Promise<R>): Promise<R> {
     const conn = await this.newConnection();
@@ -376,16 +399,11 @@ export class Database<$$> {
   }
 
   /**
-   * Convenience method for creating a single-use connection and transacting on it.
+   * Perform a [[Transaction]] on a database.
    *
-   * The code
-   * ```ts
-   * await db.transact(tx => ...);
-   * ```
-   * is shorthand for
-   * ```ts
-   * await db.connect(async conn => await conn.transact(tx => ...))
-   * ```
+   * This will create a new [[Connection] to the database, create a new [[Transaction]] on
+   * that connection, run the given callback, close the transaction, and then close the
+   * connection once the callback has completed.
    */
   async transact<R>(stores: Array<string | Store<any>>, mode: TransactionMode, callback: (tx: Transaction<$$>) => Promise<R>): Promise<R> {
     return await this.connect(async conn => {

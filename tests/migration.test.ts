@@ -23,11 +23,11 @@ describe('migration (no beforeEach)', () => {
     // session 1
     await setup();
     await db.$.items.add('item');
-    expect(await db.$.items.array()).toStrictEqual(['item']);
+    expect(await db.$.items.selectAll().array()).toStrictEqual(['item']);
 
     // session 2
     await setup();
-    expect(await db.$.items.array()).toStrictEqual(['item']);
+    expect(await db.$.items.selectAll().array()).toStrictEqual(['item']);
 
   });
 
@@ -103,9 +103,9 @@ describe('migration', () => {
 
     await jine.connect(async (conn: any) => {
       await conn.$.strings.add('s t r i n g');
-      expect(await conn.$.strings.array()).toEqual(['s t r i n g']);
+      expect(await conn.$.strings.selectAll().array()).toEqual(['s t r i n g']);
       await conn.$.numbers.add(10);
-      expect(await conn.$.numbers.array()).toEqual([10]);
+      expect(await conn.$.numbers.selectAll().array()).toEqual([10]);
     });
 
     migrations.push(async (genuine: boolean, tx: any) => {
@@ -115,9 +115,9 @@ describe('migration', () => {
     jine = new Database('jine', { migrations });
 
     await jine.connect(async (conn: any) => {
-      await expect(async () => await conn.$.strings.array())
+      await expect(async () => await conn.$.strings.selectAll().array())
         .rejects.toThrow();
-      await expect(async () => await conn.$.numbers.array())
+      await expect(async () => await conn.$.numbers.selectAll().array())
         .rejects.toThrow();
     });
 

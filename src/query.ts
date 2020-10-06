@@ -12,7 +12,7 @@ import { some, getPropertyDescriptor, Dict } from './util';
  *
  * A query falls into one of 3 categories:
  *
- * Wildcard: A wildcard query selects everything. This is given by `'everything'`.
+ * Wildcard: A wildcard query selects everything. This is given by `'all'`.
  *
  * Exact: An exact query selects a particular value. This is given by `{ equals: value }`.
  *
@@ -29,7 +29,7 @@ import { some, getPropertyDescriptor, Dict } from './util';
  * duplicated values should be skipped.
  */
 export type Query<Trait extends Indexable>
-  = 'everything'
+  = 'all'
   | {
     /** Equality */
     equals?: Trait;
@@ -53,10 +53,10 @@ function compileTraitRange<Trait extends Indexable>(query: Query<Trait>, codec: 
 
   // The implementation isn't elegant, but it's easy to understand
 
-  if (query === 'everything')
+  if (query === 'all')
     return undefined;
 
-  query = query as Omit<Query<Trait>, 'everything'>;
+  query = query as Omit<Query<Trait>, 'all'>;
 
   if ('equals' in query)
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
@@ -99,21 +99,16 @@ function compileTraitRange<Trait extends Indexable>(query: Query<Trait>, codec: 
 }
 
 function compileCursorDirection<Trait extends Indexable>(query: Query<Trait>): IDBCursorDirection {
-  if (query === 'everything') return 'next';
-  query = query as Omit<Query<Trait>, 'everything'>;
+  if (query === 'all') return 'next';
+  query = query as Omit<Query<Trait>, 'all'>;
   let result = query.reversed ? 'prev' : 'next';
   if (query.unique) result += 'unique';
   return result as IDBCursorDirection;
 }
 
 
+/*- IDBCursor wrapper */
 export class Cursor<Item extends Storable, Trait extends Indexable> {
-  /* IDBCursor wrapper */
-
-  // For use by the API user to monkeypatch in any
-  // methods that are missing from this class.
-  // TODO: replicate on other classes.
-  my: Dict<any> = {};
 
   readonly storeSchema: StoreSchema<Item>;
   readonly codec: Codec;
@@ -292,9 +287,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
 }
 
 /**
- * Used to execute queries.
- * @typeparam Item The type of the items for the parent database
- * @typeparam Trait The type of the trait for the parent index
+ * Represents a selection of a bunch of items from a [[Store]].
  */
 export class Selection<Item extends Storable, Trait extends Indexable> {
 
@@ -340,11 +333,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
     });
   }
 
-  /**
-   * Filter the selection
-   *
-   * @returns this
-   */
+  /** Filter the selection */
   filter(...predicates: Array<(item: Item) => boolean>): this {
     const bigPred = (item: Item): boolean => predicates.every(pred => pred(item));
 
@@ -389,12 +378,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
     return this;
   }
 
-  /**
-   * Drop items off of the beginning of a selection
-   *
-   * @param skipCount The number of items to skip
-   * @returns this
-   */
+  /** Drop `count` items off of the beginning of a selection */
   drop(count: number): this {
     this.cursorCont = this.cursorCont.map(cursor => {
       const modified = Object.create(cursor);
@@ -407,13 +391,8 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
     return this;
   }
 
-  /**
-   * Limit the number of items in the selection to the given length
-   *
-   * @param length The length
-   * @return this
-   */
-  limit(length: number): this {
+  /** Limit the selection to at most `count` items */
+  limit(count: number): this {
     this.cursorCont = this.cursorCont.map(cursor => {
       const limited = Object.create(cursor);
       let passed = 0;
@@ -421,14 +400,14 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
       limited.step = async function(this: typeof cursor, ...args: Parameters<(typeof cursor)['step']>) {
         await cursor.step.call(this, ...args);
         passed++;
-        if (passed > length)
-          console.warn("[jinedb] .limit()'d selection exceeding max length");
+        if (passed > count)
+          console.warn("[jinedb] .limit()'d selection exceeding max count");
       };
 
       const oldExhaustedGetter = some(getPropertyDescriptor(cursor, 'exhausted')?.get, null);
       Object.defineProperty(limited, 'exhausted', {
         get() {
-          return passed === length || oldExhaustedGetter.call(this);
+          return passed === count || oldExhaustedGetter.call(this);
         },
       });
 
@@ -437,9 +416,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
     return this;
   }
 
-  /**
-   * Test if the selection is empty or not.
-   */
+  /** Test if the selection is empty or not. */
   async isEmpty(): Promise<boolean> {
     return await this.cursorCont.run('r', async cursor => {
       await cursor.init();
@@ -447,11 +424,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
     });
   }
 
-  /**
-   * Replace all selected items.
-   *
-   * @param mapper Given an existing item, this function should return the new item.
-   */
+  /** Replace all selected items with the result of passing them into the given callback. */
   async replace(mapper: (item: Item) => Item): Promise<void> {
     await this.cursorCont.run('rw', async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
@@ -462,11 +435,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
     });
   }
 
-  /**
-   * Update all selected items with the given delta.
-   *
-   * @param updates The delta
-   */
+  /** Update all selected items with the given delta. */
   async update(delta: Partial<Item>): Promise<void> {
     await this.cursorCont.run('rw', async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
@@ -475,9 +444,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
     });
   }
 
-  /**
-   * Delete the selected items from the database.
-   */
+  /** Delete the selected items from the database. */
   async delete(): Promise<void> {
     await this.cursorCont.run('rw', async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
@@ -486,9 +453,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
     });
   }
 
-  /**
-   * @return The number of selected items.
-   */
+  /** Calculate the number of selected items. */
   async count(): Promise<number> {
     return await this.cursorCont.run('r', async cursor => {
       let result = 0;
@@ -499,11 +464,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
     });
   }
 
-  /**
-   * Return all selected items as an array.
-   *
-   * @returns The items
-   */
+  /** Return all selected items as an array. */
   async array(): Promise<Array<Item>> {
     return await this.cursorCont.run('r', async cursor => {
       const result: Array<Item> = [];
@@ -514,6 +475,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
     });
   }
 
+  /** Asynchronously iterate over the selected items */
   [Symbol.asyncIterator](): AsyncIterator<Item> {
 
     // !-!-!-!-!-!-!-!-! WARNING !-!-!-!-!-!-!-!-!
@@ -597,36 +559,22 @@ export class SelectionUnique<Item extends Storable, Trait extends Indexable> {
 
   // TODO: in the methods of this class, we don't ensure that >0 rows are selected
 
-  /**
-   * Replace the item with a new item.
-   *
-   * @param mapper A function that accepts the old item and returns the new item
-   */
+  /** Like [[Selection.replace]] */
   async replace(mapper: (oldItem: Item) => Item): Promise<void> {
     await this.selection.replace(mapper);
   }
 
-  /**
-   * Update the item with a delta
-   *
-   * @param updates The delta
-   */
+  /** Like [[Selection.update]] */
   async update(delta: Partial<Item>): Promise<void> {
     await this.selection.update(delta);
   }
 
-  /**
-   * Delete the item from the database.
-   */
+  /** Like [[Selection.delete]] */
   async delete(): Promise<void> {
     await this.selection.delete();
   }
 
-  /**
-   * Get the item from the database.
-   *
-   * @returns The item
-   */
+  /** Get the selected item from the database. */
   async get(): Promise<Item> {
     const got = (await this.selection.array())[0];
     if (got === undefined)
@@ -634,11 +582,7 @@ export class SelectionUnique<Item extends Storable, Trait extends Indexable> {
     return got;
   }
 
-  /**
-   * Get the item from the database, or an alternative value if the item isn't found.
-   *
-   * @returns The item
-   */
+  /** Get the selected item from the database, or an alternative value if the item isn't found. */
   async getOr<T = undefined>(alternative: T): Promise<Item | T> {
     const got = (await this.selection.array())[0];
     if (got === undefined) return alternative;

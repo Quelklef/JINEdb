@@ -41,10 +41,11 @@ export function uglifyTransactionMode(txMode: TransactionMode): IDBTransactionMo
 }
 
 /**
- * A transaction on a particular database.
+ * A database transaction.
  *
- * Transactions are groups of related database operations.
- * Transactions are atomic: if an error occurs during a transaction, all operations will be cancelled.
+ * Transactions are groups of related database operations, such as adding,
+ * removing, and qurying data. Transactions are atomic: if an error occurs
+ * during a transaction, all operations will be cancelled.
  */
 export class Transaction<$$ = unknown> {
 
@@ -55,15 +56,7 @@ export class Transaction<$$ = unknown> {
    */
   stores: Dict<Store<NativelyStorable>>;
 
-  /**
-   * A non-genuine transaction will not allow `.commit()` and will not
-   * propagate staged changes to the databse.
-   *
-   * All transactions are genuine, except for those created by [[Database.upgrade]],
-   * which may be genuine or ingenuine.
-   *
-   * Also see [[Database.upgrade]].
-   */
+  /** See {@page Versioning}. */
   genuine: boolean;
 
   /**
@@ -83,7 +76,13 @@ export class Transaction<$$ = unknown> {
   }
 
   /**
-   * Alias for [[Transaction.stores]], but with the user-defined `$$` type.
+   * The transaction shorthand object.
+   *
+   * An operation such as
+   * ```ts
+   * await tx.$.myStore.add(myitem)
+   * ```
+   * Will add an item to the database store called `myStore`.
    *
    * Also see {@page Example}.
    */
@@ -153,9 +152,7 @@ export class Transaction<$$ = unknown> {
     });
   }
 
-  /**
-   *  [[Transaction.wrap]], but synchronous.
-   */
+  /** Like [[Transaction.wrap]] but synchronous. */
  wrapSynchronous<R>(callback: (tx: Transaction<$$>) => R): R {
     try {
       return callback(this);
@@ -171,10 +168,6 @@ export class Transaction<$$ = unknown> {
    * Run some code with the transaction.
    * If the code successfully completes, commit the transaction.
    * If the code calls `.abort()` or throws an exception, abort the transaction.
-   *
-   * @param callback The code to run
-   * @typeParam R The return type of the callback
-   * @returns The return value of the callback
    */
   async wrap<R>(callback: (tx: Transaction<$$>) => Promise<R>): Promise<R> {
     try {
@@ -190,10 +183,7 @@ export class Transaction<$$ = unknown> {
   /**
    * Add a store to the database.
    *
-   * Only possible in a `versionchange` transaction, which is given by [[Database.upgrade]].
-   *
-   * @param name The name to give the new store
-   * @returns The new store
+   * Only possible a migration; see {@page Versioning}.
    */
   addStore<Item extends Storable>(storeName: string): Store<Item> {
 
@@ -223,9 +213,7 @@ export class Transaction<$$ = unknown> {
   /**
    * Remove a store from the index.
    *
-   * Only possible in a `versionchange` transaction, which is given by [[Database.upgrade]].
-   *
-   * @param name The name of the store to remove
+   * Only possible in a migration; see {@page Versioning}.
    */
   removeStore(name: string): void {
 
@@ -238,9 +226,7 @@ export class Transaction<$$ = unknown> {
 
   }
 
-  /**
-   * Commit a transaction, applying all staged changes to the database.
-   */
+  /** Commit a transaction, applying all staged changes to the database. */
   commit(): void {
     /* Commit and end the transaction */
     // [2020-05-16] For some reason the types don't have IDBTransaction.commit(),
@@ -249,9 +235,7 @@ export class Transaction<$$ = unknown> {
     this.state = 'committed';
   }
 
-  /**
-   * Abort the transaction, cancelling all staged changes.
-   */
+  /** Abort the transaction, cancelling all staged changes. */
   abort(): void {
     this._idbTx.abort();
     this.state = 'aborted';

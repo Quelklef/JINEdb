@@ -6,6 +6,7 @@ export { Transaction } from './transaction';
 export { Store } from './store';
 export { Index } from './index';
 
-export { codec, encodesTo } from './codec';
+export { MigrationTx } from './database';
+export { codec, encodesTo, NativelyStorable, NativelyIndexable } from './codec';
 
 export * from './errors';
