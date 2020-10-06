@@ -86,14 +86,13 @@ type Migration = (genuine: boolean, tx: MigrationTx) => Promise<void>;
 async function runMigrations<$$>(dbName: string, migrations: Array<Migration>, codec: Codec): Promise<[number, DatabaseSchema]> {
 
   // Reset dummy database
-  const dummyName = '__JINE_DUMMY__' + dbName;
   await new Promise((resolve, reject) => {
-    const req = indexedDB.deleteDatabase(dummyName);
+    const req = indexedDB.deleteDatabase('jine/dummy:' + dbName);
     req.onerror = _event => reject(mapError(req.error));
     req.onsuccess = _event => resolve();
   });
 
-  let dbVersion = await getDbVersion(dbName);
+  let dbVersion = await getDbVersion('jine/legit:' + dbName);
   let dbSchema = new DatabaseSchema({
     name: dbName,
     stores: {},
@@ -130,7 +129,7 @@ async function ensureIndexesPopulated(dbName: string, dbSchema: DatabaseSchema, 
 
   const idbConnCont = PACont.fromFunc<IDBDatabase>(callback => {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(dbName);
+      const req = indexedDB.open('jine/legit:' + dbName);
       req.onupgradeneeded = _event => reject(new JineInternalError());
       req.onblocked = _event => reject(new JineBlockedError());
       req.onerror = _event => reject(mapError(req.error));
@@ -190,8 +189,8 @@ function runMigration<$$>(
     // on the actual db.
     const req =
       txIsGenuine
-        ? indexedDB.open(dbName, toVersion)  // FIXME: prefix for non-dummy
-        : indexedDB.open('__JINE_DUMMY__' + dbName, toVersion)
+        ? indexedDB.open('jine/legit:' + dbName, toVersion)
+        : indexedDB.open('jine/dummy:' + dbName, toVersion)
         ;
 
     req.onblocked = _event => {
@@ -318,9 +317,6 @@ export class Database<$$> {
    * @param args The database migrations as well as codecs for custom datatypes.
    */
   constructor(name: string, args: { migrations: Array<Migration>; types?: Array<UserCodec> }) {
-    if (name.startsWith("__JINE_DUMMY__"))
-      throw new Error("Jine db names may not start with '__JINE_DUMMY__'");
-
     if (args.migrations.length === 0)
       throw new JineError(`Databases must be given at least one migration.`);
 
@@ -364,7 +360,7 @@ export class Database<$$> {
   async _newIdbConn(): Promise<IDBDatabase> {
     await this.initialized;
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(this.name);
+      const req = indexedDB.open('jine/legit:' + this.name);
       // vv Upgradeneeded shouldn't fire since we don't provide a version
       req.onupgradeneeded = _event => reject(new JineInternalError());
       req.onblocked = _event => reject(new JineBlockedError());
