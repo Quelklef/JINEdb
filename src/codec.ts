@@ -102,10 +102,11 @@ export type NativelyIndexable = IdbIndexable;
  */
 export declare const encodesTo: unique symbol;
 
+// vv Must be a PlainObject b/c the migration codec needs to be able to mark it
 /** Types that Jine can store in the database */
-export type Storable = NativelyStorable | { [encodesTo]: NativelyStorable };
+export type Storable = NativelyStorable | { [encodesTo]: Storable | PlainObjectOf<NativelyStorable> };
 /** Types that Jine can use to index database items */
-export type Indexable = NativelyIndexable | { [encodesTo]: NativelyIndexable };
+export type Indexable = NativelyIndexable | { [encodesTo]: Indexable | NativelyIndexable };
 
 function isOfAny(value: any, types: Array<string | Constructor<unknown>>): boolean {
   return types.some(type =>
