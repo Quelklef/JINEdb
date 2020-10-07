@@ -1,0 +1,222 @@
+<!doctype html>
+<html class="default no-js">
+<head>
+	<meta charset="utf-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<title>Custom Types | jinedb</title>
+	<meta name="description" content="Documentation for jinedb">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="../../assets/css/main.css">
+	<link rel="stylesheet" href="../../assets/css/pages.css">
+</head>
+<body>
+<header>
+	<div class="tsd-page-toolbar">
+		<div class="container">
+			<div class="table-wrap">
+				<div class="table-cell" id="tsd-search" data-index="../../assets/js/search.json" data-base="../..">
+					<div class="field">
+						<label for="tsd-search-field" class="tsd-widget search no-caption">Search</label>
+						<input id="tsd-search-field" type="text" />
+					</div>
+					<ul class="results">
+						<li class="state loading">Preparing search index...</li>
+						<li class="state failure">The search index is not available</li>
+					</ul>
+					<a href="../../index.html" class="title">jinedb</a>
+				</div>
+				<div class="table-cell" id="tsd-widgets">
+					<div id="tsd-filter">
+						<a href="#" class="tsd-widget options no-caption" data-toggle="options">Options</a>
+						<div class="tsd-filter-group">
+							<div class="tsd-select" id="tsd-filter-visibility">
+								<span class="tsd-select-label">All</span>
+								<ul class="tsd-select-list">
+									<li data-value="public">Public</li>
+									<li data-value="protected">Public/Protected</li>
+									<li data-value="private" class="selected">All</li>
+								</ul>
+							</div>
+							<input type="checkbox" id="tsd-filter-inherited" checked />
+							<label class="tsd-widget" for="tsd-filter-inherited">Inherited</label>
+							<input type="checkbox" id="tsd-filter-only-exported" />
+							<label class="tsd-widget" for="tsd-filter-only-exported">Only exported</label>
+						</div>
+					</div>
+					<a href="#" class="tsd-widget menu no-caption" data-toggle="menu">Menu</a>
+				</div>
+			</div>
+		</div>
+	</div>
+	<div class="tsd-page-title">
+		<div class="container">
+			<ul class="tsd-breadcrumb">
+				<li>
+					<a href="../../globals.html">Globals</a>
+				</li>
+				<li>
+					<a href="versioning.html">In-Depth</a>
+				</li>
+				<li>
+					<a href="custom-types.html">Custom Types</a>
+				</li>
+			</ul>
+			<h1>Custom Types</h1>
+		</div>
+	</div>
+</header>
+<div class="container container-main">
+	<div class="row">
+		<div class="col-8 col-content">
+			<div class="tsd-panel tsd-typography">
+				<p>Out-of-the-box, Jine is only natively able to store a certain set of types (see <a href="../../globals.html#nativelystorable">NativelyStorable</a>), and can only accept a certain set of types for trait values (see <a href="../../globals.html#nativelyindexable">NativelyIndexable</a>).</p>
+				<p>You may use custom types with a database if you supply encoding and decoding functions to <a href="../../classes/database.html#constructor">Database.constructor</a>. For instance:</p>
+				<pre><code class="language-ts"><span class="hljs-keyword">class</span> Prompt {
+  <span class="hljs-keyword">constructor</span>(<span class="hljs-params">
+    <span class="hljs-keyword">public</span> statement: <span class="hljs-built_in">string</span>,
+    <span class="hljs-keyword">public</span> agreement: LikertRating,
+  </span>) { }
+}
+
+<span class="hljs-keyword">class</span> LikertRating {
+  <span class="hljs-keyword">constructor</span>(<span class="hljs-params">
+    <span class="hljs-keyword">public</span> value: &#x27;strongly disagree&#x27; | &#x27;disagree&#x27; | &#x27;neutral&#x27; | &#x27;agree&#x27; | &#x27;strongly agree&#x27;
+  </span>) { }
+}
+
+<span class="hljs-comment">// Define our database type</span>
+<span class="hljs-keyword">interface</span> $$ {
+  prompts: Store&lt;Prompt&gt; &amp; {
+    by: {
+      rating: Index&lt;Prompt, LikertRating&gt;;
+    };
+  };
+}
+
+<span class="hljs-comment">// Set up migrations</span>
+<span class="hljs-keyword">const</span> migrations = [
+  <span class="hljs-keyword">async</span> (genuine: <span class="hljs-built_in">boolean</span>, tx: Transaction) =&gt; {
+    <span class="hljs-keyword">const</span> prompts = <span class="hljs-keyword">await</span> tx.addStore(<span class="hljs-string">&#x27;prompts&#x27;</span>);
+    <span class="hljs-keyword">await</span> prompts.addIndex(<span class="hljs-string">&#x27;rating&#x27;</span>);
+  },
+];
+
+<span class="hljs-comment">// Now we pass the custom type into the database constructor with an encoding and decoding function</span>
+<span class="hljs-keyword">const</span> db = <span class="hljs-keyword">new</span> Database&lt;$$&gt;(<span class="hljs-string">&#x27;db&#x27;</span>, {
+  migrations,
+  types: [
+    codec(Prompt, <span class="hljs-string">&#x27;Prompt&#x27;</span>, {
+      encode(prompt: Prompt): NativelyStorable {
+        <span class="hljs-keyword">return</span> {
+          statement: prompt.statement,
+          agreement: prompt.agreement,
+        };
+      },
+      decode(encoded: <span class="hljs-built_in">any</span>): Prompt {
+        <span class="hljs-keyword">const</span> { statement, agreement } = encoded;
+        <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> Promp(statement, agreement);
+      },
+    }),
+    codec(LikertRating, <span class="hljs-string">&#x27;LikertRating&#x27;</span>, {
+      encode(rating: LikertRating): NativelyIndexable {
+        <span class="hljs-keyword">const</span> ratings = [<span class="hljs-string">&#x27;strongly disagree&#x27;</span>, <span class="hljs-string">&#x27;disagree&#x27;</span>, <span class="hljs-string">&#x27;neutral&#x27;</span>, <span class="hljs-string">&#x27;agree&#x27;</span>, <span class="hljs-string">&#x27;strongly agree&#x27;</span>];
+        <span class="hljs-keyword">return</span> ratings.indexOf(rating.value);
+      },
+      decode(encoded: <span class="hljs-built_in">any</span>): LikertRating {
+        <span class="hljs-keyword">const</span> ratings = [<span class="hljs-string">&#x27;strongly disagree&#x27;</span>, <span class="hljs-string">&#x27;disagree&#x27;</span>, <span class="hljs-string">&#x27;neutral&#x27;</span>, <span class="hljs-string">&#x27;agree&#x27;</span>, <span class="hljs-string">&#x27;strongly agree&#x27;</span>];
+        <span class="hljs-keyword">return</span> ratings[encoded];
+      },
+    }),
+  ],
+});
+
+<span class="hljs-comment">// Let typescript know about our custom types</span>
+<span class="hljs-keyword">interface</span> Prompt { [encodesTo]: NativelyStorable; }
+<span class="hljs-keyword">interface</span> LikertRating { [encodesTo]: NativelyIndexable; }
+
+<span class="hljs-comment">// Now we can use these types!</span>
+db.connect(<span class="hljs-keyword">async</span> conn =&gt; {
+
+  <span class="hljs-keyword">const</span> promptTs = <span class="hljs-keyword">new</span> Prompt(<span class="hljs-string">&#x27;I appreciate typescript&#x27;</span>, <span class="hljs-keyword">new</span> LikertRating(<span class="hljs-string">&#x27;strongly agree&#x27;</span>));
+  <span class="hljs-keyword">const</span> promptJs = <span class="hljs-keyword">new</span> Prompt(<span class="hljs-string">&#x27;I appreciate javascript&#x27;</span>, <span class="hljs-keyword">new</span> LikertRating(<span class="hljs-string">&#x27;strongly agree&#x27;</span>));
+  <span class="hljs-keyword">const</span> promptWeb = <span class="hljs-keyword">new</span> Prompt(<span class="hljs-string">&#x27;I appreciate web APIs&#x27;</span>, <span class="hljs-keyword">new</span> LikertRating(<span class="hljs-string">&#x27;agree&#x27;</span>));
+  <span class="hljs-keyword">const</span> promptTypeof = <span class="hljs-keyword">new</span> Prompt(<span class="hljs-string">&#x27;I appreciate that `typeof null === &quot;object&quot;`&#x27;</span>, <span class="hljs-keyword">new</span> LikertRating(<span class="hljs-string">&#x27;strongly disagree&#x27;</span>));
+
+  <span class="hljs-comment">// add &#x27;em to the db</span>
+  <span class="hljs-keyword">await</span> conn.$.prompts.add(promptTs);
+  <span class="hljs-keyword">await</span> conn.$.prompts.add(promptJs);
+  <span class="hljs-keyword">await</span> conn.$.prompts.add(promptWeb);
+  <span class="hljs-keyword">await</span> conn.$.prompts.add(promptTypeof);
+
+  <span class="hljs-comment">// thing to note #1: we can use LikertRating objects as traits!</span>
+  <span class="hljs-keyword">const</span> selection = conn.$.prompts.by.rating.select({
+    <span class="hljs-keyword">from</span>: <span class="hljs-keyword">new</span> LikertRating(<span class="hljs-string">&#x27;strongly disagree&#x27;</span>(,
+    through: <span class="hljs-keyword">new</span> LikertRating(<span class="hljs-string">&#x27;neutral&#x27;</span>),
+  });
+
+  <span class="hljs-comment">// thing to note #2: the results are in rich JS datatypes!</span>
+  <span class="hljs-keyword">const</span> [got] = selection.array();
+  <span class="hljs-built_in">console</span>.log(got)  <span class="hljs-comment">// same as promptTypeof</span>
+
+});</code></pre>
+			</div>
+		</div>
+		<div class="col-4 col-menu menu-sticky-wrap menu-highlight">
+			<nav class="tsd-navigation primary">
+				<ul>
+					<li class="label pp-nav pp-group">
+						<span>Overview</span>
+					</li>
+					<li class=" pp-nav pp-page">
+						<a href="../Overview/introduction.html">Introduction</a>
+					</li>
+					<li class=" pp-nav pp-page">
+						<a href="../Overview/installation.html">Installation</a>
+					</li>
+					<li class=" pp-nav pp-page">
+						<a href="../Overview/example.html">Example</a>
+					</li>
+					<li class="label pp-nav pp-group">
+						<span>In-<wbr><wbr>Depth</span>
+					</li>
+					<li class=" pp-nav pp-page">
+						<a href="versioning.html">Versioning</a>
+					</li>
+					<li class="current pp-nav pp-page">
+						<a href="custom-types.html">Custom <wbr>Types</a>
+					</li>
+					<li class="label pp-nav pp-group">
+						<span>API</span>
+					</li>
+					<li class="globals  ">
+						<a href="../../globals.html"><em>Globals</em></a>
+					</li>
+				</ul>
+			</nav>
+			<nav class="tsd-navigation secondary menu-sticky">
+				<ul class="before-current">
+				</ul>
+			</nav>
+		</div>
+	</div>
+</div>
+<footer class="with-border-bottom">
+	<div class="container">
+		<h2>Legend</h2>
+		<div class="tsd-legend-group">
+			<ul class="tsd-legend">
+				<li class="tsd-kind-constructor tsd-parent-kind-class"><span class="tsd-kind-icon">Constructor</span></li>
+				<li class="tsd-kind-property tsd-parent-kind-class"><span class="tsd-kind-icon">Property</span></li>
+				<li class="tsd-kind-method tsd-parent-kind-class"><span class="tsd-kind-icon">Method</span></li>
+			</ul>
+		</div>
+	</div>
+</footer>
+<div class="container tsd-generator">
+	<p>Generated using <a href="https://typedoc.org/" target="_blank">TypeDoc</a></p>
+</div>
+<div class="overlay"></div>
+<script src="../../assets/js/main.js"></script>
+<script>if (location.protocol == 'file:') document.write('<script src="../../assets/js/search.json"><' + '/script>');</script>
+</body>
+</html>
