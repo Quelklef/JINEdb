@@ -148,6 +148,30 @@ describe('migration', () => {
 
   });
 
+  it('populates traits on existing items when Store#add or Store#addIndex is called during a migration', async () => {
+
+    migrations.push(async (genuine: boolean, tx: any) => {
+      const strings = await tx.addStore('strings');
+      await strings.addIndex('self', (x: any) => x);
+    });
+    jine = new Database('jine', { migrations });
+
+    await jine.connect(async (conn: any) => {
+      await conn.$.strings.add('me!');
+      expect(await conn.$.strings.by.self.get('me!')).toEqual(['me!']);
+    });
+
+    migrations.push(async (genuine: boolean, tx: any) => {
+      await tx.$.strings.addIndex('length', (s: string) => s.length);
+      await tx.$.strings.add('longboi');
+    });
+    jine = new Database('jine', { migrations });
+
+    expect(await jine.$.strings.by.length.get(3)).toEqual(['me!']);
+    expect(await jine.$.strings.by.length.get(7)).toEqual(['longboi']);
+
+  });
+
   it('allows for updating trait getters', async () => {
 
     migrations.push(async (genuine: boolean, tx: any) => {
