@@ -7,6 +7,68 @@ import { reset } from './shared';
 
 describe('encoding', () => {
 
+  const traits = [
+    undefined,
+    null,
+    false,
+    true,
+    -Infinity,
+    -100,
+    0,
+    100,
+    Infinity,
+    new Date(),
+    'string',
+    // binary
+    [1, 2, 3],
+  ];
+
+  it('supports natively-indexable types', async () => {
+    const jine = new Database<any>('jine', {
+      migrations: [
+        async (genuine: boolean, tx: any) => {
+          const store = await tx.addStore('items');
+          await store.addIndex('trait', '.trait');
+        },
+      ],
+    });
+
+    for (let i = 0; i < traits.length; i++) {
+      const trait = traits[i];
+      const item = { idx: i, trait };
+      await jine.$.items.add(item);
+      const got = await jine.$.items.by.trait.get(trait)
+      expect(got).toEqual([item]);
+    }
+  });
+
+  it('correctly orders natively-indexable types', async () => {
+    const jine = new Database<any>('jine', {
+      migrations: [
+        async (genuine: boolean, tx: any) => {
+          const store = await tx.addStore('items');
+          await store.addIndex('trait', '.trait');
+        },
+      ],
+    });
+
+    for (let i = 0; i < traits.length - 1; i++) {
+      const smallTrait = traits[i];
+      const largeTrait = traits[i + 1];
+      const smallItem = { trait: smallTrait };
+      const largeItem = { trait: largeTrait };
+
+      await jine.$.items.clear();
+      await jine.$.items.add(smallItem);
+      await jine.$.items.add(largeItem);
+
+      expect(await jine.$.items.by.trait.select({ below: smallTrait }).array()).toEqual([]);
+      expect(await jine.$.items.by.trait.select({ above: smallTrait }).array()).toEqual([largeItem]);
+      expect(await jine.$.items.by.trait.select({ below: largeTrait }).array()).toEqual([smallItem]);
+      expect(await jine.$.items.by.trait.select({ above: largeTrait }).array()).toEqual([]);
+    }
+  });
+
   describe('natively-storable types', () => {
 
     let migrations!: Array<any>;

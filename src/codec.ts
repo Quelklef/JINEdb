@@ -71,8 +71,13 @@ const idbNativelyIndexableTypes = resolve(`
   Array
 `);
 
-/** Types that are natively storable by Jine */
+/**
+ * Types that are natively storable by Jine
+ *
+ * Note that the `lastIndex` property of a `RegExp` is not preserved.
+ */
 export type NativelyStorable =
+  // All are Idb-native
   undefined | null | string | number | boolean | BigInt
   | Date | RegExp | Blob
   | File | FileList | ArrayBuffer
@@ -81,8 +86,27 @@ export type NativelyStorable =
   | Array<NativelyStorable> | PlainObjectOf<NativelyStorable> | Map<NativelyStorable, NativelyStorable> | Set<NativelyStorable>
   ;
 
-/** Types that are natively indexable by Jine */
+/**
+ * Types that are natively indexable by Jine.
+ *
+ * The types are ordered as follows:
+ * ```
+ * undefined < null < false < true < number < date < string < binary < array
+ * ```
+ *
+ * Also note the following:
+ *
+ * - A `number` may not be `NaN`
+ *
+ * - A `Date` object's internal `[[DateValue]]` slot may not be `NaN`
+ *
+ * - Jine doesn't support all `numbers`; a small handful of very large
+ * negative numbers will be snapped to slightly higher (less negative) values.
+ */
 export type NativelyIndexable =
+  // vv Jine-specially supported
+  undefined | null | boolean
+  // vv Idb-native
   | string | number
   | Date
   | ArrayBuffer
@@ -90,6 +114,15 @@ export type NativelyIndexable =
   | ImageBitmap | ImageData
   | Array<NativelyIndexable>
   ;
+
+const orderedFloats = [
+  -Infinity,
+  -1.7976931348623157e+308,
+  -1.7976931348623155e+308,
+  -1.7976931348623153e+308,
+  -1.7976931348623151e+308,
+  -1.7976931348623150e+308,
+];
 
 /**
  * Typescript users must declare this attribute on any custom-encodable classes.
@@ -104,7 +137,8 @@ export type Storable = NativelyStorable | { [encodesTo]: Storable | PlainObjectO
 export type Indexable = NativelyIndexable | { [encodesTo]: Indexable | NativelyIndexable };
 
 function isOfAny(value: any, types: Array<string | Constructor<unknown>>, opts?: { except: Array<string | Constructor<unknown>> }): boolean {
-  const difference = types.filter(type => !(opts?.except ?? []).includes(type))
+  const except = opts?.except ?? [];
+  const difference = types.filter(type => !except.includes(type))
   return difference.some(type =>
     value === null && type === 'null'
     || typeof value === type
@@ -257,8 +291,21 @@ export class Codec {
     }
 
     function encodeTrait(item: any, indexIsExploding: boolean): unknown {
-      if (isOfAny(item, idbNativelyIndexableTypes, { except: [Array] }))
+      if (isOfAny(item, idbNativelyIndexableTypes, { except: [Array, 'number'] }))
         return item;
+
+      switch (item) {
+        case undefined: return orderedFloats[0];
+        case null: return orderedFloats[1];
+        case false: return orderedFloats[2];
+        case true: return orderedFloats[3];
+        case -Infinity: return orderedFloats[4];
+      }
+      if (typeof item === 'number') {
+        if (item <= orderedFloats[5])
+          return orderedFloats[5];
+        return item;
+      }
 
       if (indexIsExploding) {
         if (!(item instanceof Array))
@@ -289,8 +336,19 @@ export class Codec {
         return item.map(elem => decodeTrait(elem, false));
       }
 
-      if (isOfAny(item, idbNativelyIndexableTypes, { except: [Array] }))
+      if (isOfAny(item, idbNativelyIndexableTypes, { except: [Array, 'number'] }))
         return item;
+
+      if (typeof item === 'number') {
+        switch (item) {
+          case orderedFloats[0]: return undefined;
+          case orderedFloats[1]: return null;
+          case orderedFloats[2]: return false;
+          case orderedFloats[3]: return true;
+          case orderedFloats[4]: return -Infinity;
+          default: item;
+        }
+      }
 
       if (isInstanceOfStrict(item, Array) && (item[0] as 0 | 1) === 0) {
         const [_, unboxed] = item as [0, Array<unknown>];
