@@ -2,9 +2,9 @@
 import { Store } from './store';
 import { PACont } from './cont';
 import { Awaitable } from './util';
-import { IndexSchema } from './schema';
+import { StoreSchema, IndexSchema } from './schema';
 import { Codec, Storable, Indexable } from './codec';
-import { Transaction, TransactionMode } from './transaction';
+import { TransactionMode, prettifyTxMode } from './transaction';
 import { Query, Selection, SelectionUnique } from './query';
 import { JineError, JineNoSuchIndexError, JineTransactionModeError, mapError } from './errors';
 
@@ -74,25 +74,30 @@ export class Index<Item extends Storable, Trait extends Indexable> {
     return this._schemaCont.run(schema => schema.getter);
   }
 
-
-  _parentTxCont: PACont<Transaction, TransactionMode>;
-  _idbIndexCont: PACont<IDBIndex, TransactionMode>;
-  _schemaCont: PACont<IndexSchema<Item, Trait>>;
-  _parentStore: Store<Item>;
-  _codec: Codec;
+  private readonly _parentStore: Store<Item>;
+  private readonly _parentStoreSchemaCont: PACont<StoreSchema<Item>>;
+  private readonly _idbIndexCont: PACont<IDBIndex, TransactionMode>;
+  private readonly _assertTxModeCont: PACont<void, TransactionMode>;
+  private readonly _schemaCont: PACont<IndexSchema<Item, Trait>>;
+  private readonly _codec: Codec;
 
   constructor(args: {
     parentStore: Store<Item>;
-    parentTxCont: PACont<Transaction, TransactionMode>;
+    parentStoreSchemaCont: PACont<StoreSchema<Item>>;
+    parentIdbStoreCont: PACont<IDBObjectStore, TransactionMode>;
     schemaCont: PACont<IndexSchema<Item, Trait>>;
     codec: Codec;
   }) {
     this._parentStore = args.parentStore;
-    this._parentTxCont = args.parentTxCont;
+    this._parentStoreSchemaCont = args.parentStoreSchemaCont;
     this._schemaCont = args.schemaCont;
     this._codec = args.codec;
 
-    this._idbIndexCont = PACont.pair(this._parentStore._idbStoreCont, this._schemaCont).map(([idbStore, schema]) => {
+    // vv .run with the required transaction mode; will fail upstream
+    // if the parentIdbStoreCont cannot support it
+    this._assertTxModeCont = args.parentIdbStoreCont.map((): void => { });
+
+    this._idbIndexCont = PACont.pair(args.parentIdbStoreCont, this._schemaCont).map(([idbStore, schema]) => {
       const indexName = schema.name;
 
       // vv Indexes are not available during migrations, since they use the codec, which
@@ -116,13 +121,10 @@ export class Index<Item extends Storable, Trait extends Indexable> {
    * Only usable during a migration.
    */
   async updateTraitGetter(newGetter: (item: Item) => Trait): Promise<void> {
-    await this._parentTxCont.run('r', async tx => {
-      if (tx.mode !== 'm')
-        throw new JineTransactionModeError({ operationName: 'Index#updateTraitGetter', expectedMode: 'm', actualMode: tx.mode });
-      if (this.kind !== 'derived')
-        throw new JineError(`I was asked to update a trait getter on a non-derived index. I can't do this!`);
-      await this._schemaCont.run(schema => schema.traitPathOrGetter = newGetter);
-    });
+    await this._assertTxModeCont.run('m', () => { });
+    if (this.kind !== 'derived')
+      throw new JineError(`I was asked to update a trait getter on a non-derived index. I can't do this!`);
+    await this._schemaCont.run(schema => schema.getter = newGetter);
   }
 
   /**
@@ -131,15 +133,12 @@ export class Index<Item extends Storable, Trait extends Indexable> {
   * Only usable during a migration.
   */
   async updateTraitPath(newPath: string): Promise<void> {
-    await this._parentTxCont.run('r', async tx => {
-      if (tx.mode !== 'm')
-        throw new JineTransactionModeError({ operationName: 'Index#updateTraitPath', expectedMode: 'm', actualMode: tx.mode });
-      if (this.kind === 'derived')
-        throw new JineError(`I was asked to update a trait path on a derived index. I can't do this!`);
-      if (!newPath.startsWith('.'))
-        throw new JineError("Trait path must start with '.'");
-      await this._schemaCont.run(schema => schema.traitPathOrGetter = newPath.slice(1));
-    });
+    await this._assertTxModeCont.run('m', () => { });
+    if (this.kind === 'derived')
+      throw new JineError(`I was asked to update a trait path on a derived index. I can't do this!`);
+    if (!newPath.startsWith('.'))
+      throw new JineError("Trait path must start with '.'");
+    await this._schemaCont.run(schema => schema.path = newPath.slice(1));
   }
 
   /** Test if there are any items with the given trait */
@@ -199,7 +198,7 @@ export class Index<Item extends Storable, Trait extends Indexable> {
     return new Selection({
       query: query,
       idbSourceCont: this._idbIndexCont,
-      storeSchemaCont: this._parentStore._schemaCont,
+      storeSchemaCont: this._parentStoreSchemaCont,
       codec: this._codec,
     });
   }
@@ -213,7 +212,7 @@ export class Index<Item extends Storable, Trait extends Indexable> {
     return new SelectionUnique({
       selectedTrait: trait,
       idbSourceCont: this._idbIndexCont,
-      storeSchemaCont: this._parentStore._schemaCont,
+      storeSchemaCont: this._parentStoreSchemaCont,
       codec: this._codec,
     });
   }

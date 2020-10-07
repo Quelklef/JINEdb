@@ -45,6 +45,7 @@ module.exports = {
 
       rules: {
         "no-unexpected-multiline": "off",
+        "@typescript-eslint/ban-ts-ignore": "off",
         "@typescript-eslint/camelcase": "off",
         "@typescript-eslint/ban-types": "off",
         "@typescript-eslint/no-use-before-define": "off",

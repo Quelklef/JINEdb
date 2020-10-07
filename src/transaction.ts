@@ -24,7 +24,7 @@ export function txModeLeq(a: TransactionMode, b: TransactionMode): boolean {
   return ranks[a] <= ranks[b];
 }
 
-export function prettifyTransactionMode(idbTxMode: IDBTransactionMode): TransactionMode {
+export function prettifyTxMode(idbTxMode: IDBTransactionMode): TransactionMode {
   return {
     readonly: 'r',
     readwrite: 'rw',
@@ -32,7 +32,7 @@ export function prettifyTransactionMode(idbTxMode: IDBTransactionMode): Transact
   }[idbTxMode] as TransactionMode;
 }
 
-export function uglifyTransactionMode(txMode: TransactionMode): IDBTransactionMode {
+export function uglifyTxMode(txMode: TransactionMode): IDBTransactionMode {
   return {
     r: 'readonly',
     rw: 'readwrite',
@@ -54,10 +54,10 @@ export class Transaction<$$ = unknown> {
    *
    * For non-programmatic code, [[Transaction.$]] is nicer to use.
    */
-  stores: Dict<Store<NativelyStorable>>;
+  public stores: Dict<Store<NativelyStorable>>;
 
   /** See {@page Versioning}. */
-  genuine: boolean;
+  public readonly genuine: boolean;
 
   /**
    * Current transaction state.
@@ -68,11 +68,15 @@ export class Transaction<$$ = unknown> {
    *
    * `aborted` - Unsuccessful.
    */
-  state: 'active' | 'committed' | 'aborted';
+  get state(): 'active' | 'committed' | 'aborted' {
+    return this._state;
+  }
+
+  private _state: 'active' | 'committed' | 'aborted';
 
   /** Transaction mode */
   get mode(): TransactionMode {
-    return prettifyTransactionMode(this._idbTx.mode);
+    return prettifyTxMode(this._idbTx.mode);
   }
 
   /**
@@ -86,12 +90,14 @@ export class Transaction<$$ = unknown> {
    *
    * Also see {@page Example}.
    */
-  $: $$;
+  public readonly $: $$;
 
-  _idbTx: IDBTransaction;
-  _idbDb: IDBDatabase;
-  _schema: DatabaseSchema;
-  _codec: Codec;
+  private readonly _idbTx: IDBTransaction;
+  private readonly _idbDb: IDBDatabase;
+  private readonly _codec: Codec;
+
+  // vv Public so that migrations can read the resulting schema
+  public readonly _schema: DatabaseSchema;
 
   constructor(args: {
     idbTx: IDBTransaction;
@@ -107,8 +113,7 @@ export class Transaction<$$ = unknown> {
     this._idbDb = this._idbTx.db;
     this._codec = args.codec;
 
-    // Clone schema so that, if a migration occurs, then
-    // changes are sandboxed in case of e.g. .abort()
+    // vv Cloned so that changes during migrations are sandboxed in case of .abort()
     this._schema = clone(args.schema);
 
     const $: Record<string, Store<NativelyStorable>> = new Proxy({}, {
@@ -116,7 +121,7 @@ export class Transaction<$$ = unknown> {
         if (typeof prop === 'string') {
           const storeName = prop;
           const store = new Store({
-            txCont: this._toCont(),
+            parentIdbTxCont: this._toCont(),
             // vv Use a producer to keep things lazy. Defers errors to the invokation code.
             schemaCont: PACont.fromProducer(() => this._schema.store(storeName)),
             codec: this._codec,
@@ -131,24 +136,24 @@ export class Transaction<$$ = unknown> {
     for (const storeName of args.scope)
       this.stores[storeName] = $[storeName];
 
-    this.state = 'active';
+    this._state = 'active';
     this._idbTx.addEventListener('abort', () => {
-      this.state = 'aborted';
+      this._state = 'aborted';
     });
     this._idbTx.addEventListener('error', () => {
-      this.state = 'aborted';
+      this._state = 'aborted';
     });
     this._idbTx.addEventListener('complete', () => {
-      this.state = 'committed';
+      this._state = 'committed';
     });
 
   }
 
-  _toCont(): PACont<Transaction, TransactionMode> {
+  private _toCont(): PACont<IDBTransaction, TransactionMode> {
     return PACont.fromProducer((txMode: TransactionMode) => {
       if (!txModeLeq(txMode, this.mode))
         throw new JineTransactionModeError({ expectedMode: txMode, actualMode: this.mode });
-      return this;
+      return this._idbTx;
     });
   }
 
@@ -157,10 +162,10 @@ export class Transaction<$$ = unknown> {
     try {
       return callback(this);
     } catch (ex) {
-      if (this.state === 'active') this.abort();
+      if (this._state === 'active') this.abort();
       throw ex;
     } finally {
-      if (this.state === 'active') this.commit();
+      if (this._state === 'active') this.commit();
     }
   }
 
@@ -173,10 +178,10 @@ export class Transaction<$$ = unknown> {
     try {
       return await callback(this);
     } catch (ex) {
-      if (this.state === 'active') this.abort();
+      if (this._state === 'active') this.abort();
       throw ex;
     } finally {
-      if (this.state === 'active') this.commit();
+      if (this._state === 'active') this.commit();
     }
   }
 
@@ -198,7 +203,7 @@ export class Transaction<$$ = unknown> {
     });
 
     const store = new Store<Item>({
-      txCont: this._toCont(),
+      parentIdbTxCont: this._toCont(),
       schemaCont: PACont.fromValue(storeSchema),
       codec: this._codec,
     });
@@ -232,13 +237,13 @@ export class Transaction<$$ = unknown> {
     // [2020-05-16] For some reason the types don't have IDBTransaction.commit(),
     // but it's in the online docs: https://developer.mozilla.org/en-US/docs/Web/API/IDBTransaction/commit
     (this._idbTx as any).commit();
-    this.state = 'committed';
+    this._state = 'committed';
   }
 
   /** Abort the transaction, cancelling all staged changes. */
   abort(): void {
     this._idbTx.abort();
-    this.state = 'aborted';
+    this._state = 'aborted';
   }
 
 }

@@ -152,7 +152,7 @@ async function ensureIndexesPopulated(dbName: string, dbSchema: DatabaseSchema, 
   await conn.transact(dbSchema.storeNames, 'rw', async tx => {
     for (const storeName of dbSchema.storeNames) {
       const storeSchema = dbSchema.store(storeName);
-      await M.a(tx.stores[storeName]).selectAll()._replaceRows(row => {
+      await M.a(tx.stores[storeName]).selectAll().replaceRows(row => {
         for (const indexName of storeSchema.indexNames) {
           const indexSchema = storeSchema.index(indexName);
           if (!(indexName in row.traits)) {
@@ -266,12 +266,12 @@ export class Database<$$> {
   /**
    * The name of the database. Database names are unique.
    */
-  name: string;
+  public readonly name: string;
 
   /**
    * The database version. This is an integer equal to the number of migrations given.
    */
-  version: Promise<number>;
+  public readonly version: Promise<number>;
 
   /**
    * The database shorthand object.
@@ -284,7 +284,7 @@ export class Database<$$> {
    *
    * Also see {@page Example}.
    */
-  $: $$;
+  public readonly $: $$;
 
   /**
    * Resolves when the database is finished initializing.
@@ -302,10 +302,10 @@ export class Database<$$> {
    * So, if you need to gaurantee that the database is initialized, but
    * don't want to do any operations to do this, you can await this attribute.
    */
-  initialized: Promise<void>;
+  public readonly initialized: Promise<void>;
 
-  _schema: Promise<DatabaseSchema>;
-  _codec: Codec;
+  private readonly _schema: Promise<DatabaseSchema>;
+  private readonly _codec: Codec;
 
   /**
    * Creates a database with the given name and according to the given migrations
@@ -356,8 +356,7 @@ export class Database<$$> {
     });
   }
 
-  // TODO: there's a better way to wrap requests and handle errors
-  async _newIdbConn(): Promise<IDBDatabase> {
+  private async _newIdbConn(): Promise<IDBDatabase> {
     await this.initialized;
     return new Promise((resolve, reject) => {
       const req = indexedDB.open('jine/legit:' + this.name);

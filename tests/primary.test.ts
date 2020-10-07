@@ -140,7 +140,8 @@ describe("primary", () => {
     let con!: Connection<$$>;
     beforeEach(async () => {
       con = await db.newConnection();
-      const tx_k = await con.newTransactionCont(['rooms']);
+      // @ts-ignore private member access
+      const tx_k = await con._newTxCont(['rooms']);
       const tx = await tx_k.unsafeUnwrap('rw'); // FIXME
       $ = tx.$;
     });

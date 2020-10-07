@@ -8,28 +8,36 @@ import { JineError, JineNoSuchStoreError, JineNoSuchIndexError } from './errors'
 // by migrations
 
 export class IndexSchema<Item, Trait> {
-  name: string;
-  unique: boolean;
-  explode: boolean;
+  public readonly name: string;
+  public readonly unique: boolean;
+  public readonly explode: boolean;
 
-  traitPathOrGetter: string | ((item: Item) => Trait);
+  private _traitPathOrGetter: string | ((item: Item) => Trait);
 
   // path - string
   // derived - function
   get kind(): 'path' | 'derived' {
-    return typeof this.traitPathOrGetter === 'string' ? 'path' : 'derived';
+    return typeof this._traitPathOrGetter === 'string' ? 'path' : 'derived';
   }
 
   get path(): string {
     if (this.kind !== 'path')
       throw new JineError('Cannot get .path on non-path index');
-    return this.traitPathOrGetter as string;
+    return this._traitPathOrGetter as string;
+  }
+
+  set path(newPath: string) {
+    this._traitPathOrGetter = newPath;
   }
 
   get getter(): (item: Item) => Trait {
     if (this.kind !== 'derived')
       throw new JineError('Cannot get .getter on non-derived index');
-    return this.traitPathOrGetter as ((item: Item) => Trait);
+    return this._traitPathOrGetter as ((item: Item) => Trait);
+  }
+
+  set getter(newGetter: (item: Item) => Trait) {
+    this._traitPathOrGetter = newGetter;
   }
 
   constructor(args: {
@@ -41,7 +49,7 @@ export class IndexSchema<Item, Trait> {
     this.name = args.name;
     this.unique = args.unique;
     this.explode = args.explode;
-    this.traitPathOrGetter = args.traitPathOrGetter;
+    this._traitPathOrGetter = args.traitPathOrGetter;
   }
 
   calcTrait(item: Item): Trait {
@@ -54,70 +62,72 @@ export class IndexSchema<Item, Trait> {
 }
 
 export class StoreSchema<Item> {
-  name: string;
-  private indexes: Dict<IndexSchema<Item, unknown>>;
+  public readonly name: string;
+
+  private _indexes: Dict<IndexSchema<Item, unknown>>;
 
   constructor(args: {
     name: string;
     indexes: Dict<IndexSchema<Item, unknown>>;
   }) {
     this.name = args.name;
-    this.indexes = args.indexes;
+    this._indexes = args.indexes;
   }
 
   index(indexName: string): IndexSchema<Item, unknown> {
-    const got = this.indexes[indexName];
+    const got = this._indexes[indexName];
     if (got === undefined)
       throw new JineNoSuchIndexError({ indexName });
     return got;
   }
 
   get indexNames(): Set<string> {
-    return new Set(Object.keys(this.indexes));
+    return new Set(Object.keys(this._indexes));
   }
 
   addIndex(indexName: string, indexSchema: IndexSchema<Item, unknown>): void {
-    this.indexes[indexName] = indexSchema;
+    this._indexes[indexName] = indexSchema;
   }
 
   removeIndex(indexName: string): void {
-    delete this.indexes[indexName];
+    delete this._indexes[indexName];
   }
 }
 
 export class DatabaseSchema {
-  name: string;
-  private stores: Dict<StoreSchema<unknown>>;
+  public readonly name: string;
+
+  private _stores: Dict<StoreSchema<unknown>>;
 
   constructor(args: {
     name: string;
     stores: Dict<StoreSchema<unknown>>;
   }) {
     this.name = args.name;
-    this.stores = args.stores;
+    this._stores = args.stores;
   }
 
   store(storeName: string): StoreSchema<unknown> {
-    const got = this.stores[storeName];
+    const got = this._stores[storeName];
     if (got === undefined)
       throw new JineNoSuchStoreError({ storeName });
     return got;
   }
 
   get storeNames(): Set<string> {
-    return new Set(Object.keys(this.stores));
+    return new Set(Object.keys(this._stores));
   }
 
   get indexNames(): Set<[string, string]> {
-    return this.storeNames[W.flatMap](storeName => M.a(this.stores[storeName]).indexNames[W.map](indexName => [storeName, indexName]));
+    return this.storeNames[W.flatMap](storeName => M.a(this._stores[storeName]).indexNames[W.map](indexName => [storeName, indexName]));
   }
 
   addStore<Item>(storeName: string, storeSchema: StoreSchema<Item>): void {
-    this.stores[storeName] = storeSchema as StoreSchema<unknown>;
+    this._stores[storeName] = storeSchema as StoreSchema<unknown>;
   }
 
   removeStore(storeName: string): void {
-    delete this.stores[storeName];
+    delete this._stores[storeName];
   }
 }
 

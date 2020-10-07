@@ -5,7 +5,7 @@ import { PACont } from './cont';
 import { Awaitable } from './util';
 import { DatabaseSchema } from './schema';
 import { JineError, JineNoSuchStoreError, mapError } from './errors';
-import { Transaction, TransactionMode, uglifyTransactionMode } from './transaction';
+import { Transaction, TransactionMode, uglifyTxMode } from './transaction';
 
 /**
  * Represents a connection to the database.
@@ -14,7 +14,7 @@ import { Transaction, TransactionMode, uglifyTransactionMode } from './transacti
  * grouping several transactions together into a single connection will be
  * more efficient than creating a new connection for each transaction.
  */
-export class Connection<$$ = unknown> {
+export class Connection<$$> {
 
   /**
    * The connection shorthand object.
@@ -27,11 +27,11 @@ export class Connection<$$ = unknown> {
    *
    * Also see {@page Example}.
    */
-  $: $$;
+  public readonly $: $$;
 
-  _idbConnCont: PACont<IDBDatabase>;
-  _schemaCont: PACont<DatabaseSchema>;
-  _codec: Codec;
+  private readonly _idbConnCont: PACont<IDBDatabase>;
+  private readonly _schemaCont: PACont<DatabaseSchema>;
+  private readonly _codec: Codec;
 
   constructor(args: {
     idbConnCont: PACont<IDBDatabase>;
@@ -47,7 +47,7 @@ export class Connection<$$ = unknown> {
         if (typeof prop === 'string') {
           const storeName = prop;
           const store = new Store({
-            txCont: this.newTransactionCont([storeName]),
+            parentIdbTxCont: this._newIdbTxCont([storeName]),
             schemaCont: this._schemaCont.map(schema => schema.store(storeName)),
             codec: this._codec,
           });
@@ -57,35 +57,42 @@ export class Connection<$$ = unknown> {
     });
   }
 
-  newTransactionCont(stores: Iterable<string | Store<any>>): PACont<Transaction<$$>, TransactionMode> {
-    // this could probably be better implemented with a new combinator or something, but that's okay
-    return PACont.fromFunc<Transaction<$$>, TransactionMode>(async (callback, txMode) => {
-      const txCont = PACont.pair(this._idbConnCont, this._schemaCont).map(async ([idbConn, schema]) => {
-        const storeNames = new Set(await Promise.all([...stores].map(s => typeof s === 'string' ? s : s.name)));
-        const idbTxMode = uglifyTransactionMode(txMode)
+  private _newIdbTxCont(storeNames: Array<string>): PACont<IDBTransaction, TransactionMode> {
+    return PACont.fromFunc<IDBTransaction, TransactionMode>(async (callback, txMode) => {
+      const idbTx = await this._idbConnCont.run(async idbConn => {
+        const idbTxMode = uglifyTxMode(txMode);
 
-        if (storeNames.size === 0)
+        if (storeNames.length === 0)
           throw new JineError(`Cannot start a transaction without specifying stores on which to transact! Sorry.`);
 
         let idbTx!: IDBTransaction;
         try {
-          idbTx = idbConn.transaction([...storeNames], idbTxMode);
+          idbTx = idbConn.transaction(storeNames, idbTxMode);
         } catch (err) {
           if (err.name === 'NotFoundError')
             throw new JineNoSuchStoreError({ oneOfStoreNames: storeNames });
           throw mapError(err);
         }
 
+        return idbTx;
+      });
+      return await callback(idbTx);
+    });
+  }
+
+  private _newTxCont(stores: Iterable<string | Store<any>>): PACont<Transaction<$$>, TransactionMode> {
+    return PACont.fromFunc<Transaction<$$>, TransactionMode>(async (callback, txMode) => {
+      const storeNames = await Promise.all([...stores].map(s => typeof s === 'string' ? s : s.name));
+      const txCont = PACont.pair(this._newIdbTxCont(storeNames), this._schemaCont).map(([idbTx, schema]) => {
         return new Transaction<$$>({
           idbTx: idbTx,
-          scope: storeNames,
+          scope: new Set(storeNames),
           genuine: true,
           schema: schema,
           codec: this._codec,
         });
       });
-
-      return await txCont.run(callback);
+      return txCont.run(txMode, callback);
     });
   }
 
@@ -101,7 +108,7 @@ export class Connection<$$ = unknown> {
     txMode: TransactionMode,
     callback: (tx: Transaction<$$>) => Promise<R>,
   ): Promise<R> {
-    const txCont = this.newTransactionCont(stores);
+    const txCont = this._newTxCont(stores);
     return txCont.run(txMode, tx => tx.wrap(callback));
   }
 

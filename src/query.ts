@@ -1,11 +1,12 @@
+import { M } from 'wrongish';
 
 import { Row } from './row';
 import { PACont } from './cont';
 import { StoreSchema } from './schema';
 import { TransactionMode } from './transaction';
 import { JineError, mapError } from './errors';
+import { getPropertyDescriptor } from './util';
 import { Codec, Storable, Indexable } from './codec';
-import { some, getPropertyDescriptor } from './util';
 
 /**
  * Query specification
@@ -110,14 +111,14 @@ function compileCursorDirection<Trait extends Indexable>(query: Query<Trait>): I
 /*- IDBCursor wrapper */
 export class Cursor<Item extends Storable, Trait extends Indexable> {
 
-  readonly storeSchema: StoreSchema<Item>;
-  readonly codec: Codec;
+  private readonly _storeSchema: StoreSchema<Item>;
+  private readonly _codec: Codec;
 
-  readonly _query: Query<Trait>;
+  private readonly _query: Query<Trait>;
 
-  readonly _idbSource: IDBObjectStore | IDBIndex;
-  _idbReq: IDBRequest | null;
-  _idbCur: IDBCursorWithValue | null;
+  private readonly _idbSource: IDBObjectStore | IDBIndex;
+  private _idbReq: IDBRequest | null;
+  private _idbCur: IDBCursorWithValue | null;
 
   constructor(args: {
     idbSource: IDBIndex | IDBObjectStore;
@@ -126,25 +127,25 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     codec: Codec;
   }) {
     this._query = args.query;
-    this.codec = args.codec;
+    this._codec = args.codec;
     this._idbSource = args.idbSource;
     this._idbReq = null;
     this._idbCur = null;
-    this.storeSchema = args.storeSchema;
+    this._storeSchema = args.storeSchema;
   }
 
   get initialized(): boolean {
     return this._idbReq !== null;
   }
 
-  _assertInitialized(): void {
+  private _assertInitialized(): void {
     if (!this.initialized)
       throw new JineError('Cursor must be initialized; please await .init()');
   }
 
   init(): Promise<void> {
     const req = this._idbSource.openCursor(
-      compileTraitRange(this._query, this.codec),
+      compileTraitRange(this._query, this._codec),
       compileCursorDirection(this._query),
     );
     this._idbReq = req;
@@ -161,7 +162,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     return this.initialized && this._idbCur === null;
   }
 
-  _assertNotExhausted(): void {
+  private _assertNotExhausted(): void {
     if (this.exhausted)
       throw new JineError('Cursor is exhausted and needs a nap.');
   }
@@ -170,22 +171,22 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     return this.initialized && !this.exhausted;
   }
 
-  _assertActive(): void {
+  private _assertActive(): void {
     this._assertInitialized();
     this._assertNotExhausted();
   }
 
-  _activeIdbCur(): IDBCursorWithValue {
+  private _activeIdbCur(): IDBCursorWithValue {
     this._assertActive();
-    return some(this._idbCur, "Internal error");
+    return M.a(this._idbCur, "Internal error");
   }
 
-  _activeIdbReq(): IDBRequest {
+  private _activeIdbReq(): IDBRequest {
     this._assertActive();
-    return some(this._idbReq, "Internal error");
+    return M.a(this._idbReq, "Internal error");
   }
 
-  _currentRow(): Row {
+  currentRow(): Row {
     return this._activeIdbCur().value;
   }
 
@@ -193,7 +194,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     // Get the item at the cursor.
     const idbCur = this._activeIdbCur();
     const row = idbCur.value;
-    return this.codec.decodeItem(row.payload) as Item;
+    return this._codec.decodeItem(row.payload) as Item;
   }
 
   step(options?: { toTrait: Trait } | { size: number }): Promise<void> {
@@ -207,7 +208,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
 
       if (options && 'toTrait' in options) {
         const trait = options.toTrait;
-        const encoded = this.codec.encodeTrait(trait, this._sourceIsExploding);
+        const encoded = this._codec.encodeTrait(trait, this._sourceIsExploding);
         idbCur.continue(encoded as any);
       } else {
         idbCur.advance(options?.size ?? 1);
@@ -223,14 +224,14 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     }
   }
 
-  get _sourceIsExploding(): boolean {
+  private get _sourceIsExploding(): boolean {
     return this._idbSource instanceof IDBIndex && this._idbSource.multiEntry;
   }
 
   currentTrait(): Trait {
     const idbCur = this._activeIdbCur();
     const encoded = idbCur.key;
-    return this.codec.decodeTrait(encoded, this._sourceIsExploding) as Trait;
+    return this._codec.decodeTrait(encoded, this._sourceIsExploding) as Trait;
   }
 
   async delete(): Promise<void> {
@@ -243,7 +244,7 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     });
   }
 
-  async _replaceRow(newRow: Row): Promise<void> {
+  async replaceRow(newRow: Row): Promise<void> {
     const idbCur = this._activeIdbCur();
     return new Promise((resolve, reject) => {
       const req = idbCur.update(newRow);
@@ -259,13 +260,13 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
     const row: any = idbCur.value;
 
     // update payload
-    row.payload = this.codec.encodeItem(newItem);
+    row.payload = this._codec.encodeItem(newItem);
 
     // update traits
-    for (const indexName of this.storeSchema.indexNames) {
-      const indexSchema = this.storeSchema.index(indexName);
+    for (const indexName of this._storeSchema.indexNames) {
+      const indexSchema = this._storeSchema.index(indexName);
       const trait = indexSchema.calcTrait(newItem);
-      const encoded = this.codec.encodeTrait(trait, indexSchema.explode);
+      const encoded = this._codec.encodeTrait(trait, indexSchema.explode);
       const traitName = indexName;
       row.traits[traitName] = encoded;
     }
@@ -286,18 +287,15 @@ export class Cursor<Item extends Storable, Trait extends Indexable> {
 
 }
 
-/**
- * Represents a selection of a bunch of items from a [[Store]].
- */
+/** Represents a selection of a bunch of items from a [[Store]]. */
 export class Selection<Item extends Storable, Trait extends Indexable> {
 
-  readonly query: Query<Trait>;
+  private readonly _query: Query<Trait>;
+  private readonly _idbSourceCont: PACont<IDBObjectStore | IDBIndex, TransactionMode>;
+  private readonly _storeSchemaCont: PACont<StoreSchema<Item>>;
+  private readonly _codec: Codec;
 
-  readonly idbSourceCont: PACont<IDBObjectStore | IDBIndex, TransactionMode>;
-  readonly storeSchemaCont: PACont<StoreSchema<Item>>;
-  readonly codec: Codec;
-
-  cursorCont: PACont<Cursor<Item, Trait>, TransactionMode>;
+  private _cursorCont: PACont<Cursor<Item, Trait>, TransactionMode>;
 
   constructor(args: {
     query: Query<Trait>;
@@ -305,30 +303,30 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
     storeSchemaCont: PACont<StoreSchema<Item>>;
     codec: Codec;
   }) {
-    this.query = args.query;
-    this.storeSchemaCont = args.storeSchemaCont;
-    this.idbSourceCont = args.idbSourceCont;
-    this.codec = args.codec;
+    this._query = args.query;
+    this._storeSchemaCont = args.storeSchemaCont;
+    this._idbSourceCont = args.idbSourceCont;
+    this._codec = args.codec;
 
-    this.cursorCont = PACont.pair(
-      this.idbSourceCont, this.storeSchemaCont
+    this._cursorCont = PACont.pair(
+      this._idbSourceCont, this._storeSchemaCont
     ).map(async ([idbSource, storeSchema]) => {
       // TODO: use transactionmode
       return new Cursor<Item, Trait>({
         idbSource: idbSource,
-        query: this.query,
+        query: this._query,
         storeSchema: storeSchema,
-        codec: this.codec,
+        codec: this._codec,
       });
     });
   }
 
-  async _replaceRows(mapper: (row: Row) => Row): Promise<void> {
-    await this.cursorCont.run('rw', async cursor => {
+  async replaceRows(mapper: (row: Row) => Row): Promise<void> {
+    await this._cursorCont.run('rw', async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
-        const oldRow = cursor._currentRow();
+        const oldRow = cursor.currentRow();
         const newRow = mapper(oldRow);
-        await cursor._replaceRow(newRow);
+        await cursor.replaceRow(newRow);
       }
     });
   }
@@ -337,7 +335,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
   filter(...predicates: Array<(item: Item) => boolean>): this {
     const bigPred = (item: Item): boolean => predicates.every(pred => pred(item));
 
-    this.cursorCont = this.cursorCont.map(cursor => {
+    this._cursorCont = this._cursorCont.map(cursor => {
       const filtered = Object.create(cursor);
 
       // step until predicate is satisfied
@@ -380,7 +378,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
 
   /** Drop `count` items off of the beginning of a selection */
   drop(count: number): this {
-    this.cursorCont = this.cursorCont.map(cursor => {
+    this._cursorCont = this._cursorCont.map(cursor => {
       const modified = Object.create(cursor);
       modified.init = async function() {
         await cursor.init.call(this);
@@ -393,7 +391,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
 
   /** Limit the selection to at most `count` items */
   limit(count: number): this {
-    this.cursorCont = this.cursorCont.map(cursor => {
+    this._cursorCont = this._cursorCont.map(cursor => {
       const limited = Object.create(cursor);
       let passed = 0;
 
@@ -404,7 +402,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
           console.warn("[jinedb] .limit()'d selection exceeding max count");
       };
 
-      const oldExhaustedGetter = some(getPropertyDescriptor(cursor, 'exhausted')?.get, null);
+      const oldExhaustedGetter = M.a(getPropertyDescriptor(cursor, 'exhausted')?.get);
       Object.defineProperty(limited, 'exhausted', {
         get() {
           return passed === count || oldExhaustedGetter.call(this);
@@ -418,7 +416,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
 
   /** Test if the selection is empty or not. */
   async isEmpty(): Promise<boolean> {
-    return await this.cursorCont.run('r', async cursor => {
+    return await this._cursorCont.run('r', async cursor => {
       await cursor.init();
       return cursor.exhausted;
     });
@@ -426,7 +424,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
 
   /** Replace all selected items with the result of passing them into the given callback. */
   async replace(mapper: (item: Item) => Item): Promise<void> {
-    await this.cursorCont.run('rw', async cursor => {
+    await this._cursorCont.run('rw', async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
         const oldItem = cursor.currentItem();
         const newItem = mapper(oldItem);
@@ -437,7 +435,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
 
   /** Update all selected items with the given delta. */
   async update(delta: Partial<Item>): Promise<void> {
-    await this.cursorCont.run('rw', async cursor => {
+    await this._cursorCont.run('rw', async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
         await cursor.update(delta);
       }
@@ -446,7 +444,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
 
   /** Delete the selected items from the database. */
   async delete(): Promise<void> {
-    await this.cursorCont.run('rw', async cursor => {
+    await this._cursorCont.run('rw', async cursor => {
       for (await cursor.init(); cursor.active; await cursor.step()) {
         await cursor.delete();
       }
@@ -455,7 +453,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
 
   /** Calculate the number of selected items. */
   async count(): Promise<number> {
-    return await this.cursorCont.run('r', async cursor => {
+    return await this._cursorCont.run('r', async cursor => {
       let result = 0;
       for (await cursor.init(); cursor.active; await cursor.step()) {
         result++;
@@ -466,7 +464,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
 
   /** Return all selected items as an array. */
   async array(): Promise<Array<Item>> {
-    return await this.cursorCont.run('r', async cursor => {
+    return await this._cursorCont.run('r', async cursor => {
       const result: Array<Item> = [];
       for (await cursor.init(); cursor.active; await cursor.step()) {
         result.push(cursor.currentItem());
@@ -496,7 +494,7 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
       = new Promise(resolve => resolveIteratorDone = resolve);
 
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    this.cursorCont.run('r', cursor => {
+    this._cursorCont.run('r', cursor => {
       resolveCursor(cursor);
       return new Promise(resolve => {
         const iteratorDone = resolve;
@@ -535,8 +533,8 @@ export class Selection<Item extends Storable, Trait extends Indexable> {
  */
 export class SelectionUnique<Item extends Storable, Trait extends Indexable> {
 
-  readonly selection: Selection<Item, Trait>;
-  readonly idbSourceCont: PACont<IDBIndex, TransactionMode>;
+  private readonly _selection: Selection<Item, Trait>;
+  private readonly _idbSourceCont: PACont<IDBIndex, TransactionMode>;
 
   constructor(args: {
     selectedTrait: Trait;
@@ -544,12 +542,12 @@ export class SelectionUnique<Item extends Storable, Trait extends Indexable> {
     storeSchemaCont: PACont<StoreSchema<Item>>;
     codec: Codec;
   }) {
-    this.idbSourceCont = args.idbSourceCont.map(idbIndex => {
+    this._idbSourceCont = args.idbSourceCont.map(idbIndex => {
       if (!idbIndex.unique)
         throw new JineError(`Cannot perform a SelectionUnique operaiton on a non-unique index!`);
       return idbIndex;
     });
-    this.selection = new Selection({
+    this._selection = new Selection({
       query: { equals: args.selectedTrait },
       idbSourceCont: args.idbSourceCont,
       storeSchemaCont: args.storeSchemaCont,
@@ -561,22 +559,22 @@ export class SelectionUnique<Item extends Storable, Trait extends Indexable> {
 
   /** Like [[Selection.replace]] */
   async replace(mapper: (oldItem: Item) => Item): Promise<void> {
-    await this.selection.replace(mapper);
+    await this._selection.replace(mapper);
   }
 
   /** Like [[Selection.update]] */
   async update(delta: Partial<Item>): Promise<void> {
-    await this.selection.update(delta);
+    await this._selection.update(delta);
   }
 
   /** Like [[Selection.delete]] */
   async delete(): Promise<void> {
-    await this.selection.delete();
+    await this._selection.delete();
   }
 
   /** Get the selected item from the database. */
   async get(): Promise<Item> {
-    const got = (await this.selection.array())[0];
+    const got = (await this._selection.array())[0];
     if (got === undefined)
       throw new JineError('No item found');
     return got;
@@ -584,7 +582,7 @@ export class SelectionUnique<Item extends Storable, Trait extends Indexable> {
 
   /** Get the selected item from the database, or an alternative value if the item isn't found. */
   async getOr<T = undefined>(alternative: T): Promise<Item | T> {
-    const got = (await this.selection.array())[0];
+    const got = (await this._selection.array())[0];
     if (got === undefined) return alternative;
     return got;
   }

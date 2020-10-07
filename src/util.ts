@@ -1,6 +1,3 @@
-
-import { JineInternalError } from './errors';
-
 export const globalObj = typeof window !== 'undefined' ? window : global;
 
 // see https://fnune.com/typescript/2019/01/30/typescript-series-1-record-is-usually-not-the-best-choice/
@@ -25,39 +22,11 @@ export function getPropertyDescriptor(obj: object, prop: number | symbol | strin
 // Steps around a TS quirk where Record<string, T> doesn't work in union types
 export interface PlainObjectOf<T> extends Record<string, T> { }  // eslint-disable-line @typescript-eslint/no-empty-interface
 
-/**
- * An encoder and decoter for a particular type.
- */
-export type Codec<Decoded, Encoded> = {
-  encode: (decoded: Decoded) => Encoded;
-  decode: (encoded: Encoded) => Decoded;
-}
-
 export type Constructor<T> = { new(...args: any[]): T };
-
-export function isPrimitive(x: any): x is (null | undefined | string | number | BigInt | boolean | symbol) {
-  return typeof x !== 'object' || x === null;
-}
-
-export function identity<T>(x: T): T {
-  return x;
-}
-
-export function some<T>(x: T | null | undefined, errorMessage: string | null): T {
-  if (x === undefined || x === null) {
-    throw new JineInternalError(errorMessage ?? `Called some(${x}).`);
-  }
-  return x;
-}
 
 /* instanceof without inheritance */
 export function isInstanceOfStrict<T>(val: any, type: Constructor<T>): val is T {
   return val && val.constructor === type;
-}
-
-export function invoke<T>(func: () => T): T {
-  // Better syntax for IIFEs than (() => { ... })()
-  return func();
 }
 
 /*-

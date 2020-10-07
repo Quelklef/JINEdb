@@ -47,7 +47,7 @@ function resolve(names: string): Array<string | Constructor<unknown>> {
     .split(/\W/)
     .filter(name => name !== '')
     .map(name =>
-      name[0].toLowerCase() === name[0] ? name  // primitive type
+      name[0].toLowerCase() === name[0] ? name  // primitive type or null
       : (globalObj as any)[name] as Constructor<unknown> | undefined  // constructor
     )
     [W.filter2](<T>(type: undefined | T): type is T => type !== undefined)
@@ -178,10 +178,10 @@ export class Codec {
 
   // vv Could be typed better, but no point
   constructor(
-    public encodeItem: (it: any) => unknown,
-    public decodeItem: (it: any) => unknown,
-    public encodeTrait: (it: any, indexIsExploding: boolean) => unknown,
-    public decodeTrait: (it: any, indexIsExploding: boolean) => unknown,
+    public readonly encodeItem: (it: any) => unknown,
+    public readonly decodeItem: (it: any) => unknown,
+    public readonly encodeTrait: (it: any, indexIsExploding: boolean) => unknown,
+    public readonly decodeTrait: (it: any, indexIsExploding: boolean) => unknown,
   ) { }
 
   static usualCodec(userCodecs: Array<UserCodec>): Codec {

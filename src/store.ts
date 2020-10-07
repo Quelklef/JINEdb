@@ -2,11 +2,11 @@
 import { Row } from './row';
 import { Index } from './index';
 import { PACont } from './cont';
+import { Selection } from './query';
 import { Dict, Awaitable } from './util';
-import { Selection, Cursor } from './query';
+import { TransactionMode } from './transaction';
 import { StoreSchema, IndexSchema } from './schema';
 import { Codec, Storable, Indexable } from './codec';
-import { Transaction, TransactionMode } from './transaction';
 import { JineError, JineNoSuchStoreError, mapError } from './errors';
 
 /**
@@ -23,40 +23,35 @@ export class Store<Item extends Storable> {
    *
    * See {@page Example}.
    */
-  by: unknown;
+  public readonly by: unknown;
 
   /** Store name. Unique per-[[Database]]. */
   get name(): Awaitable<string> {
     return this._schemaCont.run(schema => schema.name);
   }
 
-  _parentTxCont: PACont<Transaction, TransactionMode>;
-  _idbStoreCont: PACont<IDBObjectStore, TransactionMode>;
-  _schemaCont: PACont<StoreSchema<Item>>;
-  _codec: Codec;
+  private readonly _idbStoreCont: PACont<IDBObjectStore, TransactionMode>;
+  private readonly _schemaCont: PACont<StoreSchema<Item>>;
+  private readonly _codec: Codec;
 
   constructor(args: {
-    txCont: PACont<Transaction, TransactionMode>;
+    parentIdbTxCont: PACont<IDBTransaction, TransactionMode>;
     schemaCont: PACont<StoreSchema<Item>>;
     codec: Codec;
   }) {
-    this._parentTxCont = args.txCont;
     this._schemaCont = args.schemaCont;
     this._codec = args.codec;
 
-    this._idbStoreCont = args.txCont.map(async tx => {
-      return await this._schemaCont.run(schema => {
-        const storeName = schema.name;
-        const idbTx = tx._idbTx;
+    this._idbStoreCont = PACont.pair(args.parentIdbTxCont, this._schemaCont).map(async ([idbTx, schema]) => {
+      const storeName = schema.name;
 
-        try {
-          return idbTx.objectStore(storeName);
-        } catch (err) {
-          if (err.name === 'NotFoundError')
-            throw new JineNoSuchStoreError({ storeName });
-          throw mapError(err);
-        }
-      });
+      try {
+        return idbTx.objectStore(storeName);
+      } catch (err) {
+        if (err.name === 'NotFoundError')
+          throw new JineNoSuchStoreError({ storeName });
+        throw mapError(err);
+      }
     });
 
     this.by = new Proxy({}, {
@@ -65,25 +60,12 @@ export class Store<Item extends Storable> {
           const indexName = prop;
           return new Index({
             parentStore: this,
-            parentTxCont: this._parentTxCont,
+            parentStoreSchemaCont: this._schemaCont,
+            parentIdbStoreCont: this._idbStoreCont,
             schemaCont: this._schemaCont.map(schema => schema.index(indexName) as IndexSchema<Item, any>),
             codec: this._codec,
           });
         }
-      }
-    });
-  }
-
-  async _mapExistingRows(mapper: (row: Row) => Row): Promise<void> {
-    return await PACont.pair(this._idbStoreCont, this._schemaCont).run('rw', async ([idbStore, schema]) => {
-      const cursor = new Cursor({
-        idbSource: idbStore,
-        query: 'all',
-        storeSchema: schema,
-        codec: this._codec,
-      });
-      for (await cursor.init(); cursor.active; await cursor.step()) {
-        await cursor._replaceRow(mapper(cursor._currentRow()));
       }
     });
   }
@@ -199,7 +181,8 @@ export class Store<Item extends Storable> {
 
       const index = new Index<Item, Trait>({
         parentStore: this,
-        parentTxCont: this._parentTxCont,
+        parentStoreSchemaCont: this._schemaCont,
+        parentIdbStoreCont: this._idbStoreCont,
         schemaCont: PACont.fromValue(indexSchema),
         codec: this._codec,
       });
@@ -230,7 +213,7 @@ export class Store<Item extends Storable> {
       // update existing rows if needed
       const indexSchema = schema.index(name);
       if (indexSchema.kind === 'derived') {
-        await this.selectAll()._replaceRows((row: Row) => {
+        await this.selectAll().replaceRows((row: Row) => {
           delete row.traits[name];
           return row;
         });

@@ -4,7 +4,7 @@ import { Dict } from './util';
 /** Superclass for all jine-related errors */
 export class JineError extends Error {
   constructor(message?: string) {
-    super(message === undefined ? '' : '[Jine] ' + message);
+    super(message ?? '');
   }
 }
 
