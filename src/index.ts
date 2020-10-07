@@ -149,7 +149,7 @@ export class Index<Item extends Storable, Trait extends Indexable> {
   /**
    * Retrieve all items matching a given trait.
    */
-  async get(trait: Trait): Promise<Array<Item>> {
+  async getAll(trait: Trait): Promise<Array<Item>> {
     return await this.select({ equals: trait }).array();
   }
 

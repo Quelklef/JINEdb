@@ -133,7 +133,7 @@ describe('migration', () => {
 
     await jine.connect(async (conn: any) => {
       await conn.$.strings.add('me!');
-      expect(await conn.$.strings.by.self.get('me!')).toEqual(['me!']);
+      expect(await conn.$.strings.by.self.getAll('me!')).toEqual(['me!']);
     });
 
     migrations.push(async (genuine: boolean, tx: any) => {
@@ -158,7 +158,7 @@ describe('migration', () => {
 
     await jine.connect(async (conn: any) => {
       await conn.$.strings.add('me!');
-      expect(await conn.$.strings.by.self.get('me!')).toEqual(['me!']);
+      expect(await conn.$.strings.by.self.getAll('me!')).toEqual(['me!']);
     });
 
     migrations.push(async (genuine: boolean, tx: any) => {
@@ -167,8 +167,8 @@ describe('migration', () => {
     });
     jine = new Database('jine', { migrations });
 
-    expect(await jine.$.strings.by.length.get(3)).toEqual(['me!']);
-    expect(await jine.$.strings.by.length.get(7)).toEqual(['longboi']);
+    expect(await jine.$.strings.by.length.getAll(3)).toEqual(['me!']);
+    expect(await jine.$.strings.by.length.getAll(7)).toEqual(['longboi']);
 
   });
 
@@ -183,7 +183,7 @@ describe('migration', () => {
     await jine.connect(async (conn: any) => {
       await conn.$.strings.add('123');
       await conn.$.strings.add('abc');
-      expect(await conn.$.strings.by.trait.get(3)).toEqual(['123', 'abc']);
+      expect(await conn.$.strings.by.trait.getAll(3)).toEqual(['123', 'abc']);
     });
 
     migrations.push(async (genuine: boolean, tx: any) => {
@@ -197,11 +197,11 @@ describe('migration', () => {
       await conn.$.strings.add('___xxx');
 
       // does not update traits on existing values
-      expect(await conn.$.strings.by.trait.get(0)).toEqual([]);
-      expect(await conn.$.strings.by.trait.get(1)).toEqual(['___x']);
-      expect(await conn.$.strings.by.trait.get(2)).toEqual(['___xx']);
-      expect(await conn.$.strings.by.trait.get(3)).toEqual(['123', 'abc', '___xxx']);
-      expect(await conn.$.strings.by.trait.get(4)).toEqual([]);
+      expect(await conn.$.strings.by.trait.getAll(0)).toEqual([]);
+      expect(await conn.$.strings.by.trait.getAll(1)).toEqual(['___x']);
+      expect(await conn.$.strings.by.trait.getAll(2)).toEqual(['___xx']);
+      expect(await conn.$.strings.by.trait.getAll(3)).toEqual(['123', 'abc', '___xxx']);
+      expect(await conn.$.strings.by.trait.getAll(4)).toEqual([]);
     });
 
   });
@@ -218,7 +218,7 @@ describe('migration', () => {
 
     await jine.connect(async (conn: any) => {
       await conn.$.objects.add(obj);
-      expect(await conn.$.objects.by.trait.get(1)).toEqual([obj]);
+      expect(await conn.$.objects.by.trait.getAll(1)).toEqual([obj]);
     });
 
     migrations.push(async (genuine: boolean, tx: any) => {
@@ -231,8 +231,8 @@ describe('migration', () => {
       await conn.$.objects.add(obj);
 
       // does not update traits on existing values
-      expect(await conn.$.objects.by.trait.get(1)).toEqual([obj]);
-      expect(await conn.$.objects.by.trait.get(2)).toEqual([obj, obj]);
+      expect(await conn.$.objects.by.trait.getAll(1)).toEqual([obj]);
+      expect(await conn.$.objects.by.trait.getAll(2)).toEqual([obj, obj]);
     });
 
   });

@@ -140,7 +140,7 @@ assert.deepEqual(biscuits, await conn.$.recipes.by.name.getOne('Basic Biscuits')
 // .selectOne only works on unique indexes and returns one item, or errors if no item is found
 
 // I have some eggs I want to cook
-const eggRecipes = await conn.$.recipes.by.ingredients.get('eggs')
+const eggRecipes = await conn.$.recipes.by.ingredients.getAll('eggs');
 assert.deepEqual([pancakes, waffles], eggRecipes);
 // .find returns all items matching a given trait
 

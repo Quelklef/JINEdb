@@ -37,7 +37,7 @@ describe('encoding', () => {
       const trait = traits[i];
       const item = { idx: i, trait };
       await jine.$.items.add(item);
-      const got = await jine.$.items.by.trait.get(trait)
+      const got = await jine.$.items.by.trait.getAll(trait)
       expect(got).toEqual([item]);
     }
   });

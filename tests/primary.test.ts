@@ -162,7 +162,7 @@ describe("primary", () => {
     });
 
     it("throws on missing index", async () => {
-      await expect(() => ($ as any).rooms.by.MISSING.get('whatever'))
+      await expect(() => ($ as any).rooms.by.MISSING.getAll('whatever'))
         .rejects.toThrow(jine.JineNoSuchIndexError);
     });
 
@@ -190,9 +190,9 @@ describe("primary", () => {
       expect(!await $.rooms.by.name.exists("no room here"));
     });
 
-    it("$.{store}.by.{index}.get()", async () => {
+    it("$.{store}.by.{index}.getAll()", async () => {
       const expected = ROOMS.filter(room => room.score === 6);
-      const actual = await $.rooms.by.score.get(6);
+      const actual = await $.rooms.by.score.getAll(6);
       expect(actual).toStrictEqual(expected);
     });
 
