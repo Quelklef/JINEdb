@@ -2,9 +2,9 @@
 import { Store } from './store';
 import { PACont } from './cont';
 import { Awaitable } from './util';
+import { TransactionMode } from './transaction';
 import { StoreSchema, IndexSchema } from './schema';
 import { Codec, Storable, Indexable } from './codec';
-import { TransactionMode, prettifyTxMode } from './transaction';
 import { Query, Selection, SelectionUnique } from './query';
 import { JineError, JineNoSuchIndexError, JineTransactionModeError, mapError } from './errors';
 

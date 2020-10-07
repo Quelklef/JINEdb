@@ -62,16 +62,6 @@ const idbNativelyStorableTypes = resolve(`
   Array Object Map Set
 `);
 
-/** Types that are storable by IndexedDB */
-type IdbStorable =
-  undefined | null | string | number | boolean | BigInt
-  | Date | RegExp | Blob
-  | File | FileList | ArrayBuffer
-  | ArrayBufferView
-  | ImageBitmap | ImageData
-  | Array<NativelyStorable> | PlainObjectOf<NativelyStorable> | Map<NativelyStorable, NativelyStorable> | Set<NativelyStorable>
-  ;
-
 const idbNativelyIndexableTypes = resolve(`
   string number
   Date
@@ -81,20 +71,25 @@ const idbNativelyIndexableTypes = resolve(`
   Array
 `);
 
-/** Types that are indexable by IndexedDB */
-type IdbIndexable =
-  string | number
+/** Types that are natively storable by Jine */
+export type NativelyStorable =
+  undefined | null | string | number | boolean | BigInt
+  | Date | RegExp | Blob
+  | File | FileList | ArrayBuffer
+  | ArrayBufferView
+  | ImageBitmap | ImageData
+  | Array<NativelyStorable> | PlainObjectOf<NativelyStorable> | Map<NativelyStorable, NativelyStorable> | Set<NativelyStorable>
+  ;
+
+/** Types that are natively indexable by Jine */
+export type NativelyIndexable =
+  | string | number
   | Date
   | ArrayBuffer
   | ArrayBufferView
   | ImageBitmap | ImageData
   | Array<NativelyIndexable>
   ;
-
-/** Types that are natively storable by Jine */
-export type NativelyStorable = IdbStorable
-/** Types that are natively indexable by Jine */
-export type NativelyIndexable = IdbIndexable;
 
 /**
  * Typescript users must declare this attribute on any custom-encodable classes.
@@ -108,20 +103,13 @@ export type Storable = NativelyStorable | { [encodesTo]: Storable | PlainObjectO
 /** Types that Jine can use to index database items */
 export type Indexable = NativelyIndexable | { [encodesTo]: Indexable | NativelyIndexable };
 
-function isOfAny(value: any, types: Array<string | Constructor<unknown>>): boolean {
-  return types.some(type =>
+function isOfAny(value: any, types: Array<string | Constructor<unknown>>, opts?: { except: Array<string | Constructor<unknown>> }): boolean {
+  const difference = types.filter(type => !(opts?.except ?? []).includes(type))
+  return difference.some(type =>
     value === null && type === 'null'
     || typeof value === type
     || isInstanceOfStrict(value, type as Constructor<unknown>)
   );
-}
-
-function isOfNativelyStorableType(value: any, opts?: { except: Array<string | Constructor<unknown>> }): boolean {
-  return isOfAny(value, idbNativelyStorableTypes) && !isOfAny(value, opts?.except ?? []);
-}
-
-function isOfNativelyIndexableType(value: any, opts?: { except: Array<string | Constructor<unknown>> }): boolean {
-  return isOfAny(value, idbNativelyIndexableTypes) && !isOfAny(value, opts?.except ?? []);
 }
 
 function typeNamePretty(value: any): string {
@@ -188,7 +176,7 @@ export class Codec {
     validateUserCodecs(userCodecs);
 
     function encodeItem(decoded: any): unknown {
-      if (isOfNativelyStorableType(decoded, { except: [Object, Array, Map, Set] }))
+      if (isOfAny(decoded, idbNativelyStorableTypes, { except: [Object, Array, Map, Set] }))
         return decoded;
 
       if (isInstanceOfStrict(decoded, Array))
@@ -212,7 +200,7 @@ export class Codec {
       if (userCodec) {
         let shallowlyEncoded = userCodec.encode(decoded);
         // vv If encoded to another custom type, expand
-        if (!isOfNativelyStorableType(shallowlyEncoded))
+        if (!isOfAny(shallowlyEncoded, idbNativelyStorableTypes))
           shallowlyEncoded = encodeItem(shallowlyEncoded);
         // vv Ensure it resolved to a plain object. This is so that we can mark it in the migration codec.
         if (!isInstanceOfStrict(shallowlyEncoded, Object))
@@ -230,7 +218,7 @@ export class Codec {
     }
 
     function decodeItem(encoded: any): unknown {
-      if (isOfNativelyStorableType(encoded, { except: [Array, Map, Set, Object] }))
+      if (isOfAny(encoded, idbNativelyStorableTypes, { except: [Array, Map, Set, Object] }))
         return encoded;
 
       if (isInstanceOfStrict(encoded, Array))
@@ -269,7 +257,7 @@ export class Codec {
     }
 
     function encodeTrait(item: any, indexIsExploding: boolean): unknown {
-      if (isOfNativelyIndexableType(item, { except: [Array] }))
+      if (isOfAny(item, idbNativelyIndexableTypes, { except: [Array] }))
         return item;
 
       if (indexIsExploding) {
@@ -301,7 +289,7 @@ export class Codec {
         return item.map(elem => decodeTrait(elem, false));
       }
 
-      if (isOfNativelyIndexableType(item, { except: [Array] }))
+      if (isOfAny(item, idbNativelyIndexableTypes, { except: [Array] }))
         return item;
 
       if (isInstanceOfStrict(item, Array) && (item[0] as 0 | 1) === 0) {
@@ -325,7 +313,7 @@ export class Codec {
 
   static migrationCodec(): Codec {
     function decodeItem(encoded: any): unknown {
-      if (isOfNativelyStorableType(encoded, { except: [Array, Map, Set, Object] }))
+      if (isOfAny(encoded, idbNativelyStorableTypes, { except: [Array, Map, Set, Object] }))
         return encoded;
 
       if (isInstanceOfStrict(encoded, Array))
@@ -351,7 +339,7 @@ export class Codec {
     }
 
     function encodeItem(marked: any): unknown {
-      if (isOfNativelyStorableType(marked, { except: [Object, Array, Map, Set] }))
+      if (isOfAny(marked, idbNativelyStorableTypes, { except: [Object, Array, Map, Set] }))
         return marked;
 
       if (isInstanceOfStrict(marked, Array))
