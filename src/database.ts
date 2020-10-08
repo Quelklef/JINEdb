@@ -81,7 +81,7 @@ export type MigrationTx = Transaction<{
  *
  * See {@page Example} for example use of a Migration.
  */
-type Migration = (genuine: boolean, tx: MigrationTx) => Promise<void>;
+export type Migration = (genuine: boolean, tx: MigrationTx) => Promise<void>;
 
 async function runMigrations<$$>(dbName: string, migrations: Array<Migration>, codec: Codec): Promise<[number, DatabaseSchema]> {
 
